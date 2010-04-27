@@ -27,8 +27,6 @@
 # version of this file under either the License or the GPL.
 #
 
-# $Header: /cvsroot/naviserver/modules/nsstats/nsstats.tcl,v 1.4 2007/10/07 16:46:07 seryakov Exp $
-
 #
 # nsstats.tcl --
 #
@@ -41,7 +39,7 @@
 # If this pages needs to be restricted assign username and password here
 set user ""
 set password ""
-set enabled 0
+set enabled 1
 
 if { ![nsv_exists _ns_stats threads_0] } {
   nsv_set _ns_stats thread_0      "NS_OK"
@@ -175,14 +173,18 @@ proc _ns_stats.cache {} {
 
     foreach cache [ns_cache_names] {
         array set t [ns_cache_stats $cache]
-        lappend results [list $cache $t(maxsize) $t(size) $t(entries) $t(flushed) $t(hits) $t(missed) "$t(hitrate)%"]
+        lappend results [list $cache $t(maxsize) $t(size) \
+		[format %.2f [expr {$t(size)*100.0/$t(maxsize)}]]% \
+		$t(entries) $t(flushed) $t(hits) \
+		[format %.0f [expr {$t(entries)>0 ? $t(hits)*1.0/$t(entries) : 0}]] \
+		$t(missed) "$t(hitrate)%" $t(expired) $t(pruned)]
     }
 
-    set colTitles   [list Cache Max Current Entries Flushes Hits Misses "Hit Rate"]
+    set colTitles   [list Cache Max Current Utilization Entries Flushes Hits Resue Misses "Hit Rate" Expired Pruned]
     set rows        [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
 
     set html [_ns_stats.header Cache]
-    append html [_ns_stats.results $col $colTitles ?@page=cache $rows $reverseSort]
+    append html [_ns_stats.results $col $colTitles ?@page=cache $rows $reverseSort {left right right right right right right right right right right right}]
     append html [_ns_stats.footer]
 
     return $html
@@ -467,7 +469,7 @@ proc _ns_stats.sched {} {
         set laststart   [lindex $s 5]
         set lastend     [lindex $s 6]
         set proc        [lindex $s 7]
-        set arg         [lindex $s 8]
+        set arg         [lrange $s 8 end]
 
         if [catch {
             set duration [expr {$lastend - $laststart}]
@@ -495,10 +497,10 @@ proc _ns_stats.sched {} {
         set state       [lindex $s 1]
         set flags       [join [_ns_stats.getSchedFlagTypes [lindex $s 4]] "<br>"]
         set next        [_ns_stats.fmtTime [lindex $s 9]]
-        set lastqueue   [_ns_stats.fmtTime [lindex $s 5]]
-        set laststart   [_ns_stats.fmtTime [lindex $s 6]]
-        set lastend     [_ns_stats.fmtTime [lindex $s 7]]
-        set proc        [lindex $s 2]
+	set lastqueue   [_ns_stats.fmtTime [lindex $s 5]]
+	set laststart   [_ns_stats.fmtTime [lindex $s 6]]
+	set lastend     [_ns_stats.fmtTime [lindex $s 7]]
+	set proc        [lindex $s 2]
         set arg         [lindex $s 3]
         set duration    [_ns_stats.fmtSeconds [lindex $s 8]]
 
@@ -624,8 +626,8 @@ proc _ns_stats.results {{selectedColNum ""} {colTitles ""} {colUrl ""} {rows ""}
     set html "\
     <table border=0 cellpadding=0 cellspacing=1 bgcolor=#cccccc>
     <tr>
-        <td valign=middle align=center>
-        <table border=0 cellpadding=4 cellspacing=1 width=\"100%\">
+        <td valign='middle' align='center'>
+        <table border='0' cellpadding='4' cellspacing='1' width='100%'>
         <tr>"
 
     set i 1
