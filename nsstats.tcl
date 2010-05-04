@@ -180,7 +180,7 @@ proc _ns_stats.cache {} {
 		$t(missed) "$t(hitrate)%" $t(expired) $t(pruned)]
     }
 
-    set colTitles   [list Cache Max Current Utilization Entries Flushes Hits Resue Misses "Hit Rate" Expired Pruned]
+    set colTitles   [list Cache Max Current Utilization Entries Flushes Hits Reuse Misses "Hit Rate" Expired Pruned]
     set rows        [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
 
     set html [_ns_stats.header Cache]
@@ -240,18 +240,6 @@ proc _ns_stats.locks {} {
     }
 
     set html [_ns_stats.header Locks]
-
-    if {![ns_config -bool ns/threads mutexmeter 0]} {
-        set msg "\
-        Mutex metering not enabled. To enable add the following to your server configuration:
-<pre>
-ns_section ns/threads
-ns_param mutexmeter true
-</pre>"
-
-        append html [_ns_stats.msg warning $msg]
-    }
-
     append html [_ns_stats.results $col $colTitles ?@page=locks $rows $reverseSort]
     append html [_ns_stats.footer]
 
