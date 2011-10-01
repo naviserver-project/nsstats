@@ -195,7 +195,7 @@ proc _ns_stats.locks {} {
     set reverseSort [ns_queryget reversesort 1]
 
     set numericSort 1
-    set colTitles   [list Name Owner ID Locks Busy Contention]
+    set colTitles   [list Name Owner ID Locks Busy Contention "Total Wait" "Max Wait"]
     set rows        ""
 
     if {$col == 1 || $col == 2} {
@@ -205,19 +205,21 @@ proc _ns_stats.locks {} {
     set results ""
 
     foreach l [ns_info locks] {
-        set name    [lindex $l 0]
-        set owner   [lindex $l 1]
-        set id      [lindex $l 2]
-        set nlock   [lindex $l 3]
-        set nbusy   [lindex $l 4]
+        set name      [lindex $l 0]
+        set owner     [lindex $l 1]
+        set id        [lindex $l 2]
+        set nlock     [lindex $l 3]
+        set nbusy     [lindex $l 4]
+        set totalWait [lindex $l 5]
+        set maxWait   [lindex $l 6]
 
         if {$nbusy == 0} {
             set contention 0.0
         } else {
-            set contention [expr {double($nbusy*100.0/$nlock)}]
+            set contention [format %5.4f [expr {double($nbusy*100.0/$nlock)}]]
         }
 
-        lappend results [list $name $owner $id $nlock $nbusy $contention]
+        lappend results [list $name $owner $id $nlock $nbusy $contention $totalWait $maxWait]
     }
 
     foreach result [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort] {
@@ -228,19 +230,28 @@ proc _ns_stats.locks {} {
         set nbusy       [lindex $result 4]
         set contention  [lindex $result 5]
 
-        if {$contention < 2} {
-            set color "black"
-        } elseif {$contention < 5} {
-            set color "orange"
-        } else {
-            set color "red"
-        }
+        set color black
+        set ccolor [expr {$contention < 2   ? $color : $contention <  5 ? "orange" : "red"}]
+        set tcolor [expr {$totalWait  < 3   ? $color : $totalWait  < 10 ? "orange" : "red"}]
+        set wcolor [expr {$maxWait    < 0.1 ? $color : $maxWait    <  1 ? "orange" : "red"}]
+        set ncolor [expr {$ccolor eq "orange" || $tcolor eq "orange" || $wcolor eq "orange" ? "orange" : $color}]
+        set ncolor [expr {$ccolor eq "red"    || $tcolor eq "red"    || $wcolor eq "red"    ? "red" : $ncolor}]
 
-        lappend rows [list "<font color=$color>$name</font>" "<font color=$color>$owner</font>" "<font color=$color>$id</font>" "<font color=$color>$nlock</font>" "<font color=$color>$nbusy</font>" "<font color=$color>$contention</font>"]
+        lappend rows [list \
+			  "<font color=$ncolor>$name</font>" \
+			  "<font color=$color>$owner</font>" \
+			  "<font color=$color>$id</font>" \
+			  "<font color=$color>$nlock</font>" \
+			  "<font color=$color>$nbusy</font>" \
+			  "<font color=$ccolor>$contention</font>" \
+			  "<font color=$tcolor>$totalWait</font>" \
+			  "<font color=$wcolor>$maxWait</font>" \
+			 ]
     }
 
     set html [_ns_stats.header Locks]
-    append html [_ns_stats.results $col $colTitles ?@page=locks $rows $reverseSort]
+    append html [_ns_stats.results $col $colTitles ?@page=locks $rows $reverseSort \
+		     {left left right right right right right right}]
     append html [_ns_stats.footer]
 
     return $html
