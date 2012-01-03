@@ -170,6 +170,7 @@ proc _ns_stats.cache {} {
     }
 
     set results ""
+    array set t {saved ""}
 
     foreach cache [ns_cache_names] {
         array set t [ns_cache_stats $cache]
@@ -177,14 +178,14 @@ proc _ns_stats.cache {} {
 		[format %.2f [expr {$t(size)*100.0/$t(maxsize)}]]% \
 		$t(entries) $t(flushed) $t(hits) \
 		[format %.0f [expr {$t(entries)>0 ? $t(hits)*1.0/$t(entries) : 0}]] \
-		$t(missed) "$t(hitrate)%" $t(expired) $t(pruned)]
+		$t(missed) "$t(hitrate)%" $t(expired) $t(pruned) $t(saved)]
     }
 
-    set colTitles   [list Cache Max Current Utilization Entries Flushes Hits Reuse Misses "Hit Rate" Expired Pruned]
+    set colTitles   [list Cache Max Current Utilization Entries Flushes Hits Reuse Misses "Hit Rate" Expired Pruned Saved]
     set rows        [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
 
     set html [_ns_stats.header Cache]
-    append html [_ns_stats.results $col $colTitles ?@page=cache $rows $reverseSort {left right right right right right right right right right right right}]
+    append html [_ns_stats.results $col $colTitles ?@page=cache $rows $reverseSort {left right right right right right right right right right right right right}]
     append html [_ns_stats.footer]
 
     return $html
@@ -203,6 +204,7 @@ proc _ns_stats.locks {} {
     }
 
     set results ""
+    set sumWait 0
 
     foreach l [ns_info locks] {
         set name      [lindex $l 0]
@@ -212,6 +214,7 @@ proc _ns_stats.locks {} {
         set nbusy     [lindex $l 4]
         set totalWait [lindex $l 5]
         set maxWait   [lindex $l 6]
+        set sumWait   [expr {$sumWait + $totalWait}]
 
         if {$nbusy == 0} {
             set contention 0.0
@@ -229,11 +232,12 @@ proc _ns_stats.locks {} {
         set nlock       [lindex $result 3]
         set nbusy       [lindex $result 4]
         set contention  [lindex $result 5]
+        set relWait     [expr {$totalWait/$sumWait}]
 
         set color black
-        set ccolor [expr {$contention < 2   ? $color : $contention <  5 ? "orange" : "red"}]
-        set tcolor [expr {$totalWait  < 3   ? $color : $totalWait  < 10 ? "orange" : "red"}]
-        set wcolor [expr {$maxWait    < 0.1 ? $color : $maxWait    <  1 ? "orange" : "red"}]
+        set ccolor [expr {$contention < 2   ? $color : $contention < 5   ? "orange" : "red"}]
+        set tcolor [expr {$relWait    < 0.1 ? $color : $totalWait  < 0.5 ? "orange" : "red"}]
+        set wcolor [expr {$maxWait    < 0.1 ? $color : $maxWait    < 1   ? "orange" : "red"}]
         set ncolor [expr {$ccolor eq "orange" || $tcolor eq "orange" || $wcolor eq "orange" ? "orange" : $color}]
         set ncolor [expr {$ccolor eq "red"    || $tcolor eq "red"    || $wcolor eq "red"    ? "red" : $ncolor}]
 
