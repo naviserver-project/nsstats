@@ -232,6 +232,8 @@ proc _ns_stats.locks {} {
         set nlock       [lindex $result 3]
         set nbusy       [lindex $result 4]
         set contention  [lindex $result 5]
+        set totalWait   [lindex $result 6]
+        set maxWait     [lindex $result 7]
         set relWait     [expr {$totalWait/$sumWait}]
 
         set color black
