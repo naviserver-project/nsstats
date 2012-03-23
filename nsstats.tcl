@@ -115,7 +115,7 @@ proc _ns_stats.index {} {
     o <a href=?@page=log>Log</a><br>
     o <a href=?@page=mempools>Memory</a><br>
     o <a href=?@page=process>Process</a><br>
-    o <a href=?@page=sched>Scheduled Proceedures</a><br>
+    o <a href=?@page=sched>Scheduled Procedures</a><br>
     o <a href=?@page=threads>Threads</a><br>
     o <a href=?@page=jobs>Jobs</a><br>"
 
@@ -514,7 +514,7 @@ proc _ns_stats.sched {} {
 
     set colTitles [list ID Status Callback Data Flags "Last Queue" "Last Start" "Last End" Duration "Next Run"]
 
-    set html [_ns_stats.header "Scheduled Proceedures"]
+    set html [_ns_stats.header "Scheduled Procedures"]
     append html [_ns_stats.results $col $colTitles ?@page=sched $rows $reverseSort]
     append html [_ns_stats.footer]
 
