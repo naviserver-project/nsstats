@@ -267,29 +267,62 @@ proc _ns_stats.locks {} {
 proc _ns_stats.nsvlocks {} {
     set col         [ns_queryget col 1]
     set reverseSort [ns_queryget reversesort 1]
+    set all         [ns_queryget all 0]
 
     set numericSort 1
-    set colTitles   [list Array Locks Bucket]
+    set colTitles   [list Array Locks Bucket "Bucket Locks" Busy Contention "Total Wait" "Max Wait"]
     set rows        ""
 
     if {$col == 1} {
         set numericSort 0
     }
+     
+    # get the lock statistics for nsvs
+    foreach l [ns_info locks] {
+        set name      [lindex $l 0]
+        if {![regexp {^nsv:(\d+):} $name _ bucket]} continue
+        #set id        [lindex $l 2]
+        set nlock     [lindex $l 3]
+        set nbusy     [lindex $l 4]
+        set totalWait [lindex $l 5]
+        set maxWait   [lindex $l 6]
+        #set sumWait   [expr {$sumWait + $totalWait}]
+
+        if {$nbusy == 0} {
+            set contention 0.0
+        } else {
+            set contention [format %5.4f [expr {double($nbusy*100.0/$nlock)}]]
+        }
+
+        set mutexStats($bucket) [list $nlock $nbusy $contention $totalWait $maxWait]
+    }
 
     set rows ""
-    set bucketNr 1
+    set bucketNr 0
     if {[info command nsv_bucket] ne ""} {
       foreach b [nsv_bucket] {
-        foreach e $b {lappend rows [linsert $e end $bucketNr]}
+        foreach e $b {
+	  lappend rows [eval lappend e $bucketNr $mutexStats($bucketNr)]
+	}
         incr bucketNr
       }
+    }
+    set rows [_ns_stats.sortResults $rows [expr {$col - 1}] $numericSort $reverseSort]
+    set max 200
+    if {[llength $rows]>$max && !$all} {
+       set rows [lrange $rows 0 $max]
+       set truncated 1
     }
 
     set html [_ns_stats.header "Nsv Locks"]
     append html [_ns_stats.results $col $colTitles ?@page=nsvlocks \
-		     [_ns_stats.sortResults $rows [expr {$col - 1}] $numericSort $reverseSort] \
+		     $rows \
 		     $reverseSort \
-		     {left right right}]
+		     {left right right right right right right right}]
+
+    if {[info exists truncated]} {
+      append html "<a href='?@page=nsvlocks&col=$col&reversesort=$reverseSort&all=1'>...</a><br>"
+    }
     append html [_ns_stats.footer]
 
     return $html
