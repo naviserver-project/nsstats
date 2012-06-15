@@ -111,9 +111,10 @@ proc _ns_stats.index {} {
     append html "\
     o <a href=?@page=adp>ADP</a><br>
     o <a href=?@page=cache>Cache</a><br>
-    o <a href=?@page=locks>Locks</a><br>
     o <a href=?@page=log>Log</a><br>
     o <a href=?@page=mempools>Memory</a><br>
+    o <a href=?@page=locks>Mutex Locks</a><br>
+    o <a href=?@page=nsvlocks>Nsv Locks</a><br>
     o <a href=?@page=process>Process</a><br>
     o <a href=?@page=sched>Scheduled Procedures</a><br>
     o <a href=?@page=threads>Threads</a><br>
@@ -255,9 +256,40 @@ proc _ns_stats.locks {} {
 			 ]
     }
 
-    set html [_ns_stats.header Locks]
+    set html [_ns_stats.header "Mutex Locks"]
     append html [_ns_stats.results $col $colTitles ?@page=locks $rows $reverseSort \
 		     {left left right right right right right right}]
+    append html [_ns_stats.footer]
+
+    return $html
+}
+
+proc _ns_stats.nsvlocks {} {
+    set col         [ns_queryget col 1]
+    set reverseSort [ns_queryget reversesort 1]
+
+    set numericSort 1
+    set colTitles   [list Array Locks Bucket]
+    set rows        ""
+
+    if {$col == 1} {
+        set numericSort 0
+    }
+
+    set rows ""
+    set bucketNr 1
+    if {[info command nsv_bucket] ne ""} {
+      foreach b [nsv_bucket] {
+        foreach e $b {lappend rows [linsert $e end $bucketNr]}
+        incr bucketNr
+      }
+    }
+
+    set html [_ns_stats.header "Nsv Locks"]
+    append html [_ns_stats.results $col $colTitles ?@page=nsvlocks \
+		     [_ns_stats.sortResults $rows [expr {$col - 1}] $numericSort $reverseSort] \
+		     $reverseSort \
+		     {left right right}]
     append html [_ns_stats.footer]
 
     return $html
