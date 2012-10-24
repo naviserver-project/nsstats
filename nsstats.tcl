@@ -353,6 +353,15 @@ proc _ns_stats.log {} {
     return $html
 }
 
+proc dictget? {dict key {def ""}} {
+    if {[dict exists $dict $key]} {
+	return [dict get $dict $key]
+    } else {
+	return $def
+    }
+}
+
+
 proc _ns_stats.mempools {} {
     set talloc 0
     set trequest 0
@@ -367,6 +376,11 @@ proc _ns_stats.mempools {} {
 
     set html [_ns_stats.header Memory]
 
+    set trans [dict create]
+    foreach thread [ns_info threads] {
+        dict set trans thread0x[lindex $thread 2] [lindex $thread 0]
+    }
+
     append html "\
     <table border=0 cellpadding=0 cellspacing=0>
     <tr>
@@ -375,6 +389,7 @@ proc _ns_stats.mempools {} {
     foreach p [lsort [ns_info pools]] {
         append html "\
         <b>[lindex $p 0]:</b>
+        <b>[dictget? $trans [lindex $p 0]]</b>
         <br><br>
         <table border=0 cellpadding=0 cellspacing=1 bgcolor=#cccccc width=\"100%\">
         <tr>
