@@ -353,6 +353,9 @@ proc _ns_stats.log {} {
     return $html
 }
 
+# minimal backwards compatibility for tcl 8.4
+if {![info exists ::dict]} {proc ::dict args {return 0}}
+
 proc dictget? {dict key {def ""}} {
     if {[dict exists $dict $key]} {
 	return [dict get $dict $key]
