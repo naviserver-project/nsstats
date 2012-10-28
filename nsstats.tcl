@@ -354,14 +354,19 @@ proc _ns_stats.log {} {
 }
 
 # minimal backwards compatibility for tcl 8.4
-if {![info exists ::dict]} {proc ::dict args {return 0}}
 
-proc dictget? {dict key {def ""}} {
+if {[info command ::dict] ne ""} {
+  proc dictget? {dict key {def ""}} {
     if {[dict exists $dict $key]} {
 	return [dict get $dict $key]
     } else {
 	return $def
     }
+  }
+} else {
+  proc dictget? {dict key {def ""}} {
+    return $key
+  }
 }
 
 
@@ -379,9 +384,11 @@ proc _ns_stats.mempools {} {
 
     set html [_ns_stats.header Memory]
 
-    set trans [dict create]
-    foreach thread [ns_info threads] {
-        dict set trans thread0x[lindex $thread 2] [lindex $thread 0]
+    if {[info command ::dict] ne ""} {
+        set trans [dict create]
+        foreach thread [ns_info threads] {
+          dict set trans thread0x[lindex $thread 2] [lindex $thread 0]
+	}
     }
 
     append html "\
