@@ -111,6 +111,7 @@ proc _ns_stats.index {} {
     append html "\
     o <a href=?@page=adp>ADP</a><br>
     o <a href=?@page=cache>Cache</a><br>
+    o <a href=?@page=config>Config</a><br>
     o <a href=?@page=log>Log</a><br>
     o <a href=?@page=mempools>Memory</a><br>
     o <a href=?@page=locks>Mutex Locks</a><br>
@@ -348,6 +349,23 @@ proc _ns_stats.log {} {
 
     set html [_ns_stats.header Log]
     append html "<font size=2><pre>$log</pre></font>"
+    append html [_ns_stats.footer]
+
+    return $html
+}
+
+proc _ns_stats.config {} {
+    set config ""
+    set configFile [ns_info config]
+    if {$configFile ne ""} {
+	catch {
+	    set f [open $configFile]
+	    set config [read $f]
+	    close $f
+	}
+    }
+    set html [_ns_stats.header Log]
+    append html "<font size=2><pre>[ns_quotehtml $config]</pre></font>"
     append html [_ns_stats.footer]
 
     return $html
