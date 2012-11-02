@@ -501,22 +501,22 @@ proc _ns_stats.mempools {} {
 
 proc _ns_stats.process {} {
     set values [list \
-        Host "[ns_info hostname] ([ns_info address])" \
-        "Boot Time" [clock format [ns_info boottime] -format %c] \
-        Uptime [_ns_stats.fmtSeconds [ns_info uptime]] \
-        Process "[ns_info pid] [ns_info nsd]" \
-        Configuration [ns_info config] \
-        "Page Root" [ns_info pageroot] \
-        "Tcl Library" [ns_info tcllib] \
-        Log [ns_info log] \
-        Version "[ns_info version]" \
-        "Build Date" [ns_info builddate] \
-        Servers [join [ns_info servers] <br>] \
-        Threads [join [ns_server threads] <br>] \
-        "Keep Alive" [ns_server keepalive] \
-        Callbacks [join [ns_info callbacks] <br>] \
-        "Socket Callbacks" [join [ns_info sockcallbacks] <br>] \
-        Active [join [ns_server active] <br>]]
+		    Host "[ns_info hostname] ([ns_info address])" \
+		    "Boot Time" [clock format [ns_info boottime] -format %c] \
+		    Uptime [_ns_stats.fmtSeconds [ns_info uptime]] \
+		    Process "[ns_info pid] [ns_info nsd]" \
+		    Configuration [ns_info config] \
+		    "Page Root" [ns_info pageroot] \
+		    "Tcl Library" [ns_info tcllib] \
+		    Log [ns_info log] \
+		    Version "[ns_info patchlevel] (tag [ns_info tag]))" \
+		    "Build Date" [ns_info builddate] \
+		    Servers [join [ns_info servers] <br>] \
+		    Threads [join [concat [ns_server threads] waiting [ns_server waiting]] " "] \
+		    "Keep Alive" [ns_server keepalive] \
+		    Callbacks [join [ns_info callbacks] <br>] \
+		    "Socket Callbacks" [join [ns_info sockcallbacks] <br>] \
+		    Active [join [ns_server active] <br>]]
 
     set html [_ns_stats.header Process]
 
