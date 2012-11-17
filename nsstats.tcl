@@ -42,14 +42,14 @@ set password ""
 set enabled 1
 
 if { ![nsv_exists _ns_stats threads_0] } {
-  nsv_set _ns_stats thread_0      "NS_OK"
-  nsv_set _ns_stats thread_-1     "NS_ERROR"
-  nsv_set _ns_stats thread_-2     "NS_TIMEOUT"
-  nsv_set _ns_stats thread_200    "NS_THREAD_MAXTLS"
-  nsv_set _ns_stats thread_1      "NS_THREAD_DETACHED"
-  nsv_set _ns_stats thread_2      "NS_THREAD_JOINED"
-  nsv_set _ns_stats thread_4      "NS_THREAD_EXITED"
-  nsv_set _ns_stats thread_32     "NS_THREAD_NAMESIZE"
+  nsv_set _ns_stats thread_0      "OK"
+  nsv_set _ns_stats thread_-1     "ERROR"
+  nsv_set _ns_stats thread_-2     "TIMEOUT"
+  nsv_set _ns_stats thread_200    "THREAD_MAXTLS"
+  nsv_set _ns_stats thread_1      "THREAD_DETACHED"
+  nsv_set _ns_stats thread_2      "THREAD_JOINED"
+  nsv_set _ns_stats thread_4      "THREAD_EXITED"
+  nsv_set _ns_stats thread_32     "THREAD_NAMESIZE"
 
   nsv_set _ns_stats sched_1       "thread"
   nsv_set _ns_stats sched_2       "once"
@@ -633,38 +633,78 @@ proc _ns_stats.threads {} {
     set col         [ns_queryget col 1]
     set reverseSort [ns_queryget reversesort 1]
 
-    set numericSort 1
-    set colTitles   [list Thread Parent ID Flags "Create Time" Proc Args]
-    set rows        ""
-
-    if {$col == 1 || $col == 2 || $col == 6 || $col == 7} {
-        set numericSort 0
+    set pid [pid]
+    set threadInfo [ns_info threads]
+    if {[file readable /proc/$pid/statm] && [llength [lindex $threadInfo 0]] > 7} {
+       set colNumSort  {. 0 0 1 1 1 0 0 1 1 0 0}
+       set colTitles   {Thread Parent ID    Flags "Create Time" TID   State utime stime Proc Args}
+       set align       {left   left   right left   left          right right right right left left}
+       set osInfo      1
+       set HZ          100  ;# for more reliable handling, we should implememnt jiffies_to_timespec or jiffies_to_secs in C
+    } else {
+       set colNumSort  {. 0 0 1 1 1 0 0}
+       set colTitles   {Thread Parent ID    Flags "Create Time" Proc Args}
+       set align       {left   left   right left   left          left left}
+       set osInfo      0
+    }
+  
+    if {$osInfo} {
+        set ti {}
+        foreach t $threadInfo {
+            set fn /proc/$pid/task/[lindex $t 7]/stat
+            if {[file readable $fn]} {
+                set f [open $fn]; set s [read $f]; close $f
+            } elseif {[file readable /proc/$pid/task/$pid/stat]} {
+                set f [open /proc/$pid/task/$pid/stat]; set s [read $f]; close $f
+            } else {
+                set s ""
+            }
+            if {$s ne ""} {
+                lassign $s tid comm state ppid pgrp session tty_nr tpgid flags minflt \
+                  cminflt majflt cmajflt utime stime cutime cstime priority nice \
+                  numthreads itrealval starttime vsize rss rsslim startcode endcode \
+                  startstack kstkesp kstkeip signal blocked sigignore sigcatch wchan \
+                  nswap cnswap ext_signal processor
+                set state "$state [format %.2d $processor]"
+            } else {
+              lassign {} tid state 
+              lassign {0 0} utime stime
+           }
+           lappend ti [linsert $t 5 $tid $state $utime $stime]
+        }
+        set threadInfo $ti
     }
 
     set rows ""
-
-    foreach t [_ns_stats.sortResults [ns_info threads] [expr {$col - 1}] $numericSort $reverseSort] {
+    foreach t [_ns_stats.sortResults $threadInfo [expr {$col - 1}] [lindex $colNumSort $col] $reverseSort] {
         set thread  [lindex $t 0]
         set parent  [lindex $t 1]
         set id      [lindex $t 2]
         set flags   [_ns_stats.getThreadType [lindex $t 3]]
         set create  [_ns_stats.fmtTime [lindex $t 4]]
-        set proc    [lindex $t 5]
-        set arg     [lindex $t 6]
-
-        if {"p:0x0" eq $proc} {
-            set proc "NULL"
+        if {$osInfo} {
+            set tid     [lindex $t 5]
+            set state   [lindex $t 6]
+            set utime   [lindex $t 7]
+            set stime   [lindex $t 8]
+            set proc    [lindex $t 9]
+            set arg     [lindex $t 10]
+            if {"p:0x0" eq $proc} { set proc "NULL" }
+            if {"a:0x0" eq $arg} { set arg "NULL" }
+            set stime [format %.3f [expr {$stime*1.0/$HZ}]]
+            set utime [format %.3f [expr {$utime*1.0/$HZ}]]
+            lappend rows [list $thread $parent $id $flags $create $tid $state $utime $stime $proc $arg]
+        } else {
+            set proc    [lindex $t 5]
+            set arg     [lindex $t 6]
+            if {"p:0x0" eq $proc} { set proc "NULL" }
+            if {"a:0x0" eq $arg} { set arg "NULL" }
+            lappend rows [list $thread $parent $id $flags $create $proc $arg]
         }
-
-        if {"a:0x0" eq $arg} {
-            set arg "NULL"
-        }
-
-        lappend rows [list $thread $parent $id $flags $create $proc $arg]
     }
 
     set html [_ns_stats.header Threads]
-    append html [_ns_stats.results $col $colTitles ?@page=threads $rows $reverseSort]
+    append html [_ns_stats.results $col $colTitles ?@page=threads $rows $reverseSort $align]
     append html [_ns_stats.footer]
 
     return $html
@@ -901,7 +941,7 @@ proc _ns_stats.fmtTime {time} {
         return "never"
     }
 
-    return [clock format $time -format "%I:%M:%S %p on %m/%d/%Y"]
+    return [clock format $time -format "%H:%M:%S %m/%d/%Y"]
 }
 
 proc _ns_stats.sortResults {results field numeric {reverse 0}} {
