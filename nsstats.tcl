@@ -198,7 +198,7 @@ proc _ns_stats.locks {} {
     set reverseSort [ns_queryget reversesort 1]
 
     set numericSort 1
-    set colTitles   [list Name Owner ID Locks Busy Contention "Total Wait" "Max Wait"]
+    set colTitles   [list Name Owner ID Locks Busy Contention "Total Lock" "Avg Lock" "Total Wait" "Max Wait"]
     set rows        ""
 
     if {$col == 1 || $col == 2} {
@@ -217,6 +217,8 @@ proc _ns_stats.locks {} {
         set totalWait [lindex $l 5]
         set maxWait   [lindex $l 6]
         set sumWait   [expr {$sumWait + $totalWait}]
+        set totalLock [lindex $l 7]
+        set avgLock   [expr {$totalLock ne "" && $nlock > 0 ? $totalLock * 1.0 / $nlock : 0}]
 
         if {$nbusy == 0} {
             set contention 0.0
@@ -224,7 +226,7 @@ proc _ns_stats.locks {} {
             set contention [format %5.4f [expr {double($nbusy*100.0/$nlock)}]]
         }
 
-        lappend results [list $name $owner $id $nlock $nbusy $contention $totalWait $maxWait]
+        lappend results [list $name $owner $id $nlock $nbusy $contention $totalLock $avgLock $totalWait $maxWait]
     }
 
     foreach result [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort] {
@@ -233,10 +235,12 @@ proc _ns_stats.locks {} {
         set id          [lindex $result 2]
         set nlock       [lindex $result 3]
         set nbusy       [lindex $result 4]
-        set contention  [lindex $result 5]
-        set totalWait   [lindex $result 6]
-        set maxWait     [lindex $result 7]
+        set contention  [format %.4f [lindex $result 5]]
+        set totalLock   [format %.4f [lindex $result 6]]
+        set avgLock     [format %.4f [lindex $result 7]]
         set relWait     [expr {$sumWait > 0 ? $totalWait/$sumWait : 0}]
+        set totalWait   [lindex $result 8]
+        set maxWait     [lindex $result 9]
 
         set color black
         set ccolor [expr {$contention < 2   ? $color : $contention < 5   ? "orange" : "red"}]
@@ -252,6 +256,8 @@ proc _ns_stats.locks {} {
 			  "<font color=$color>$nlock</font>" \
 			  "<font color=$color>$nbusy</font>" \
 			  "<font color=$ccolor>$contention</font>" \
+			  "<font color=$color>$totalLock</font>" \
+			  "<font color=$color>$avgLock</font>" \
 			  "<font color=$tcolor>$totalWait</font>" \
 			  "<font color=$wcolor>$maxWait</font>" \
 			 ]
@@ -259,7 +265,7 @@ proc _ns_stats.locks {} {
 
     set html [_ns_stats.header "Mutex Locks"]
     append html [_ns_stats.results $col $colTitles ?@page=locks $rows $reverseSort \
-		     {left left right right right right right right}]
+		     {left left right right right right right right right right}]
     append html [_ns_stats.footer]
 
     return $html
