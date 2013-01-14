@@ -45,11 +45,11 @@ if { ![nsv_exists _ns_stats threads_0] } {
   nsv_set _ns_stats thread_0      "OK"
   nsv_set _ns_stats thread_-1     "ERROR"
   nsv_set _ns_stats thread_-2     "TIMEOUT"
-  nsv_set _ns_stats thread_200    "THREAD_MAXTLS"
-  nsv_set _ns_stats thread_1      "THREAD_DETACHED"
-  nsv_set _ns_stats thread_2      "THREAD_JOINED"
-  nsv_set _ns_stats thread_4      "THREAD_EXITED"
-  nsv_set _ns_stats thread_32     "THREAD_NAMESIZE"
+  nsv_set _ns_stats thread_200    "MAXTLS"
+  nsv_set _ns_stats thread_1      "DETACHED"
+  nsv_set _ns_stats thread_2      "JOINED"
+  nsv_set _ns_stats thread_4      "EXITED"
+  nsv_set _ns_stats thread_32     "NAMESIZE"
 
   nsv_set _ns_stats sched_1       "thread"
   nsv_set _ns_stats sched_2       "once"
@@ -518,23 +518,30 @@ proc _ns_stats.mempools {} {
 }
 
 proc _ns_stats.process {} {
+    set stats ""; set threads ""; set requests ""
+    catch {foreach s [ns_info servers] {
+	lappend stats [concat $s: [ns_server -server $s stats]]
+	lappend threads [concat $s: [ns_server -server $s threads] waiting [ns_server waiting]]
+	foreach r [ns_server -server $s all] {lappend requests $r}
+    }}
+
     set values [list \
-		    Host "[ns_info hostname] ([ns_info address])" \
-		    "Boot Time" [clock format [ns_info boottime] -format %c] \
-		    Uptime [_ns_stats.fmtSeconds [ns_info uptime]] \
-		    Process "[ns_info pid] [ns_info nsd]" \
-		    Configuration [ns_info config] \
-		    "Page Root" [ns_info pageroot] \
-		    "Tcl Library" [ns_info tcllib] \
-		    Log [ns_info log] \
-		    Version "[ns_info patchlevel] (tag [ns_info tag]))" \
-		    "Build Date" [ns_info builddate] \
-		    Servers [join [ns_info servers] <br>] \
-		    Threads [join [concat [ns_server threads] waiting [ns_server waiting]] " "] \
-		    "Keep Alive" [ns_server keepalive] \
-		    Callbacks [join [ns_info callbacks] <br>] \
-		    "Socket Callbacks" [join [ns_info sockcallbacks] <br>] \
-		    Active [join [ns_server active] <br>]]
+		    Host 		"[ns_info hostname] ([ns_info address])" \
+		    "Boot Time"		[clock format [ns_info boottime] -format %c] \
+		    Uptime		[_ns_stats.fmtSeconds [ns_info uptime]] \
+		    Process		"[ns_info pid] [ns_info nsd]" \
+		    Configuration 	[ns_info config] \
+		    "Page Root" 	[ns_info pageroot] \
+		    "Tcl Library" 	[ns_info tcllib] \
+		    Log 		[ns_info log] \
+		    Version 		"[ns_info patchlevel] (tag [ns_info tag]))" \
+		    "Build Date" 	[ns_info builddate] \
+		    Servers 		[join [ns_info servers] <br>] \
+		    Stats 		[join $stats <br>] \
+		    Threads 		[join $threads <br>] \
+		    Callbacks 		[join [ns_info callbacks] <br>] \
+		    "Socket Callbacks"	[join [ns_info sockcallbacks] <br>] \
+		    Requests		[join $requests <br>]]
 
     set html [_ns_stats.header Process]
 
@@ -636,15 +643,15 @@ proc _ns_stats.threads {} {
     set pid [pid]
     set threadInfo [ns_info threads]
     if {[file readable /proc/$pid/statm] && [llength [lindex $threadInfo 0]] > 7} {
-       set colNumSort  {. 0 0 1 1 1 0 0 1 1 0 0}
-       set colTitles   {Thread Parent ID    Flags "Create Time" TID   State utime stime Proc Args}
-       set align       {left   left   right left   left          right right right right left left}
+       set colNumSort  {. 0 0 1 1 1 0 0 1 1 0}
+       set colTitles   {Thread Parent ID    Flags "Create Time" TID   State utime stime Args}
+       set align       {left   left   right left   left         right right right right left}
        set osInfo      1
        set HZ          100  ;# for more reliable handling, we should implememnt jiffies_to_timespec or jiffies_to_secs in C
     } else {
-       set colNumSort  {. 0 0 1 1 1 0 0}
-       set colTitles   {Thread Parent ID    Flags "Create Time" Proc Args}
-       set align       {left   left   right left   left          left left}
+       set colNumSort  {. 0 0 1 1 1 0}
+       set colTitles   {Thread Parent ID    Flags "Create Time" Args}
+       set align       {left   left   right left   left         left}
        set osInfo      0
     }
   
@@ -693,13 +700,13 @@ proc _ns_stats.threads {} {
             if {"a:0x0" eq $arg} { set arg "NULL" }
             set stime [format %.3f [expr {$stime*1.0/$HZ}]]
             set utime [format %.3f [expr {$utime*1.0/$HZ}]]
-            lappend rows [list $thread $parent $id $flags $create $tid $state $utime $stime $proc $arg]
+            lappend rows [list $thread $parent $id $flags $create $tid $state $utime $stime $arg]
         } else {
             set proc    [lindex $t 5]
             set arg     [lindex $t 6]
             if {"p:0x0" eq $proc} { set proc "NULL" }
             if {"a:0x0" eq $arg} { set arg "NULL" }
-            lappend rows [list $thread $parent $id $flags $create $proc $arg]
+            lappend rows [list $thread $parent $id $flags $create $arg]
         }
     }
 
