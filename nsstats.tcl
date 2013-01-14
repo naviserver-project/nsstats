@@ -238,9 +238,9 @@ proc _ns_stats.locks {} {
         set contention  [format %.4f [lindex $result 5]]
         set totalLock   [format %.4f [lindex $result 6]]
         set avgLock     [format %.4f [lindex $result 7]]
-        set relWait     [expr {$sumWait > 0 ? $totalWait/$sumWait : 0}]
         set totalWait   [lindex $result 8]
         set maxWait     [lindex $result 9]
+        set relWait     [expr {$sumWait > 0 ? $totalWait/$sumWait : 0}]
 
         set color black
         set ccolor [expr {$contention < 2   ? $color : $contention < 5   ? "orange" : "red"}]
