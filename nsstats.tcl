@@ -528,6 +528,8 @@ proc _ns_stats.process {} {
     catch {foreach s [ns_info servers] {
 	lappend stats [concat $s: [ns_server -server $s stats]]
 	lappend threads [concat $s: [ns_server -server $s threads] waiting [ns_server waiting]]
+	lappend tcllibs [concat $s: [ns_server -server $s tcllib]]
+	lappend pagedirs [concat $s: [ns_server -server $s pagedir]]
 	foreach r [ns_server -server $s all] {lappend requests $r}
     }}
 
@@ -537,12 +539,12 @@ proc _ns_stats.process {} {
 		    Uptime		[_ns_stats.fmtSeconds [ns_info uptime]] \
 		    Process		"[ns_info pid] [ns_info nsd]" \
 		    Configuration 	[ns_info config] \
-		    "Page Root" 	[ns_info pageroot] \
-		    "Tcl Library" 	[ns_info tcllib] \
 		    Log 		[ns_info log] \
 		    Version 		"[ns_info patchlevel] (tag [ns_info tag]))" \
 		    "Build Date" 	[ns_info builddate] \
 		    Servers 		[join [ns_info servers] <br>] \
+		    "Page Direcory" 	[join $pagedirs <br>] \
+		    "Tcl Library" 	[join $tcllibs <br>] \
 		    Stats 		[join $stats <br>] \
 		    Threads 		[join $threads <br>] \
 		    Callbacks 		[join [ns_info callbacks] <br>] \
