@@ -69,7 +69,7 @@ if { ![nsv_exists _ns_stats threads_0] } {
 proc _ns_stats.header {{stat ""}} {
     if {[string length $stat]} {
         set title "Naviserver Stats: [ns_info hostname] - $stat"
-        set nav "<a href=?@page=index><font color=#ffffff>Main Menu</font></a> &gt; <font color=#ffcc00>$stat</font>"
+        set nav "<a href='?@page=index'><font color=#ffffff>Main Menu</font></a> &gt; <font color=#ffcc00>$stat</font>"
     } else {
         set title "Naviserver Stats: [ns_info hostname]"
         set nav "<font color=#ffcc00><font color=#ffcc00>Main Menu</font>"
@@ -77,7 +77,6 @@ proc _ns_stats.header {{stat ""}} {
 
     return "\
     <html>
-    <body bgcolor=#ffffff>
     <head>
     <title>$title</title>
     <style>
@@ -109,17 +108,17 @@ proc _ns_stats.index {} {
     set html [_ns_stats.header]
 
     append html "\
-    o <a href=?@page=adp>ADP</a><br>
-    o <a href=?@page=cache>Cache</a><br>
-    o <a href=?@page=config>Config</a><br>
-    o <a href=?@page=log>Log</a><br>
-    o <a href=?@page=mempools>Memory</a><br>
-    o <a href=?@page=locks>Mutex Locks</a><br>
-    o <a href=?@page=nsvlocks>Nsv Locks</a><br>
-    o <a href=?@page=process>Process</a><br>
-    o <a href=?@page=sched>Scheduled Procedures</a><br>
-    o <a href=?@page=threads>Threads</a><br>
-    o <a href=?@page=jobs>Jobs</a><br>"
+    o <a href='?@page=adp'>ADP</a><br>
+    o <a href='?@page=cache'>Cache</a><br>
+    o <a href='?@page=config'>Config</a><br>
+    o <a href='?@page=log'>Log</a><br>
+    o <a href='?@page=mempools'>Memory</a><br>
+    o <a href='?@page=locks'>Mutex Locks</a><br>
+    o <a href='?@page=nsvlocks'>Nsv Locks</a><br>
+    o <a href='?@page=process'>Process</a><br>
+    o <a href='?@page=sched'>Scheduled Procedures</a><br>
+    o <a href='?@page=threads'>Threads</a><br>
+    o <a href='?@page=jobs'>Jobs</a><br>"
 
     append html [_ns_stats.footer]
 
@@ -523,37 +522,8 @@ proc _ns_stats.mempools {} {
     return $html
 }
 
-proc _ns_stats.process {} {
-    set stats ""; set threads ""; set requests ""
-    catch {foreach s [ns_info servers] {
-	lappend stats [concat $s: [ns_server -server $s stats]]
-	lappend threads [concat $s: [ns_server -server $s threads] waiting [ns_server waiting]]
-	lappend tcllibs [concat $s: [ns_server -server $s tcllib]]
-	lappend pagedirs [concat $s: [ns_server -server $s pagedir]]
-	foreach r [ns_server -server $s all] {lappend requests $r}
-    }}
-
-    set values [list \
-		    Host 		"[ns_info hostname] ([ns_info address])" \
-		    "Boot Time"		[clock format [ns_info boottime] -format %c] \
-		    Uptime		[_ns_stats.fmtSeconds [ns_info uptime]] \
-		    Process		"[ns_info pid] [ns_info nsd]" \
-		    Configuration 	[ns_info config] \
-		    Log 		[ns_info log] \
-		    Version 		"[ns_info patchlevel] (tag [ns_info tag]))" \
-		    "Build Date" 	[ns_info builddate] \
-		    Servers 		[join [ns_info servers] <br>] \
-		    "Page Direcory" 	[join $pagedirs <br>] \
-		    "Tcl Library" 	[join $tcllibs <br>] \
-		    Stats 		[join $stats <br>] \
-		    Threads 		[join $threads <br>] \
-		    Callbacks 		[join [ns_info callbacks] <br>] \
-		    "Socket Callbacks"	[join [ns_info sockcallbacks] <br>] \
-		    Requests		[join $requests <br>]]
-
-    set html [_ns_stats.header Process]
-
-    append html "\
+proc _ns_stats.process.table {values} {
+    set html "\
     <table border=0 cellpadding=0 cellspacing=1 bgcolor=#cccccc>
     <tr>
         <td valign=middle align=center>
@@ -563,19 +533,72 @@ proc _ns_stats.process {} {
             <td valign=middle bgcolor=#999999><font face=verdana size=1 color=#ffffff><nobr>Value</nobr></font></td>
         </tr>"
 
-        foreach {key value}  $values {
-            append html "\
+    foreach {key value} $values {
+	append html "\
             <tr>
                 <td valign=top bgcolor=#ffffff><font face=verdana size=1>$key</font></td>
                 <td valign=top bgcolor=#ffffff><font face=verdana size=1>$value</font></td>
             </tr>"
-        }
+    }
 
-        append html "\
+    append html "\
         </table>
         </td>
     </tr>
     </table>"
+    return $html
+}
+
+proc _ns_stats.process {} {
+    set values [list \
+		    Host 		"[ns_info hostname] ([ns_info address])" \
+		    "Boot Time"		[clock format [ns_info boottime] -format %c] \
+		    Uptime		[_ns_stats.fmtSeconds [ns_info uptime]] \
+		    Process		"[ns_info pid] [ns_info nsd]" \
+		    Home 		[ns_info home] \
+		    Configuration 	[ns_info config] \
+		    Log 		[ns_info log] \
+		    Version 		"[ns_info patchlevel] (tag [ns_info tag]))" \
+		    "Build Date" 	[ns_info builddate] \
+		    Servers 		[join [ns_info servers] <br>] \
+		    Callbacks 		[join [ns_info callbacks] <br>] \
+		    "Socket Callbacks"	[join [ns_info sockcallbacks] <br>] \
+		   ]
+
+    set html [_ns_stats.header Process]
+
+    append html [_ns_stats.process.table $values]
+
+    foreach s [ns_info servers] {
+	set requests ""; set addresses ""
+	foreach r [ns_server -server $s all] {lappend requests $r}
+	foreach driver {nssock nsssl} {
+	    set addr [ns_config ns/module/$driver/servers $s]
+	    if {$addr ne ""} {
+		lappend addresses $addr
+	    } else {
+		set port [ns_config ns/server/$s/module/$driver port]
+		if {$port ne ""} {
+		    lappend addresses [ns_config ns/server/$s/module/$driver address]:$port
+		}
+	    }
+	}
+	set serverdir ""
+	catch {set serverdir [ns_server -server $s serverdir]}
+	set values [list \
+			"Address"        [join $addresses <br>] \
+			"Server Directory" $serverdir \
+			"Page Directory" [ns_server -server $s pagedir] \
+			"Tcl Library" 	 [ns_server -server $s tcllib] \
+			Stats 		 [ns_server -server $s stats] \
+			Threads 	 [concat [ns_server -server $s threads] \
+					      waiting [ns_server -server $s waiting]] \
+			Requests         [join $requests <br>]]
+		
+	append html \
+	    "<h2>Server $s</h2>" \n \
+	    [_ns_stats.process.table $values]
+    }
 
     append html [_ns_stats.footer]
 
@@ -743,7 +766,7 @@ proc _ns_stats.jobs {} {
 
       foreach ql [ns_job queuelist] {
         array set qa $ql
-        set name "<a href=?@page=jobs&queue=$qa(name)>$qa(name)</a>"
+        set name "<a href='?@page=jobs&queue=$qa(name)'>$qa(name)</a>"
         lappend results [list $name $qa(desc) $qa(maxthreads) $qa(numrunning) $qa(req)]
       }
 
@@ -823,7 +846,7 @@ proc _ns_stats.results {{selectedColNum ""} {colTitles ""} {colUrl ""} {rows ""}
             }
         }
 
-        append html "<td valign=middle align=$colAlign bgcolor=$colHdrColor($i)><a href=$url&col=$i><font color=$colHdrFontColor($i)>$title</font></a></td>"
+        append html "<td valign=middle align=$colAlign bgcolor=$colHdrColor($i)><a href='$url&col=$i'><font color=$colHdrFontColor($i)>$title</font></a></td>"
 
         incr i
     }
