@@ -557,7 +557,7 @@ proc _ns_stats.process {} {
 		    Process		"[ns_info pid] [ns_info nsd]" \
 		    Home 		[ns_info home] \
 		    Configuration 	[ns_info config] \
-		    Log 		[ns_info log] \
+		    "Error Log"		[ns_info log] \
 		    Version 		"[ns_info patchlevel] (tag [ns_info tag]))" \
 		    "Build Date" 	[ns_info builddate] \
 		    Servers 		[join [ns_info servers] <br>] \
@@ -572,14 +572,17 @@ proc _ns_stats.process {} {
     foreach s [ns_info servers] {
 	set requests ""; set addresses ""
 	foreach r [ns_server -server $s all] {lappend requests $r}
+	set writerThreads ""
 	foreach driver {nssock nsssl} {
 	    set addr [ns_config ns/module/$driver/servers $s]
 	    if {$addr ne ""} {
 		lappend addresses $addr
+		lappend writerThreads $driver: [ns_config ns/server/$s/module/$driver writerthreads]
 	    } else {
 		set port [ns_config ns/server/$s/module/$driver port]
 		if {$port ne ""} {
 		    lappend addresses [ns_config ns/server/$s/module/$driver address]:$port
+		    lappend writerThreads $driver: [ns_config ns/server/$s/module/$driver writerthreads]
 		}
 	    }
 	}
@@ -590,10 +593,12 @@ proc _ns_stats.process {} {
 			"Server Directory" $serverdir \
 			"Page Directory" [ns_server -server $s pagedir] \
 			"Tcl Library" 	 [ns_server -server $s tcllib] \
+			"Access Log" 	 [ns_config ns/server/$s/module/nslog file] \
+			"Writer Threads" $writerThreads \
 			Stats 		 [ns_server -server $s stats] \
 			Threads 	 [concat [ns_server -server $s threads] \
 					      waiting [ns_server -server $s waiting]] \
-			Requests         [join $requests <br>]]
+			"Running Requests" [join $requests <br>]]
 		
 	append html \
 	    "<h2>Server $s</h2>" \n \
