@@ -589,16 +589,19 @@ proc _ns_stats.process {} {
 	set serverdir ""
 	catch {set serverdir [ns_server -server $s serverdir]}
 	set values [list \
-			"Address"        [join $addresses <br>] \
-			"Server Directory" $serverdir \
-			"Page Directory" [ns_server -server $s pagedir] \
-			"Tcl Library" 	 [ns_server -server $s tcllib] \
-			"Access Log" 	 [ns_config ns/server/$s/module/nslog file] \
-			"Writer Threads" $writerThreads \
-			Stats 		 [ns_server -server $s stats] \
-			Threads 	 [concat [ns_server -server $s threads] \
-					      waiting [ns_server -server $s waiting]] \
-			"Running Requests" [join $requests <br>]]
+			"Address"            [join $addresses <br>] \
+			"Server Directory"   $serverdir \
+			"Page Directory"     [ns_server -server $s pagedir] \
+			"Tcl Library" 	     [ns_server -server $s tcllib] \
+			"Access Log" 	     [ns_config ns/server/$s/module/nslog file] \
+			"Writer Threads"     $writerThreads \
+			"Connection Pools"   [ns_server -server $s pools] \
+			"Connection Threads" [concat [ns_server -server $s threads] \
+						  waiting [ns_server -server $s waiting]] \
+			Statistics 	     [ns_server -server $s stats] \
+			"Active Requests"    [join $requests <br>] \
+			"Active Writer Jobs" [join [ns_writer list -server $s] <br>] \
+		       ]
 		
 	append html \
 	    "<h2>Server $s</h2>" \n \
