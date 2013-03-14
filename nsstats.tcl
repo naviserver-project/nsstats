@@ -570,24 +570,33 @@ proc _ns_stats.process {} {
     append html [_ns_stats.process.table $values]
 
     foreach s [ns_info servers] {
-	set requests ""; set addresses ""
+	set requests ""; set addresses ""; set writerThreads ""
 	foreach r [ns_server -server $s all] {lappend requests $r}
-	set writerThreads ""
 	foreach driver {nssock nsssl} {
+	    set section [ns_driversection -driver $driver -server $s]
+	    if {$section eq ""} continue
 	    set addr [ns_config ns/module/$driver/servers $s]
 	    if {$addr ne ""} {
 		lappend addresses $addr
-		lappend writerThreads $driver: [ns_config ns/server/$s/module/$driver writerthreads]
+		lappend writerThreads $driver: [ns_config $section writerthreads 0]
 	    } else {
-		set port [ns_config ns/server/$s/module/$driver port]
+		set port [ns_config $section port]
 		if {$port ne ""} {
-		    lappend addresses [ns_config ns/server/$s/module/$driver address]:$port
-		    lappend writerThreads $driver: [ns_config ns/server/$s/module/$driver writerthreads]
+		    lappend addresses [ns_config $section address]:$port
+		    lappend writerThreads $driver: [ns_config $section writerthreads 0]
 		}
 	    }
 	}
 	set serverdir ""
 	catch {set serverdir [ns_server -server $s serverdir]}
+	set rawstats [ns_server -server $s stats]
+	array set stats $rawstats
+	set statistics $rawstats<br>
+	if {$stats(requests) > 0} {
+	    append statistics \
+		"(queued [format %5.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%," \
+		" spooled [format %5.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)"
+	}
 	set values [list \
 			"Address"            [join $addresses <br>] \
 			"Server Directory"   $serverdir \
@@ -598,7 +607,7 @@ proc _ns_stats.process {} {
 			"Connection Pools"   [ns_server -server $s pools] \
 			"Connection Threads" [concat [ns_server -server $s threads] \
 						  waiting [ns_server -server $s waiting]] \
-			Statistics 	     [ns_server -server $s stats] \
+			Statistics 	     $statistics \
 			"Active Requests"    [join $requests <br>] \
 			"Active Writer Jobs" [join [ns_writer list -server $s] <br>] \
 		       ]
@@ -976,10 +985,16 @@ proc _ns_stats.fmtSeconds {seconds} {
     }
 
     set hours [expr {$seconds/3600}]
-    set mins [expr ($seconds - ($hours * 3600))/60]
-    set secs [expr {$seconds - (($hours * 3600) + ($mins * 60))}]
+    set mins  [expr {($seconds - ($hours * 3600))/60}]
+    set secs  [expr {$seconds - (($hours * 3600) + ($mins * 60))}]
 
-    return "${hours}:${mins}:${secs} (h:m:s)"
+    if {$hours > 24} {
+	set days  [expr {$hours / 24}]
+	set hours [expr {$hours % 24}]
+	return "$days day[expr {$days<2 ? {} : {s}}] ${hours}:${mins}:${secs} (h:m:s)"
+    } else {
+	return "${hours}:${mins}:${secs} (h:m:s)"
+    }
 }
 
 proc _ns_stats.fmtTime {time} {
