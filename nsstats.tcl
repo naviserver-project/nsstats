@@ -88,7 +88,9 @@ proc _ns_stats.header {{stat ""}} {
         b       { font-style: bold; }
         hl      { font-family: verdana,arial,helvetica,sans-serif; font-style: bold; font-size: 12pt; }
         small   { font-size: smaller; }
-        td td.subtitle {text-align: right; font-style: italic; font-size: 7pt;font-family: verdana,arial,helvetica,sans-serif;}
+        td td.subtitle {text-align: right; font-style: italic; font-size: 7pt; background-color: #f5f5f5;}
+        td.coltitle {text-align: right; background-color: eaeaea;}
+        td.colvalue {background-color: #ffffff;}
     </style>
     </head>
 
@@ -537,8 +539,8 @@ proc _ns_stats.process.table {values} {
     foreach {key value} $values {
 	append html "\
             <tr>
-                <td valign=top bgcolor=#ffffff><font face=verdana size=1>$key</font></td>
-                <td valign=top bgcolor=#ffffff><font face=verdana size=1>$value</font></td>
+                <td class='coltitle'>$key</td>
+                <td class='colvalue'>$value</td>
             </tr>"
     }
 
@@ -612,11 +614,11 @@ proc _ns_stats.process {} {
 	    set item \
 		"<tr bgcolor='#ffffff'><td class='subtitle'>Connection Threads:</td><td>$rawthreads</td></tr>\n"
 	    if {$stats(requests) > 0} {
-		append item "<tr bgcolor=#ffffff><td class=subtitle>Request Handling:</td>" \
+		append item "<tr bgcolor=#ffffff><td class='subtitle'>Request Handling:</td>" \
 		    "<td>requests $stats(requests), "\
 		    "queued $stats(queued) ([format %.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%)," \
 		    " spooled $stats(spools) ([format %.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)</td></tr>\n"
-		append item "<tr bgcolor=#ffffff><td class=subtitle>Request Timing:</td>" \
+		append item "<tr bgcolor=#ffffff><td class='subtitle'>Request Timing:</td>" \
 		    "<td>avg queue time [format %5.4f [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
 		    " avg filter time [format %5.4f [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
 		    " avg run time [format %.4f [expr {$stats(runtime)*1.0/$stats(requests)}]]s" \
