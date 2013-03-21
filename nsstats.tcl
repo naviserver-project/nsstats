@@ -589,14 +589,38 @@ proc _ns_stats.process {} {
 	}
 	set serverdir ""
 	catch {set serverdir [ns_server -server $s serverdir]}
-	set rawstats [ns_server -server $s stats]
-	array set stats $rawstats
-	set statistics $rawstats<br>
-	if {$stats(requests) > 0} {
-	    append statistics \
-		"(queued [format %5.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%," \
-		" spooled [format %5.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)"
+
+	#
+	# per pool information
+	#
+	set statistics ""
+	set threads ""
+	foreach pool [ns_server -server $s pools] {
+	    #
+	    # provide a nicer name for the pool
+	    #
+	    set poolLabel "default"
+	    if {$pool ne {}} {set poolLabel $pool}
+	    #
+	    # statistics
+	    #
+	    set rawstats [ns_server -server $s -pool $pool stats]
+	    array set stats $rawstats
+	    set singleStat "$poolLabel: $rawstats<br>"
+	    if {$stats(requests) > 0} {
+		append singleStat \
+		    "$poolLabel: " \
+		    "(queued [format %5.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%," \
+		    " spooled [format %5.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)"
+	    }
+	    lappend statistics $singleStat
+	    #
+	    # thread info
+	    #
+	    lappend threads [concat $poolLabel: [ns_server -server $s -pool $pool threads] \
+				     waiting [ns_server -server $s -pool $pool waiting]]
 	}
+
 	set values [list \
 			"Address"            [join $addresses <br>] \
 			"Server Directory"   $serverdir \
@@ -605,9 +629,8 @@ proc _ns_stats.process {} {
 			"Access Log" 	     [ns_config ns/server/$s/module/nslog file] \
 			"Writer Threads"     $writerThreads \
 			"Connection Pools"   [ns_server -server $s pools] \
-			"Connection Threads" [concat [ns_server -server $s threads] \
-						  waiting [ns_server -server $s waiting]] \
-			Statistics 	     $statistics \
+			"Connection Threads" [join $threads <br>] \
+			Statistics 	     [join $statistics <br>] \
 			"Active Requests"    [join $requests <br>] \
 			"Active Writer Jobs" [join [ns_writer list -server $s] <br>] \
 		       ]
