@@ -606,22 +606,24 @@ proc _ns_stats.process {} {
 	    set rawstats [ns_server -server $s -pool $pool stats]
 	    set rawthreads [concat [ns_server -server $s -pool $pool threads] \
 				waiting [ns_server -server $s -pool $pool waiting]]
+	    set rawreqs [join [ns_server -server $s -pool $pool all] <br>]
+
 	    array set stats $rawstats
 	    set item \
-		"<tr bgcolor='#ffffff'><td class='subtitle'>Connection Threads:</td><td>$rawthreads</td></tr>\n\
-	         <tr bgcolor='#ffffff'><td class='subtitle'>Absolute Statistics:</td><td>$rawstats</td></tr>\n"
+		"<tr bgcolor='#ffffff'><td class='subtitle'>Connection Threads:</td><td>$rawthreads</td></tr>\n"
 	    if {$stats(requests) > 0} {
-		append item "<tr bgcolor=#ffffff><td class=subtitle>Relative Statistics:</td>" \
-		    "<td>queued [format %5.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%," \
-		    " spooled [format %5.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%," \
-		    " avg queue time [format %5.4f [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
+		append item "<tr bgcolor=#ffffff><td class=subtitle>Request Handling:</td>" \
+		    "<td>requests $stats(requests), "\
+		    "queued $stats(queued) ([format %.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%)," \
+		    " spooled $stats(spools) ([format %.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)</td></tr>\n"
+		append item "<tr bgcolor=#ffffff><td class=subtitle>Request Timing:</td>" \
+		    "<td>avg queue time [format %5.4f [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
 		    " avg filter time [format %5.4f [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
-		    " avg run time [format %5.4f [expr {$stats(runtime)*1.0/$stats(requests)}]]s" \
+		    " avg run time [format %.4f [expr {$stats(runtime)*1.0/$stats(requests)}]]s" \
 		    "</td></tr>\n"
 	    }
-	    set rawreqs [join [ns_server -server $s -pool $pool all] <br>]
 	    append item \
-		"<tr bgcolor='#ffffff'><td class='subtitle'>Active Requests:</td><td>$rawreqs</td></tr>\n"
+	          "<tr bgcolor='#ffffff'><td class='subtitle'>Active Requests:</td><td>$rawreqs</td></tr>\n"
 
 	    lappend poolItems "Pool '$poolLabel'" "<table bgcolor='#eeeeee'>$item</table>"
 	}
