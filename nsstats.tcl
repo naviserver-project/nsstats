@@ -571,7 +571,6 @@ proc _ns_stats.process {} {
 
     foreach s [ns_info servers] {
 	set requests ""; set addresses ""; set writerThreads ""
-	foreach r [ns_server -server $s all] {lappend requests $r}
 	foreach driver {nssock nsssl} {
 	    set section [ns_driversection -driver $driver -server $s]
 	    if {$section eq ""} continue
@@ -595,7 +594,7 @@ proc _ns_stats.process {} {
 	#
 	set statistics ""
 	set threads ""
-	foreach pool [ns_server -server $s pools] {
+	foreach pool [lsort [ns_server -server $s pools]] {
 	    #
 	    # provide a nicer name for the pool
 	    #
@@ -619,6 +618,7 @@ proc _ns_stats.process {} {
 	    #
 	    lappend threads [concat $poolLabel: [ns_server -server $s -pool $pool threads] \
 				     waiting [ns_server -server $s -pool $pool waiting]]
+	    foreach r [ns_server -server $s -pool $pool all] {lappend requests "$poolLabel: $r"}
 	}
 
 	set values [list \
