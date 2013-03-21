@@ -88,6 +88,7 @@ proc _ns_stats.header {{stat ""}} {
         b       { font-style: bold; }
         hl      { font-family: verdana,arial,helvetica,sans-serif; font-style: bold; font-size: 12pt; }
         small   { font-size: smaller; }
+        td td.subtitle {text-align: right; font-style: italic; font-size: 7pt;font-family: verdana,arial,helvetica,sans-serif;}
     </style>
     </head>
 
@@ -592,8 +593,7 @@ proc _ns_stats.process {} {
 	#
 	# per pool information
 	#
-	set statistics ""
-	set threads ""
+        set poolItems ""
 	foreach pool [lsort [ns_server -server $s pools]] {
 	    #
 	    # provide a nicer name for the pool
@@ -604,25 +604,26 @@ proc _ns_stats.process {} {
 	    # statistics
 	    #
 	    set rawstats [ns_server -server $s -pool $pool stats]
+	    set rawthreads [concat [ns_server -server $s -pool $pool threads] \
+				waiting [ns_server -server $s -pool $pool waiting]]
 	    array set stats $rawstats
-	    set singleStat "$poolLabel: $rawstats<br>"
+	    set item \
+		"<tr bgcolor='#ffffff'><td class='subtitle'>Connection Threads:</td><td>$rawthreads</td></tr>\n\
+	         <tr bgcolor='#ffffff'><td class='subtitle'>Absolute Statistics:</td><td>$rawstats</td></tr>\n"
 	    if {$stats(requests) > 0} {
-		append singleStat \
-		    "$poolLabel: " \
-		    "(queued [format %5.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%," \
+		append item "<tr bgcolor=#ffffff><td class=subtitle>Relative Statistics:</td>" \
+		    "<td>queued [format %5.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%," \
 		    " spooled [format %5.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%," \
 		    " avg queue time [format %5.4f [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
 		    " avg filter time [format %5.4f [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
 		    " avg run time [format %5.4f [expr {$stats(runtime)*1.0/$stats(requests)}]]s" \
-		    ")"
+		    "</td></tr>\n"
 	    }
-	    lappend statistics $singleStat
-	    #
-	    # thread info
-	    #
-	    lappend threads [concat $poolLabel: [ns_server -server $s -pool $pool threads] \
-				     waiting [ns_server -server $s -pool $pool waiting]]
-	    foreach r [ns_server -server $s -pool $pool all] {lappend requests "$poolLabel: $r"}
+	    set rawreqs [join [ns_server -server $s -pool $pool all] <br>]
+	    append item \
+		"<tr bgcolor='#ffffff'><td class='subtitle'>Active Requests:</td><td>$rawreqs</td></tr>\n"
+
+	    lappend poolItems "Pool '$poolLabel'" "<table bgcolor='#eeeeee'>$item</table>"
 	}
 
 	set values [list \
@@ -633,9 +634,7 @@ proc _ns_stats.process {} {
 			"Access Log" 	     [ns_config ns/server/$s/module/nslog file] \
 			"Writer Threads"     $writerThreads \
 			"Connection Pools"   [ns_server -server $s pools] \
-			"Connection Threads" [join $threads <br>] \
-			Statistics 	     [join $statistics <br>] \
-			"Active Requests"    [join $requests <br>] \
+			{*}$poolItems \
 			"Active Writer Jobs" [join [ns_writer list -server $s] <br>] \
 		       ]
 		
