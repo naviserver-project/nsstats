@@ -610,7 +610,11 @@ proc _ns_stats.process {} {
 		append singleStat \
 		    "$poolLabel: " \
 		    "(queued [format %5.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%," \
-		    " spooled [format %5.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)"
+		    " spooled [format %5.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%," \
+		    " avg queue time [format %5.4f [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
+		    " avg filter time [format %5.4f [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
+		    " avg run time [format %5.4f [expr {$stats(runtime)*1.0/$stats(requests)}]]s" \
+		    ")"
 	    }
 	    lappend statistics $singleStat
 	    #
