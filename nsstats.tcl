@@ -90,6 +90,7 @@ proc _ns_stats.header {{stat ""}} {
         small   { font-size: smaller; }
         td td.subtitle {text-align: right; font-style: italic; font-size: 7pt; background-color: #f5f5f5;}
         td.coltitle {text-align: right; background-color: eaeaea;}
+        td.colsection {font-size: 12pt; font-style: bold;}
         td.colvalue {background-color: #ffffff;}
     </style>
     </head>
@@ -113,7 +114,8 @@ proc _ns_stats.index {} {
     append html "\
     o <a href='?@page=adp'>ADP</a><br>
     o <a href='?@page=cache'>Cache</a><br>
-    o <a href='?@page=config'>Config</a><br>
+    o <a href='?@page=configfile'>Config File</a><br>
+    o <a href='?@page=configparams'>Config Parameters</a><br>
     o <a href='?@page=log'>Log</a><br>
     o <a href='?@page=mempools'>Memory</a><br>
     o <a href='?@page=locks'>Mutex Locks</a><br>
@@ -362,7 +364,67 @@ proc _ns_stats.log {} {
     return $html
 }
 
-proc _ns_stats.config {} {
+proc _ns_stats.configparams {} {
+  set out [list]
+  foreach section [lsort [ns_configsections]] {
+    # We want to have e.g. "aaa/pools" before "aaa/pool/foo",
+    # therefore we map "/" to "" to put it in the collating sequence
+    # after plain chars
+    set name [string map {/ ~} [ns_set name $section]]
+
+    array unset keys
+    for { set i 0 } { $i < [ns_set size $section] } { incr i } {
+      lappend keys([string tolower [ns_set key $section $i]]) [ns_set value $section $i]
+    }
+
+    set line ""
+    foreach section_key [lsort [array names keys]] {
+      lappend line "<tr><td class='coltitle'>$section_key:</td>\n\
+	<td class='colvalue'>[join $keys($section_key) <br>]</td></tr>"
+    }
+    set table($name) [join $line \n]
+  }
+  set order {
+    ns~parameters ns~encodings ns~mimetypes ns~fastpath ns~threads .br
+    ns~modules ns~module~.* .br
+    ns~servers ns~server~.* .br
+    ns~db~drivers ns~db~driver~* .br
+    ns~db~pools ns~db~pool~* .br
+  }
+
+  set toc ""
+  set sectionhtml ""
+  foreach e $order {
+    if {$e eq ".br"} {append sectionhtml "<tr><td colspan='2'>&nbsp</td></tr>\n"}
+    foreach section [lsort [array names table -regexp $e]] {
+      set name [string map {~ /} $section]
+      lappend toc "<a href='#ref-$name'>$name</a>"
+      set anchor "<a name='ref-$name'>$name</a>"
+      append sectionhtml "\n<tr><td colspan='2' class='colsection'>$anchor</td></tr>\n$table($section)\n"
+      unset table($section)
+    }
+  }
+  if {[array size table] > 0} {
+    append sectionhtml "\n<tr><td colspan='2' class='colsection'>Extra Parameters</td></tr>\n\n"
+    foreach section [lsort [array names table]] {
+      set name [string map {~ /} $section]
+      lappend toc "<a href='#ref-$name'>$name</a>"
+      set anchor "<a name='ref-$name'>$name</a>"
+      append sectionhtml "\n<tr><td colspan='2' class='colsection'>$anchor</td></tr>\n$table($section)\n"
+    }
+  }
+  set html [_ns_stats.header "Config Parameters"]
+  append html "The following values are defined in the configuration database:<br>"
+  append html "<table><tr><td valign='top'>"
+  append html "<ul><li>[join $toc </li><li>]</li></ul>"
+  append html "</td><td>"
+  append html <table>$sectionhtml</table>
+  append html "</td></tr>"
+  append html [_ns_stats.footer]
+  return $html
+}
+
+proc _ns_stats.configfile {} {
     set config ""
     set configFile [ns_info config]
     if {$configFile ne ""} {
