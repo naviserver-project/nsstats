@@ -79,7 +79,21 @@ proc _ns_stats.header {{stat ""}} {
     <html>
     <head>
     <title>$title</title>
-    <style>
+    <script type='text/javascript' src='http://cdn.jquerytools.org/1.2.5/full/jquery.tools.min.js'></script>    
+    <script type='text/javascript'>\$('\[title\]').tooltip();</script> 
+    <style type='text/css'> 
+
+       /* tooltip styling. by default the element to be styled is .tooltip  */
+       .tooltip {
+          display:none;
+          background:transparent url(http://flowplayer.org/tools/img/tooltip/black_arrow.png);
+          font-size:12px;
+          height:70px;
+          width:160px;
+          padding:25px;
+          color:#fff;
+       }
+
         body    { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; color: #000000; background-color: #ffffff; }
         td      { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; }
         pre     { font-family: courier new, courier; font-size: 10pt; }
@@ -95,7 +109,7 @@ proc _ns_stats.header {{stat ""}} {
     </style>
     </head>
 
-    <table border=0 cellpadding=5 cellspacing=0 width=\"100%\">
+    <table border=0 cellpadding=5 cellspacing=0 width='100%'>
     <tr>
         <td valign=middle bgcolor=#666699><font size=1 color=#ffffff><b>$nav</b></font></td>
         <td valign=middle bgcolor=#666699 align=right><font size=1 color=#ffffff><b>[_ns_stats.fmtTime [ns_time]]</b></font></td>
@@ -364,6 +378,34 @@ proc _ns_stats.log {} {
     return $html
 }
 
+set ::tips(~fastpath\$,directoryadp) "Name of directory ADP"
+set ::tips(~fastpath\$,directoryproc) "Name of directory proc"
+set ::tips(~tcl\$,errorlogheaders) "Connection headers to be logged in case of error (list)"
+set ::tips(ns~parameters\$,logexpanded) "Double-spaced error.log (boolean, false)"
+set ::tips(ns~parameters\$,tclinitlock) "Prohibit parallel interp updates (boolean, false)"
+set ::tips(ns~server~\[^~\]+\$,hackcontenttype) "Force charset into content-type header for dynamic responses. (boolean, true)"
+set ::tips(ns~server~\[^~\]+\$,noticedetail) "Notice server details (version number) in HTML return notices. (boolean, true)"
+set ::tips(ns~server~\[^~\]+\$,compressminsize) "Compress dynamic content above this size. (integer, 512)"
+
+set ::tips(module~nslog\$,checkforproxy) "Log peer address provided by X-Forwarded-For. (boolean, false)"
+set ::tips(~module~,nodelay) "TCP Performance option; use TCP_NODELAY (OS-default on Linux). (boolean, false)"
+set ::tips(~module~,deferaccept) "TCP Performance option; use TCP_FASTOPEN or TCP_DEFER_ACCEPT or SO_ACCEPTFILTER. (boolean, false)"
+set ::tips(~module~,writerthreads) "Number of writer threads. (integer, 0)"
+set ::tips(~module~,writersize) "Use writer threads for replies above this size. (integer, 1048576)"
+set ::tips(~module~,writerstreaming) "Use writer threads for streaming HTML output (e.g. ns_write ...). (boolean, false)"
+set ::tips(ns~db~pool~,checkinterval) "Check in this interval if handles are not stale. (secs, 600)"
+set ::tips(ns~db~pool~,maxidle) "Close handles which are idle for at least this interval. (secs, 600)"
+set ::tips(ns~db~pool~,maxopen) "Close handles which open longer than this interval. (secs, 3600)"
+
+
+proc _ns_stats.tooltip {section field} {
+  foreach n [array names ::tips] {
+    lassign [split $n ,] re f
+    if {$field eq $f && [regexp $re $section]} {return $::tips($n)}
+  }
+  return ""
+}
+
 proc _ns_stats.configparams {} {
   set out [list]
   foreach section [lsort [ns_configsections]] {
@@ -379,7 +421,8 @@ proc _ns_stats.configparams {} {
 
     set line ""
     foreach section_key [lsort [array names keys]] {
-      lappend line "<tr><td class='coltitle'>$section_key:</td>\n\
+      set tip [_ns_stats.tooltip $name $section_key]
+      lappend line "<tr><td title='$tip' class='coltitle'>$section_key:</td>\n\
 	<td class='colvalue'>[join $keys($section_key) <br>]</td></tr>"
     }
     set table($name) [join $line \n]
