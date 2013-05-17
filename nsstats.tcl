@@ -79,19 +79,13 @@ proc _ns_stats.header {{stat ""}} {
     <html>
     <head>
     <title>$title</title>
-    <script type='text/javascript' src='http://cdn.jquerytools.org/1.2.5/full/jquery.tools.min.js'></script>    
-    <script type='text/javascript'>\$('\[title\]').tooltip();</script> 
     <style type='text/css'> 
 
        /* tooltip styling. by default the element to be styled is .tooltip  */
-       .tooltip {
-          display:none;
-          background:transparent url(http://flowplayer.org/tools/img/tooltip/black_arrow.png);
-          font-size:12px;
-          height:70px;
-          width:160px;
-          padding:25px;
-          color:#fff;
+       .tip {
+          cursor: help;
+          text-decoration:underline;
+          color: #777777;
        }
 
         body    { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; color: #000000; background-color: #ffffff; }
@@ -422,7 +416,8 @@ proc _ns_stats.configparams {} {
     set line ""
     foreach section_key [lsort [array names keys]] {
       set tip [_ns_stats.tooltip $name $section_key]
-      lappend line "<tr><td title='$tip' class='coltitle'>$section_key:</td>\n\
+      set tipclass [expr {$tip ne "" ? "tip" : ""}]
+      lappend line "<tr><td title='$tip' class='coltitle $tipclass'>$section_key:</td>\n\
 	<td class='colvalue'>[join $keys($section_key) <br>]</td></tr>"
     }
     set table($name) [join $line \n]
