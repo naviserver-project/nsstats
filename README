@@ -1,15 +1,43 @@
-Statistics Module for NaviServer 4.x
-Release 1.0
+Statistics Module for NaviServer 4.99.5
+Release 1.1
 vlad@crystalballinc.com
+neumann@wu-wien.ac.at
 
-Set of procedures implementing the NaviServer runtime statistics
+Nsstats is a small pure Tcl module for NaviServer to report several
+statistics about the liveliness off you naviserver installation. In
+particular, nsstats provides information about e.g.
+  - cache usage
+  - configuration parameters
+  - mutex lock statistics
+  - nsv lock statistics
+  - runtime statistics from the virtual server(s) and pool(s)
+  - scheduled procedures
+  - threads
+  - web-access to 
+    * configuration file
+    * last entries from error.log
+
+Changes since 1.0
+
+  - actual configuration parameters
+  - per-server and per-pool information in process statistics
+  - queueing and spooling statistics
+  - queuing time/filter time runtime per pool
+  - more detailed cache statistics (e.g. saved times)
+  - access to configuration file 
+  - max wait, total wait, total lock time, avg lock time
+  - nsv locks (mapping from variable names to buckets and locks)
+  - threads: added user time, system times, processor number and state
+    (Linux only)
+  
+
 
 /*--------------------------------------------------------------------*/
 
 Installation
 
-   To use it, set enabled to 1 and drop it somewehere under naviserver
-   pageroot which is usually /usr/local/ns/pages and point browser to it
+   To use it, set enabled to 1 and drop it somewhere under naviserver
+   pageroot which is usually /usr/local/ns/pages and point browser to it.
 
 
 Configuration
@@ -29,3 +57,4 @@ Configuration
   
 Authors
      Vlad Seryakov vlad@crystalballinc.com
+     Gustaf Neumann neumann@wu-wien.ac.at
