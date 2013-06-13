@@ -189,18 +189,20 @@ proc _ns_stats.cache {} {
     foreach cache [ns_cache_names] {
         array set t [ns_cache_stats $cache]
 	set avgSize [expr {$t(entries) > 0 ? $t(size)/$t(entries) : 0}]
+	set savedPerByte [expr {$t(size) > 0 ? $t(saved)*1000.0/$t(size) : 0}]
         lappend results [list $cache $t(maxsize) $t(size) \
 		[format %.2f [expr {$t(size)*100.0/$t(maxsize)}]]% \
 		$t(entries) $avgSize $t(flushed) $t(hits) \
 		[format %.0f [expr {$t(entries)>0 ? $t(hits)*1.0/$t(entries) : 0}]] \
-		$t(missed) "$t(hitrate)%" $t(expired) $t(pruned) $t(saved)]
+		$t(missed) "$t(hitrate)%" $t(expired) $t(pruned) \
+		[format %.4f $savedPerByte] [format %.2f $t(saved)]]
     }
 
-    set colTitles   [list Cache Max Current Utilization Entries "Avg Size" Flushes Hits Reuse Misses "Hit Rate" Expired Pruned Saved]
+    set colTitles   [list Cache Max Current Utilization Entries "Avg Size" Flushes Hits Reuse Misses "Hit Rate" Expired Pruned "Saved/KB" Saved]
     set rows        [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
 
     set html [_ns_stats.header Cache]
-    append html [_ns_stats.results $col $colTitles ?@page=cache $rows $reverseSort {left right right right right right right right right right right right right right}]
+    append html [_ns_stats.results $col $colTitles ?@page=cache $rows $reverseSort {left right right right right right right right right right right right right right right}]
     append html [_ns_stats.footer]
 
     return $html
