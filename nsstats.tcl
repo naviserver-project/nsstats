@@ -188,18 +188,19 @@ proc _ns_stats.cache {} {
 
     foreach cache [ns_cache_names] {
         array set t [ns_cache_stats $cache]
+	set avgSize [expr {$t(entries) > 0 ? $t(size)/$t(entries) : 0}]
         lappend results [list $cache $t(maxsize) $t(size) \
 		[format %.2f [expr {$t(size)*100.0/$t(maxsize)}]]% \
-		$t(entries) $t(flushed) $t(hits) \
+		$t(entries) $avgSize $t(flushed) $t(hits) \
 		[format %.0f [expr {$t(entries)>0 ? $t(hits)*1.0/$t(entries) : 0}]] \
 		$t(missed) "$t(hitrate)%" $t(expired) $t(pruned) $t(saved)]
     }
 
-    set colTitles   [list Cache Max Current Utilization Entries Flushes Hits Reuse Misses "Hit Rate" Expired Pruned Saved]
+    set colTitles   [list Cache Max Current Utilization Entries "Avg Size" Flushes Hits Reuse Misses "Hit Rate" Expired Pruned Saved]
     set rows        [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
 
     set html [_ns_stats.header Cache]
-    append html [_ns_stats.results $col $colTitles ?@page=cache $rows $reverseSort {left right right right right right right right right right right right right}]
+    append html [_ns_stats.results $col $colTitles ?@page=cache $rows $reverseSort {left right right right right right right right right right right right right right}]
     append html [_ns_stats.footer]
 
     return $html
