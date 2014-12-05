@@ -676,6 +676,7 @@ proc _ns_stats.process {} {
 		    Home 		[ns_info home] \
 		    Configuration 	[ns_info config] \
 		    "Error Log"		[ns_info log] \
+		    "Log Statistics"	[ns_logctl stats] \
 		    Version 		"[ns_info patchlevel] (tag [ns_info tag]))" \
 		    "Build Date" 	[ns_info builddate] \
 		    Servers 		[join [ns_info servers] <br>] \

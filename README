@@ -1,5 +1,5 @@
-Statistics Module for NaviServer 4.99.5
-Release 1.1
+Statistics Module for NaviServer 4.99.6
+Release 1.2
 vlad@crystalballinc.com
 neumann@wu-wien.ac.at
 
@@ -29,7 +29,7 @@ Changes since 1.0
   - nsv locks (mapping from variable names to buckets and locks)
   - threads: added user time, system times, processor number and state
     (Linux only)
-  
+  - added log statistics
 
 
 /*--------------------------------------------------------------------*/
