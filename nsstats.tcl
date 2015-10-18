@@ -641,30 +641,49 @@ proc _ns_stats.mempools {} {
 }
 
 proc _ns_stats.process.table {values} {
-    set html "\
-    <table border=0 cellpadding=0 cellspacing=1 bgcolor=#cccccc>
+    set html [subst {
+    <table border="0" cellpadding="0" cellspacing="1" bgcolor="#cccccc">
     <tr>
-        <td valign=middle align=center>
-        <table border=0 cellpadding=3 cellspacing=1 width=\"100%\">
+        <td valign="middle" align="center">
+        <table border=0 cellpadding="3" cellspacing="1" width="100%">
         <tr>
-            <td valign=middle bgcolor=#999999><font face=verdana size=1 color=#ffffff><nobr>Key</nobr></font></td>
-            <td valign=middle bgcolor=#999999><font face=verdana size=1 color=#ffffff><nobr>Value</nobr></font></td>
-        </tr>"
-
+            <td valign="middle" bgcolor="#999999"><font face="verdana" size="1" color="#ffffff"><nobr>Key</nobr></font></td>
+            <td valign="middle" bgcolor="#999999"><font face="verdana" size="1" color="#ffffff"><nobr>Value</nobr></font></td>
+        </tr>
+    }]
     foreach {key value} $values {
-	append html "\
+	append html [subst {
             <tr>
                 <td class='coltitle'>$key</td>
                 <td class='colvalue'>$value</td>
-            </tr>"
+            </tr>}]
     }
 
-    append html "\
+    append html [subst {
         </table>
         </td>
     </tr>
-    </table>"
+    </table>}]
     return $html
+}
+
+proc _ns_stats.process.dbpools {} {
+    set lines ""
+    if {![catch {set poolStats [ns_db stats]}]} {
+	foreach {pool stats} $poolStats {
+	    lappend lines "<tr><td class='subtitle'>$pool:</td><td>$stats</td>"
+	}
+    }
+    return $lines
+}
+proc _ns_stats.process.callbacks {} {
+    set lines ""
+    foreach {entry} [ns_info callbacks] {
+	lassign $entry type call
+	set args [lrange $entry 2 end]
+	lappend lines "<tr><td class='subtitle'>$type:</td><td>$call</td><td>$args</td>"
+    }
+    return $lines
 }
 
 proc _ns_stats.process {} {
@@ -680,7 +699,8 @@ proc _ns_stats.process {} {
 		    Version 		"[ns_info patchlevel] (tag [ns_info tag]))" \
 		    "Build Date" 	[ns_info builddate] \
 		    Servers 		[join [ns_info servers] <br>] \
-		    Callbacks 		[join [ns_info callbacks] <br>] \
+		    DB-Pools 		"<table>[join [_ns_stats.process.dbpools]]</table>" \
+		    Callbacks 		"<table>[join [_ns_stats.process.callbacks]]</table>" \
 		    "Socket Callbacks"	[join [ns_info sockcallbacks] <br>] \
 		   ]
 
@@ -724,8 +744,18 @@ proc _ns_stats.process {} {
 	    set rawstats [ns_server -server $s -pool $pool stats]
 	    set rawthreads [concat [ns_server -server $s -pool $pool threads] \
 				waiting [ns_server -server $s -pool $pool waiting]]
-	    set rawreqs [join [ns_server -server $s -pool $pool all] <br>]
-
+	    set rawreqs [ns_server -server $s -pool $pool all]
+	    set reqs {}
+	    foreach req $rawreqs {
+		set ts [expr {round([lindex $req end-1])}]
+		if {$ts >= 60} {
+		    lappend req [clock format [expr {[clock seconds] - $ts}] -format {%y/%m/%d %H:%M:%S}]
+		} else {
+		    lappend req .
+		}
+		lappend reqs $req
+	    }
+	    set reqs [join $reqs <br>]
 	    array set stats $rawstats
 	    set item \
 		"<tr bgcolor='#ffffff'><td class='subtitle'>Connection Threads:</td><td>$rawthreads</td></tr>\n"
@@ -741,7 +771,7 @@ proc _ns_stats.process {} {
 		    "</td></tr>\n"
 	    }
 	    append item \
-	          "<tr bgcolor='#ffffff'><td class='subtitle'>Active Requests:</td><td>$rawreqs</td></tr>\n"
+	          "<tr bgcolor='#ffffff'><td class='subtitle'>Active Requests:</td><td>$reqs</td></tr>\n"
 
 	    lappend poolItems "Pool '$poolLabel'" "<table bgcolor='#eeeeee'>$item</table>"
 	}
