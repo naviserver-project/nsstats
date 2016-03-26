@@ -68,11 +68,11 @@ if { ![nsv_exists _ns_stats threads_0] } {
 
 proc _ns_stats.header {{stat ""}} {
     if {[string length $stat]} {
-        set title "Naviserver Stats: [ns_info hostname] - $stat"
-        set nav "<a href='?@page=index'><font color=#ffffff>Main Menu</font></a> &gt; <font color=#ffcc00>$stat</font>"
+        set title "NaviServer Stats: [ns_info hostname] - $stat"
+        set nav "<a href='?@page=index'>Main Menu</a> &gt; <span class='current'>$stat</span>"
     } else {
-        set title "Naviserver Stats: [ns_info hostname]"
-        set nav "<font color=#ffcc00><font color=#ffcc00>Main Menu</font>"
+        set title "NaviServer Stats: [ns_info hostname]"
+        set nav "<span class='current'>Main Menu</span>"
     }
 
     return "\
@@ -89,7 +89,7 @@ proc _ns_stats.header {{stat ""}} {
        }
 
         body    { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; color: #000000; background-color: #ffffff; }
-        td      { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; }
+        td,th   { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; }
         pre     { font-family: courier new, courier; font-size: 10pt; }
         form    { font-family: verdana,helvetica,arial,sans-serif; font-size: 10pt; }
         i       { font-style: italic; }
@@ -100,13 +100,19 @@ proc _ns_stats.header {{stat ""}} {
         td.coltitle {text-align: right; background-color: eaeaea;}
         td.colsection {font-size: 12pt; font-style: bold;}
         td.colvalue {background-color: #ffffff;}
+        table.navbar {border: 0px; cellpadding: 5px; border-spacing: 0px; width: 100%;}
+        table.navbar td {padding: 5px; background: #666699; color: #ffffff; font-size: 10px;}
+	table.navbar td .current {color: #ffcc00;}
+	table.navbar td a {color: #ffffff; text-decoration: none;}
+        table.data {border: 1px; cellpadding: 5px; border-spacing: 0px;}
+	table.data th {background: #999999; color: #ffffff; font-weight: normal; text-align: left;}
     </style>
     </head>
 
-    <table border=0 cellpadding=5 cellspacing=0 width='100%'>
+    <table class='navbar'>
     <tr>
-        <td valign=middle bgcolor=#666699><font size=1 color=#ffffff><b>$nav</b></font></td>
-        <td valign=middle bgcolor=#666699 align=right><font size=1 color=#ffffff><b>[_ns_stats.fmtTime [ns_time]]</b></font></td>
+        <td valign='middle'><b>$nav</b></td>
+        <td valign='middle' align='right'><b>[_ns_stats.fmtTime [ns_time]]</b></td>
     </tr>
     </table>
     <br>"
@@ -124,14 +130,16 @@ proc _ns_stats.index {} {
     o <a href='?@page=cache'>Cache</a><br>
     o <a href='?@page=configfile'>Config File</a><br>
     o <a href='?@page=configparams'>Config Parameters</a><br>
+    o <a href='?@page=jobs'>Jobs</a><br>
     o <a href='?@page=log'>Log</a><br>
+    o <a href='?@page=loglevel'>Loglevels</a><br>
     o <a href='?@page=mempools'>Memory</a><br>
     o <a href='?@page=locks'>Mutex Locks</a><br>
     o <a href='?@page=nsvlocks'>Nsv Locks</a><br>
     o <a href='?@page=process'>Process</a><br>
     o <a href='?@page=sched'>Scheduled Procedures</a><br>
     o <a href='?@page=threads'>Threads</a><br>
-    o <a href='?@page=jobs'>Jobs</a><br>"
+    "
 
     append html [_ns_stats.footer]
 
@@ -533,7 +541,7 @@ proc _ns_stats.mempools {} {
     }
 
     append html "\
-    <table border=0 cellpadding=0 cellspacing=0>
+    <table border='0' cellpadding='0' cellspacing='0'>
     <tr>
         <td valign=middle>"
 
@@ -642,13 +650,13 @@ proc _ns_stats.mempools {} {
 
 proc _ns_stats.process.table {values} {
     set html [subst {
-    <table border="0" cellpadding="0" cellspacing="1" bgcolor="#cccccc">
+    <table class="data">
     <tr>
         <td valign="middle" align="center">
-        <table border=0 cellpadding="3" cellspacing="1" width="100%">
+        <table class="data2" border="0" cellpadding="3" cellspacing="1"  bgcolor="#cccccc">
         <tr>
-            <td valign="middle" bgcolor="#999999"><font face="verdana" size="1" color="#ffffff"><nobr>Key</nobr></font></td>
-            <td valign="middle" bgcolor="#999999"><font face="verdana" size="1" color="#ffffff"><nobr>Value</nobr></font></td>
+            <th valign="middle">Key</th>
+            <th valign="middle">Value</th>
         </tr>
     }]
     foreach {key value} $values {
@@ -684,6 +692,30 @@ proc _ns_stats.process.callbacks {} {
 	lappend lines "<tr><td class='subtitle'>$type:</td><td>$call</td><td>$args</td>"
     }
     return $lines
+}
+
+
+
+proc _ns_stats.loglevel {} {
+    set toggle [ns_queryget toggle ""]
+    if {$toggle ne ""} {
+	set old [ns_logctl severity $toggle]
+	ns_logctl severity $toggle [expr {! $old}]
+	ns_returnredirect [ns_conn url]?@page=[ns_queryget @page]
+	return
+    }
+    set values {}
+    set dict {1 on 0 off}
+    foreach s [lsort [ns_logctl severities]] {
+	set label [dict get $dict [ns_logctl severity $s]]
+	lappend values $s "<a href='[ns_conn url]?@page=[ns_queryget @page]&toggle=$s'>$label</a>"
+    }
+    set html [_ns_stats.header "Log Levels"]
+    append html \
+	"<p>The following table shows the current loglevels:<p>\n" \
+	[_ns_stats.process.table $values] \
+	[_ns_stats.footer]
+    return $html
 }
 
 proc _ns_stats.process {} {
@@ -758,20 +790,20 @@ proc _ns_stats.process {} {
 	    set reqs [join $reqs <br>]
 	    array set stats $rawstats
 	    set item \
-		"<tr bgcolor='#ffffff'><td class='subtitle'>Connection Threads:</td><td>$rawthreads</td></tr>\n"
+		"<tr'><td class='subtitle'>Connection Threads:</td><td class='colvalue'>$rawthreads</td></tr>\n"
 	    if {$stats(requests) > 0} {
-		append item "<tr bgcolor=#ffffff><td class='subtitle'>Request Handling:</td>" \
-		    "<td>requests $stats(requests), "\
+		append item "<tr><td class='subtitle'>Request Handling:</td>" \
+		    "<td class='colvalue'>requests $stats(requests), "\
 		    "queued $stats(queued) ([format %.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%)," \
 		    " spooled $stats(spools) ([format %.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)</td></tr>\n"
-		append item "<tr bgcolor=#ffffff><td class='subtitle'>Request Timing:</td>" \
-		    "<td>avg queue time [format %5.4f [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
+		append item "<tr bgcolor><td class='subtitle'>Request Timing:</td>" \
+		    "<td class='colvalue'>avg queue time [format %5.4f [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
 		    " avg filter time [format %5.4f [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
 		    " avg run time [format %.4f [expr {$stats(runtime)*1.0/$stats(requests)}]]s" \
 		    "</td></tr>\n"
 	    }
 	    append item \
-	          "<tr bgcolor='#ffffff'><td class='subtitle'>Active Requests:</td><td>$reqs</td></tr>\n"
+	          "<tr><td class='subtitle'>Active Requests:</td><td class='colvalue'>$reqs</td></tr>\n"
 
 	    lappend poolItems "Pool '$poolLabel'" "<table bgcolor='#eeeeee'>$item</table>"
 	}
@@ -1008,7 +1040,7 @@ proc _ns_stats.results {{selectedColNum ""} {colTitles ""} {colUrl ""} {rows ""}
     }
 
     set html "\
-    <table border=0 cellpadding=0 cellspacing=1 bgcolor=#cccccc>
+    <table border='0' cellpadding='0' cellspacing='1' bgcolor='#cccccc'>
     <tr>
         <td valign='middle' align='center'>
         <table border='0' cellpadding='4' cellspacing='1' width='100%'>

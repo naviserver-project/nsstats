@@ -1,5 +1,5 @@
 Statistics Module for NaviServer 4.99.6
-Release 1.2
+Release 1.3
 vlad@crystalballinc.com
 neumann@wu-wien.ac.at
 
@@ -30,6 +30,7 @@ Changes since 1.0
   - threads: added user time, system times, processor number and state
     (Linux only)
   - added log statistics
+  - added Page for showing/toggling log levels
 
 
 /*--------------------------------------------------------------------*/
