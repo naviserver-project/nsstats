@@ -132,7 +132,7 @@ proc _ns_stats.index {} {
     o <a href='?@page=configparams'>Config Parameters</a><br>
     o <a href='?@page=jobs'>Jobs</a><br>
     o <a href='?@page=log'>Log</a><br>
-    o <a href='?@page=loglevel'>Loglevels</a><br>
+    o <a href='?@page=loglevel'>Log Levels</a><br>
     o <a href='?@page=mempools'>Memory</a><br>
     o <a href='?@page=locks'>Mutex Locks</a><br>
     o <a href='?@page=nsvlocks'>Nsv Locks</a><br>
@@ -800,6 +800,7 @@ proc _ns_stats.process {} {
 		    "<td class='colvalue'>avg queue time [format %5.4f [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
 		    " avg filter time [format %5.4f [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
 		    " avg run time [format %.4f [expr {$stats(runtime)*1.0/$stats(requests)}]]s" \
+		    " avg trace time [format %.4f [expr {$stats(tracetime)*1.0/$stats(requests)}]]s" \
 		    "</td></tr>\n"
 	    }
 	    append item \
