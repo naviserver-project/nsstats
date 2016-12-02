@@ -719,6 +719,12 @@ proc _ns_stats.loglevel {} {
 }
 
 proc _ns_stats.process {} {
+    if {[info commands ns_driver] ne ""} {
+	
+	set driverInfo [list "Driver threads" [ns_driver threads]<br>[join [ns_driver stats] <br>]]
+    } else {
+	set driverInfo ""
+    }
     set values [list \
 		    Host 		"[ns_info hostname] ([ns_info address])" \
 		    "Boot Time"		[clock format [ns_info boottime] -format %c] \
@@ -731,6 +737,7 @@ proc _ns_stats.process {} {
 		    Version 		"[ns_info patchlevel] (tag [ns_info tag]))" \
 		    "Build Date" 	[ns_info builddate] \
 		    Servers 		[join [ns_info servers] <br>] \
+		    {*}${driverInfo} \
 		    DB-Pools 		"<table>[join [_ns_stats.process.dbpools]]</table>" \
 		    Callbacks 		"<table>[join [_ns_stats.process.callbacks]]</table>" \
 		    "Socket Callbacks"	[join [ns_info sockcallbacks] <br>] \
@@ -796,7 +803,7 @@ proc _ns_stats.process {} {
 		    "<td class='colvalue'>requests $stats(requests), "\
 		    "queued $stats(queued) ([format %.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%)," \
 		    " spooled $stats(spools) ([format %.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)</td></tr>\n"
-		append item "<tr bgcolor><td class='subtitle'>Request Timing:</td>" \
+		append item "<tr><td class='subtitle'>Request Timing:</td>" \
 		    "<td class='colvalue'>avg queue time [format %5.4f [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
 		    " avg filter time [format %5.4f [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
 		    " avg run time [format %.4f [expr {$stats(runtime)*1.0/$stats(requests)}]]s" \
@@ -804,9 +811,14 @@ proc _ns_stats.process {} {
 		    "</td></tr>\n"
 	    }
 	    append item \
-	          "<tr><td class='subtitle'>Active Requests:</td><td class='colvalue'>$reqs</td></tr>\n"
-
-	    lappend poolItems "Pool '$poolLabel'" "<table bgcolor='#eeeeee'>$item</table>"
+		"<tr><td class='subtitle'>Active Requests:</td><td class='colvalue'>$reqs</td></tr>\n"
+	    set nrMapped [llength [ns_server -pool $pool map]]
+	    if {$nrMapped > 0} {
+		append item \
+		    "<tr><td class='subtitle'>Mapped:</td>" \
+		    "<td class='colvalue'><a href='?@page=mapped&pool=$pool&server=$s'>$nrMapped</a></td></tr>\n"
+	    }
+	    lappend poolItems "Pool '$poolLabel'" "<table>$item</table>"
 	}
 
 	set values [list \
@@ -831,6 +843,39 @@ proc _ns_stats.process {} {
     return $html
 }
 
+proc _ns_stats.mapped {} {
+    set col         [ns_queryget col 0]
+    set reverseSort [ns_queryget reversesort 1]
+    
+    set pool        [ns_queryget pool [ns_conn pool]]
+    set server      [ns_queryget server [ns_conn server]]
+    set numericSort 0
+    set colTitles   [list Method URL Filter Inheritance]
+
+    set results ""
+
+    foreach entry [ns_server -pool $pool map] {
+	lappend results $entry
+    }
+
+    set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
+
+    set poolName $pool
+    if {$poolName eq ""} {set poolName default}
+    set serverName $server
+    if {$serverName eq ""} {set serverName default}
+
+    set html [_ns_stats.header Mapped]
+    append html "<h3>Mapped URLs of Server $serverName pool $poolName</h3>"
+    append html [_ns_stats.results $col $colTitles ?@page=mapped&pool=$pool&server=$server $rows $reverseSort]
+    append html "<p>Back to <a href='?@page=process'>process</a> page</p>"
+    append html [_ns_stats.footer]
+
+    return $html
+}
+
+
+
 proc _ns_stats.sched {} {
     set col             [ns_queryget col 1]
     set reverseSort     [ns_queryget reversesort 1]
@@ -848,9 +893,9 @@ proc _ns_stats.sched {} {
         set proc        [lindex $s 7]
         set arg         [lrange $s 8 end]
 
-        if [catch {
+        if {[catch {
             set duration [expr {$lastend - $laststart}]
-        }] {
+        }]} {
             set duration "0"
         }
 
@@ -1028,7 +1073,7 @@ proc _ns_stats.jobs {} {
 proc _ns_stats.results {{selectedColNum ""} {colTitles ""} {colUrl ""} {rows ""} {reverseSort ""} {colAlignment ""}} {
     set numCols [llength $colTitles]
 
-    for {set colNum 1} {$colNum < [expr {$numCols + 1}]} {incr colNum} {
+    for {set colNum 1} {$colNum < $numCols + 1} {incr colNum} {
         if {$colNum == $selectedColNum} {
             set colHdrColor($colNum)        "#666666"
             set colHdrFontColor($colNum)    "#ffffff"
@@ -1081,22 +1126,19 @@ proc _ns_stats.results {{selectedColNum ""} {colTitles ""} {colUrl ""} {rows ""}
 
     foreach row $rows {
         set i 1
-
         append html "<tr>"
 
         foreach column $row {
             set colAlign "left"
 
             if {[llength $colAlignment]} {
-                set align [lindex $colAlignment [expr {$i - 1}]]
+                set align [lindex $colAlignment $i-1]
 
                 if {[string length $align]} {
                     set colAlign $align
                 }
             }
-
-            append html "<td bgcolor=$colColor($i) valign=top align=$colAlign>$column</td>"
-
+            append html "<td bgcolor='$colColor($i)' valign=top align=$colAlign>$column</td>"
             incr i
         }
 
@@ -1160,21 +1202,21 @@ proc _ns_stats.isThreadRunning {flags} {
 }
 
 proc _ns_stats.getSchedFlagTypes {flags} {
-    if [expr {$flags & [_ns_stats.getSchedFlag once]}] {
+    if {$flags & [_ns_stats.getSchedFlag once]} {
         set types "once"
     } else {
         set types "repeating"
     }
 
-    if [expr {$flags & [_ns_stats.getSchedFlag daily]}] {
+    if {$flags & [_ns_stats.getSchedFlag daily]} {
         lappend types "daily"
     }
 
-    if [expr {$flags & [_ns_stats.getSchedFlag weekly]}] {
+    if {$flags & [_ns_stats.getSchedFlag weekly]} {
         lappend types "weekly"
     }
 
-    if [expr {$flags & [_ns_stats.getSchedFlag thread]}] {
+    if {$flags & [_ns_stats.getSchedFlag thread]} {
         lappend types "thread"
     }
 
@@ -1216,7 +1258,7 @@ proc _ns_stats.fmtTime {time} {
 
 proc _ns_stats.sortResults {results field numeric {reverse 0}} {
     global _sortListTmp
-
+    
     set _sortListTmp(field)     $field
     set _sortListTmp(numeric)   $numeric
     set _sortListTmp(reverse)   $reverse
@@ -1259,13 +1301,14 @@ proc _ns_stats.cmpNumeric {n1 n2} {
 
 # Main processing logic
 set page [ns_queryget @page]
-if { [info command _ns_stats.$page] == "" } {
+
+if { [info command _ns_stats.$page] eq "" } {
   set page index
 }
 
 # Check user access if configured
-if { ($enabled == 0 && [ns_conn peeraddr] != "127.0.0.1") ||
-     ($user != "" && ([ns_conn authuser] != $user || [ns_conn authpassword] != $password)) } {
+if { ($enabled == 0 && [ns_conn peeraddr] ne "127.0.0.1") ||
+     ($user ne "" && ([ns_conn authuser] ne $user || [ns_conn authpassword] ne $password)) } {
   ns_returnunauthorized
   return
 }

@@ -1,5 +1,5 @@
 Statistics Module for NaviServer 4.99.14
-Release 1.4
+Release 1.5
 vlad@crystalballinc.com
 neumann@wu-wien.ac.at
 
@@ -13,6 +13,7 @@ particular, nsstats provides information about e.g.
   - runtime statistics from the virtual server(s) and pool(s)
   - scheduled procedures
   - threads
+  - driver usage
   - web-access to 
     * configuration file
     * last entries from error.log
@@ -31,6 +32,8 @@ Changes since 1.0
     (Linux only)
   - added log statistics
   - added Page for showing/toggling log levels
+  - added Page for showing urls mapped to connection threads pools
+  - added information about drivers (threads, stats)
 
 
 /*--------------------------------------------------------------------*/
