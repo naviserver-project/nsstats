@@ -853,8 +853,14 @@ proc _ns_stats.mapped {} {
     set colTitles   [list Method URL Filter Inheritance]
 
     set results ""
-
-    foreach entry [ns_server -pool $pool map] {
+    foreach entry [ns_server -server $server -pool $pool map] {
+	#
+	# Currently, the url walker appends to a string without caring
+	# for proper list elements. Fix up the columns here.
+	#
+        if {[llength $entry] > 4} {
+            set entry [list [lindex $entry 0] [lrange $entry 1 end-2] [lindex $entry end-1] [lindex $entry end]]
+        }
 	lappend results $entry
     }
 
