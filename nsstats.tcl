@@ -721,7 +721,7 @@ proc _ns_stats.loglevel {} {
 proc _ns_stats.process {} {
     if {[info commands ns_driver] ne ""} {
 	
-	set driverInfo [list "Driver threads" [ns_driver threads]<br>[join [ns_driver stats] <br>]]
+	set driverInfo [list "Driver threads" [join [ns_driver stats] <br>]]
     } else {
 	set driverInfo ""
     }
