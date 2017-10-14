@@ -720,10 +720,41 @@ proc _ns_stats.loglevel {} {
     return $html
 }
 
+
 proc _ns_stats.process {} {
     if {[info commands ns_driver] ne ""} {
-	
-	set driverInfo [list "Driver threads" [join [ns_driver stats] <br>]]
+	#
+	# Get certificates to report expire dates (assumes that the
+	# command "openssl" is on the search path)
+	#
+	set certInfo {}
+	foreach entry [ns_driver info] {
+	    set module [dict get $entry module]
+	    if {[dict get $entry type] eq "nsssl"} {
+		set server [dict get $entry server]
+		if {$server ne ""} {
+		    set certfile [ns_config ns/server/$server/module/$module certificate]
+		} else {
+		    set certfile [ns_config ns/module/$module certificate]
+		}
+		if {![info exists processed($certfile)]} {
+		    set notAfter [exec openssl x509 -enddate -noout -in $certfile]
+		    regexp {notAfter=(.*)$} $notAfter . date
+		    set days [expr {([clock scan $date] - [clock seconds])/(60*60*24.0)}]
+		    lappend certInfo "Certificate $certfile will expire in [format %.1f $days] days"
+		    set processed($certfile) 1
+		}
+	    }
+	}
+	#
+	# Combine driver stats with certificate infos
+	#
+	set driverInfo [ns_driver stats]
+	if {[llength $certInfo] > 0} {
+	    lappend driverInfo {} {*}$certInfo
+	}
+	set driverInfo [list "Driver Info" [join $driverInfo <br>]]
+
     } else {
 	set driverInfo ""
     }
@@ -1315,7 +1346,7 @@ if { [info command _ns_stats.$page] eq "" } {
 }
 
 # Check user access if configured
-if { ($enabled == 0 && [ns_conn peeraddr] ne "127.0.0.1") ||
+if { ($enabled == 0 && [ns_conn peeraddr] ni {"127.0.0.1" "::1"}) ||
      ($user ne "" && ([ns_conn authuser] ne $user || [ns_conn authpassword] ne $password)) } {
   ns_returnunauthorized
   return
