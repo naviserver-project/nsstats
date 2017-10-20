@@ -801,7 +801,7 @@ proc _ns_stats.process {} {
 	catch {set serverdir [ns_server -server $s serverdir]}
 
 	#
-	# per pool information
+	# Per connection pool information
 	#
         set poolItems ""
 	foreach pool [lsort [ns_server -server $s pools]] {
@@ -854,6 +854,30 @@ proc _ns_stats.process {} {
 	    lappend poolItems "Pool '$poolLabel'" "<table>$item</table>"
 	}
 
+        set proxyItems ""
+	if {[info commands ns_proxy] ne ""} {
+	    #
+	    # Use catch for the time being to handle forward
+	    # compatiblity (when no ns_proxy stats are available)
+	    #
+	    catch {
+		foreach pool [lsort [ns_proxy pools]] {
+		    #
+		    # Get configure values and statistics
+		    #
+		    set configValues [ns_proxy configure $pool]
+		    set rawstats [ns_proxy stats $pool]
+		    set active [join [ns_proxy active $pool] <br>]
+		    set item ""
+		    append item \
+			"<tr><td class='subtitle'>Params:</td><td class='colvalue'>$configValues</td></tr>" \
+			"<tr><td class='subtitle'>Stats:</td><td class='colvalue'>$rawstats</td></tr>" \
+			"<tr><td class='subtitle'>Active:</td><td class='colvalue'>$active</td></tr>"
+		}
+		lappend proxyItems "nsproxy '$pool'" "<table>$item</table>"
+	    }
+	}
+
 	set values [list \
 			"Address"            [join $addresses <br>] \
 			"Server Directory"   $serverdir \
@@ -863,6 +887,7 @@ proc _ns_stats.process {} {
 			"Writer Threads"     $writerThreads \
 			"Connection Pools"   [ns_server -server $s pools] \
 			{*}$poolItems \
+			{*}$proxyItems \
 			"Active Writer Jobs" [join [ns_writer list -server $s] <br>] \
 		       ]
 		
