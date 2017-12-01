@@ -681,6 +681,17 @@ proc _ns_stats.process.dbpools {} {
     set lines ""
     if {![catch {set poolStats [ns_db stats]}]} {
 	foreach {pool stats} $poolStats {
+	    set gethandles [dict get $stats gethandles]
+	    if {$gethandles > 0} {
+		set avgWaitTime [expr {[dict get $stats waittime] / $gethandles}]
+		lappend stats avgwaittime $avgWaitTime
+	    }
+	    set statements [dict get $stats statements]
+	    if {$statements > 0} {
+		set avgSQLTime [expr {[dict get $stats sqltime] / $statements}]
+		lappend stats avgsqltime $avgSQLTime
+	    }
+	    set stats [_ns_stats.pretty {statements gethandles avgwaittime avgsqltime} $stats %.0f]
 	    lappend lines "<tr><td class='subtitle'>$pool:</td><td>$stats</td>"
 	}
     }
@@ -749,7 +760,10 @@ proc _ns_stats.process {} {
 	#
 	# Combine driver stats with certificate infos
 	#
-	set driverInfo [ns_driver stats]
+	set driverInfo {}
+	foreach tuple [ns_driver stats] {
+	    lappend driverInfo [_ns_stats.pretty {received spooled partial} $tuple %.0f]
+	}
 	if {[llength $certInfo] > 0} {
 	    lappend driverInfo {} {*}$certInfo
 	}
@@ -766,7 +780,7 @@ proc _ns_stats.process {} {
 		    Home 		[ns_info home] \
 		    Configuration 	[ns_info config] \
 		    "Error Log"		[ns_info log] \
-		    "Log Statistics"	[ns_logctl stats] \
+		    "Log Statistics"	[_ns_stats.pretty {Notice Warning Debug(sql)} [ns_logctl stats] %.0f] \
 		    Version 		"[ns_info patchlevel] (tag [ns_info tag]))" \
 		    "Build Date" 	[ns_info builddate] \
 		    Servers 		[join [ns_info servers] <br>] \
@@ -833,9 +847,12 @@ proc _ns_stats.process {} {
 		"<tr'><td class='subtitle'>Connection Threads:</td><td class='colvalue'>$rawthreads</td></tr>\n"
 	    if {$stats(requests) > 0} {
 		append item "<tr><td class='subtitle'>Request Handling:</td>" \
-		    "<td class='colvalue'>requests $stats(requests), "\
-		    "queued $stats(queued) ([format %.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%)," \
-		    " spooled $stats(spools) ([format %.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)</td></tr>\n"
+		    "<td class='colvalue'>" \
+		    "requests " [_ns_stats.hr $stats(requests) %.1f], \
+		    " queued " [_ns_stats.hr $stats(queued) %1.f] \
+		    " ([format %.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%)," \
+		    " spooled " [_ns_stats.hr $stats(spools) %1.f] \
+		    " ([format %.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)</td></tr>\n"
 		append item "<tr><td class='subtitle'>Request Timing:</td>" \
 		    "<td class='colvalue'>avg queue time [format %5.4f [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
 		    " avg filter time [format %5.4f [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
@@ -860,21 +877,29 @@ proc _ns_stats.process {} {
 	    # Use catch for the time being to handle forward
 	    # compatiblity (when no ns_proxy stats are available)
 	    #
-	    catch {
+	    if {[catch {
 		foreach pool [lsort [ns_proxy pools]] {
 		    #
 		    # Get configure values and statistics
 		    #
 		    set configValues [ns_proxy configure $pool]
 		    set rawstats [ns_proxy stats $pool]
+		    set requests [dict get $rawstats requests]
+		    if {$requests > 0} {
+			set avgruntime [expr {[dict get $rawstats runtime] / $requests}]
+			lappend rawstats avgruntime $avgruntime
+		    }
+		    set resultstats [_ns_stats.pretty {requests runtime avgruntime} $rawstats %.0f]
 		    set active [join [ns_proxy active $pool] <br>]
 		    set item ""
 		    append item \
 			"<tr><td class='subtitle'>Params:</td><td class='colvalue'>$configValues</td></tr>" \
-			"<tr><td class='subtitle'>Stats:</td><td class='colvalue'>$rawstats</td></tr>" \
+			"<tr><td class='subtitle'>Stats:</td><td class='colvalue'>$resultstats</td></tr>" \
 			"<tr><td class='subtitle'>Active:</td><td class='colvalue'>$active</td></tr>"
 		}
 		lappend proxyItems "nsproxy '$pool'" "<table>$item</table>"
+	    } errorMsg]} {
+		#lappend proxyItems "nsproxy '$pool'" "<table>$errorMsg</table>"
 	    }
 	}
 
@@ -1361,6 +1386,62 @@ proc _ns_stats.cmpNumeric {n1 n2} {
     }
 
     return 0
+}
+
+proc _ns_stats.pretty {keys kvlist {format %.2f}} {
+    set stats {}
+    foreach {k v} $kvlist {
+	if {$k in $keys} {
+	    set v [_ns_stats.hr $v $format]
+	}
+	lappend stats $k $v
+    }
+    return $stats
+}
+
+proc _ns_stats.hr {n {format %.2f}} {
+    #
+    # Return the number in human readable form -gn
+    #
+    #puts format=[format %e $n]
+    set r $n
+    set units {15 P 12 T 9 G 6 M 3 K 0 "" -3 m -6 µ -9 n}
+    if {[regexp {^([0-9.]+)e(.[0-9]+)$} [format %e $n] _ val exp]} {
+	set exp [string trimleft $exp +]
+	set exp [string trimleft $exp 0]
+	if {$exp eq ""} {set exp 0}
+	foreach {e u} $units {
+	    #puts "$exp >= $e"
+	    if {$exp >= $e} {
+		#puts "[format %e $n] $val*10 ** ($exp-$e)"
+		set v [format $format [expr {$val*10**($exp-$e)}]]
+		if {[string first . $v] > -1} {
+		    set v [string trimright [string trimright $v 0] .]
+		}
+		set r $v$u
+		set found 1
+		break
+		puts stderr BREAK
+	    }
+	}
+	if {![info exists found]} {
+	    # fall back to nano
+	    #puts stderr fallback
+	    set e -9
+	    if {[regexp {^-0([0-9]+)$} $exp . e1]} {
+		set exp -$e1
+	    }
+	    #puts "[format %e $n] $val*10 ** ($exp-$e) // exp <$exp>"
+	    set v [format $format [expr {$val * 10 ** ($exp - $e)}]]
+	    if {[string first . $v] > -1} {
+		set v [string trimright [string trimright $v 0] .]
+	    }
+	    set r $v$u
+	}
+    } else {
+	puts "no match"
+    }
+    return $r
 }
 
 # Main processing logic
