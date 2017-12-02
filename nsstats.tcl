@@ -1401,6 +1401,11 @@ proc _ns_stats.pretty {keys kvlist {format %.2f}} {
 
 proc _ns_stats.hr {n {format %.2f}} {
     #
+    # use global setting ::raw for returning raw values
+    #
+    if {[info exists ::raw] && $::raw} {return $n}
+
+    #
     # Return the number in human readable form -gn
     #
     #puts format=[format %e $n]
@@ -1446,6 +1451,7 @@ proc _ns_stats.hr {n {format %.2f}} {
 
 # Main processing logic
 set page [ns_queryget @page]
+set ::raw [ns_queryget raw 0]
 
 if { [info command _ns_stats.$page] eq "" } {
   set page index
