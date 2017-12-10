@@ -896,8 +896,9 @@ proc _ns_stats.process {} {
 			"<tr><td class='subtitle'>Params:</td><td class='colvalue'>$configValues</td></tr>" \
 			"<tr><td class='subtitle'>Stats:</td><td class='colvalue'>$resultstats</td></tr>" \
 			"<tr><td class='subtitle'>Active:</td><td class='colvalue'>$active</td></tr>"
+		    lappend proxyItems "nsproxy '$pool'" "<table>$item</table>"
 		}
-		lappend proxyItems "nsproxy '$pool'" "<table>$item</table>"
+
 	    } errorMsg]} {
 		#lappend proxyItems "nsproxy '$pool'" "<table>$errorMsg</table>"
 	    }
