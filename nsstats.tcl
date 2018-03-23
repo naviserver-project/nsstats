@@ -875,7 +875,7 @@ proc _ns_stats.process {} {
 	if {[info commands ns_proxy] ne ""} {
 	    #
 	    # Use catch for the time being to handle forward
-	    # compatiblity (when no ns_proxy stats are available)
+	    # compatibility (when no ns_proxy stats are available)
 	    #
 	    if {[catch {
 		foreach pool [lsort [ns_proxy pools]] {
