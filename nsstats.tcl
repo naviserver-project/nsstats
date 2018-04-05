@@ -1466,5 +1466,11 @@ if { ($enabled == 0 && [ns_conn peeraddr] ni {"127.0.0.1" "::1"}) ||
 }
 # Produce page
 ns_set update [ns_conn outputheaders] "Expires" "now"
-ns_return 200 text/html [_ns_stats.$page]
+set html [_ns_stats.$page]
+if {$html ne ""} {
+    ns_return 200 text/html $html
+} else {
+    # We assume, that when _ns_stats returns empty, the page
+    # returned/redicted itself.
+}
 
