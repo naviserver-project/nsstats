@@ -123,26 +123,24 @@ proc _ns_stats.footer {} {
 }
 
 proc _ns_stats.index {} {
-    set html [_ns_stats.header]
-
-    append html "\
-    o <a href='?@page=adp'>ADP</a><br>
-    o <a href='?@page=cache'>Cache</a><br>
-    o <a href='?@page=configfile'>Config File</a><br>
-    o <a href='?@page=configparams'>Config Parameters</a><br>
-    o <a href='?@page=jobs'>Jobs</a><br>
-    o <a href='?@page=log'>Log</a><br>
-    o <a href='?@page=loglevel'>Log Levels</a><br>
-    o <a href='?@page=mempools'>Memory</a><br>
-    o <a href='?@page=locks'>Mutex Locks</a><br>
-    o <a href='?@page=nsvlocks'>Nsv Locks</a><br>
-    o <a href='?@page=process'>Process</a><br>
-    o <a href='?@page=sched'>Scheduled Procedures</a><br>
-    o <a href='?@page=threads'>Threads</a><br>
-    "
-
-    append html [_ns_stats.footer]
-
+    append html \
+	[_ns_stats.header] \
+	"<ul>" \
+	"<li> <a href='?@page=adp'>ADP</a></li>" \
+	"<li> <a href='?@page=cache'>Cache</a></li>" \
+	"<li> <a href='?@page=configfile'>Config File</a></li>" \
+	"<li> <a href='?@page=configparams'>Config Parameters</a></li>" \
+	"<li> <a href='?@page=jobs'>Jobs</a></li>" \
+	"<li> <a href='?@page=log'>Log</a></li>" \
+	"<li> <a href='?@page=loglevel'>Log Levels</a></li>" \
+	"<li> <a href='?@page=mempools'>Memory</a></li>" \
+	"<li> <a href='?@page=locks'>Mutex Locks</a></li>" \
+	"<li> <a href='?@page=nsvlocks'>Nsv Locks</a></li>" \
+	"<li> <a href='?@page=process'>Process</a></li>" \
+	"<li> <a href='?@page=sched'>Scheduled Procedures</a></li>" \
+	"<li> <a href='?@page=threads'>Threads</a></li>" \
+	"</ul>\n" \
+	[_ns_stats.footer]
     return $html
 }
 
@@ -174,9 +172,10 @@ proc _ns_stats.adp {} {
 
     set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
 
-    set html [_ns_stats.header ADP]
-    append html [_ns_stats.results $col $colTitles ?@page=adp $rows $reverseSort]
-    append html [_ns_stats.footer]
+    append html \
+	[_ns_stats.header ADP] \
+	[_ns_stats.results $col $colTitles ?@page=adp $rows $reverseSort] \
+	[_ns_stats.footer]
 
     return $html
 }
@@ -211,9 +210,12 @@ proc _ns_stats.cache {} {
     set colTitles   [list Cache Max Current Utilization Entries "Avg Size" Flushes Hits Reuse Misses "Hit Rate" Expired Pruned Commit Rollback "Saved/KB" Saved]
     set rows        [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
 
-    set html [_ns_stats.header Cache]
-    append html [_ns_stats.results $col $colTitles ?@page=cache $rows $reverseSort {left right right right right right right right right right right right right right right right right}]
-    append html [_ns_stats.footer]
+    append html \
+	[_ns_stats.header Cache] \
+	[_ns_stats.results $col $colTitles ?@page=cache $rows $reverseSort {
+	    left right right right right right right right right right right right right right right right right
+	}] \
+	[_ns_stats.footer]
 
     return $html
 }
@@ -288,10 +290,12 @@ proc _ns_stats.locks {} {
 			 ]
     }
 
-    set html [_ns_stats.header "Mutex Locks"]
-    append html [_ns_stats.results $col $colTitles ?@page=locks $rows $reverseSort \
-		     {left left right right right right right right right right}]
-    append html [_ns_stats.footer]
+    append html \
+	[_ns_stats.header "Mutex Locks"] \
+	[_ns_stats.results $col $colTitles ?@page=locks $rows $reverseSort {
+	    left left right right right right right right right right
+	}] \
+	[_ns_stats.footer]
 
     return $html
 }
@@ -331,10 +335,10 @@ proc _ns_stats.nsvlocks {} {
 
     set rows ""
     set bucketNr 0
-    if {[info command nsv_bucket] ne ""} {
+    if {[info commands nsv_bucket] ne ""} {
       foreach b [nsv_bucket] {
         foreach e $b {
-	  lappend rows [eval lappend e $bucketNr $mutexStats($bucketNr)]
+	  lappend rows [lappend e $bucketNr {*}$mutexStats($bucketNr)]
 	}
         incr bucketNr
       }
@@ -346,11 +350,12 @@ proc _ns_stats.nsvlocks {} {
        set truncated 1
     }
 
-    set html [_ns_stats.header "Nsv Locks"]
-    append html [_ns_stats.results $col $colTitles ?@page=nsvlocks \
-		     $rows \
-		     $reverseSort \
-		     {left right right right right right right right}]
+    append html \
+	[_ns_stats.header "Nsv Locks"] \
+	[_ns_stats.results $col $colTitles ?@page=nsvlocks \
+	     $rows \
+	     $reverseSort \
+	     {left right right right right right right right}]
 
     if {[info exists truncated]} {
       append html "<a href='?@page=nsvlocks&col=$col&reversesort=$reverseSort&all=1'>...</a><br>"
@@ -378,9 +383,10 @@ proc _ns_stats.log {} {
         close $f
     }
 
-    set html [_ns_stats.header Log]
-    append html "<font size=2><pre>$log</pre></font>"
-    append html [_ns_stats.footer]
+    append html \
+	[_ns_stats.header Log] \
+	"<font size=2><pre>$log</pre></font>" \
+	[_ns_stats.footer]
 
     return $html
 }
@@ -476,14 +482,15 @@ proc _ns_stats.configparams {} {
       append sectionhtml "\n<tr><td colspan='2' class='colsection'>$anchor</td></tr>\n$table($section)\n"
     }
   }
-  set html [_ns_stats.header "Config Parameters"]
-  append html "The following values are defined in the configuration database:<br>"
-  append html "<table><tr><td valign='top'>"
-  append html "<ul><li>[join $toc </li><li>]</li></ul>"
-  append html "</td><td>"
-  append html <table>$sectionhtml</table>
-  append html "</td></tr>"
-  append html [_ns_stats.footer]
+    append html \
+      [_ns_stats.header "Config Parameters"] \
+      "The following values are defined in the configuration database:<br>" \
+      "<table><tr><td valign='top'>" \
+      "<ul><li>[join $toc </li><li>]</li></ul>" \
+      </td><td> \
+      <table>$sectionhtml</table> \
+      </td></tr> \
+      [_ns_stats.footer]
   return $html
 }
 
@@ -497,16 +504,16 @@ proc _ns_stats.configfile {} {
 	    close $f
 	}
     }
-    set html [_ns_stats.header Log]
-    append html "<font size=2><pre>[ns_quotehtml $config]</pre></font>"
-    append html [_ns_stats.footer]
-
+    append html \
+	[_ns_stats.header Log] \
+	"<font size=2><pre>[ns_quotehtml $config]</pre></font>" \
+	[_ns_stats.footer]
     return $html
 }
 
 # minimal backwards compatibility for tcl 8.4
 
-if {[info command ::dict] ne ""} {
+if {[info commands ::dict] ne ""} {
   proc dictget? {dict key {def ""}} {
     if {[dict exists $dict $key]} {
 	return [dict get $dict $key]
@@ -535,7 +542,7 @@ proc _ns_stats.mempools {} {
 
     set html [_ns_stats.header Memory]
 
-    if {[info command ::dict] ne ""} {
+    if {[info commands ::dict] ne ""} {
         set trans [dict create]
         foreach thread [ns_info threads] {
           dict set trans thread0x[lindex $thread 2] [lindex $thread 0]
@@ -723,8 +730,8 @@ proc _ns_stats.loglevel {} {
 	set label [dict get $dict [ns_logctl severity $s]]
 	lappend values $s "<a href='[ns_conn url]?@page=[ns_queryget @page]&toggle=$s'>$label</a>"
     }
-    set html [_ns_stats.header "Log Levels"]
     append html \
+	[_ns_stats.header "Log Levels"] \
 	"<p>The following table shows the current loglevels:<p>\n" \
 	[_ns_stats.process.table $values] \
 	[_ns_stats.footer]
@@ -791,7 +798,6 @@ proc _ns_stats.process {} {
 		   ]
 
     set html [_ns_stats.header Process]
-
     append html [_ns_stats.process.table $values]
 
     foreach s [ns_info servers] {
@@ -828,8 +834,8 @@ proc _ns_stats.process {} {
 	    # statistics
 	    #
 	    set rawstats [ns_server -server $s -pool $pool stats]
-	    set rawthreads [concat [ns_server -server $s -pool $pool threads] \
-				waiting [ns_server -server $s -pool $pool waiting]]
+	    set rawthreads [list [ns_server -server $s -pool $pool threads] \
+				waiting {*}[ns_server -server $s -pool $pool waiting]]
 	    set rawreqs [ns_server -server $s -pool $pool all]
 	    set reqs {}
 	    foreach req $rawreqs {
@@ -955,12 +961,12 @@ proc _ns_stats.mapped {} {
     set serverName $server
     if {$serverName eq ""} {set serverName default}
 
-    set html [_ns_stats.header Mapped]
-    append html "<h3>Mapped URLs of Server $serverName pool $poolName</h3>"
-    append html [_ns_stats.results $col $colTitles ?@page=mapped&pool=$pool&server=$server $rows $reverseSort]
-    append html "<p>Back to <a href='?@page=process'>process</a> page</p>"
-    append html [_ns_stats.footer]
-
+    append html \
+	[_ns_stats.header Mapped] \
+	"<h3>Mapped URLs of Server $serverName pool $poolName</h3>" \
+	[_ns_stats.results $col $colTitles ?@page=mapped&pool=$pool&server=$server $rows $reverseSort] \
+	"<p>Back to <a href='?@page=process'>process</a> page</p>" \
+	[_ns_stats.footer]
     return $html
 }
 
@@ -1020,11 +1026,11 @@ proc _ns_stats.sched {} {
     }
 
     set colTitles [list ID Status Callback Data Flags "Last Queue" "Last Start" "Last End" Duration "Next Run"]
-
-    set html [_ns_stats.header "Scheduled Procedures"]
-    append html [_ns_stats.results $col $colTitles ?@page=sched $rows $reverseSort]
-    append html [_ns_stats.footer]
-
+    
+    append html \
+	[_ns_stats.header "Scheduled Procedures"] \
+	[_ns_stats.results $col $colTitles ?@page=sched $rows $reverseSort] \
+	[_ns_stats.footer]
     return $html
 }
 
@@ -1102,10 +1108,10 @@ proc _ns_stats.threads {} {
         }
     }
 
-    set html [_ns_stats.header Threads]
-    append html [_ns_stats.results $col $colTitles ?@page=threads $rows $reverseSort $align]
-    append html [_ns_stats.footer]
-
+    append html \
+	[_ns_stats.header Threads] \
+	[_ns_stats.results $col $colTitles ?@page=threads $rows $reverseSort $align] \
+	[_ns_stats.footer]
     return $html
 }
 
@@ -1153,10 +1159,10 @@ proc _ns_stats.jobs {} {
       set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
     }
 
-    set html [_ns_stats.header Jobs]
-    append html [_ns_stats.results $col $colTitles ?@page=jobs&queue=$queue $rows $reverseSort]
-    append html [_ns_stats.footer]
-
+    append html \
+	[_ns_stats.header Jobs] \
+	[_ns_stats.results $col $colTitles ?@page=jobs&queue=$queue $rows $reverseSort] \
+	[_ns_stats.footer]
     return $html
 }
 
@@ -1200,7 +1206,7 @@ proc _ns_stats.results {{selectedColNum ""} {colTitles ""} {colUrl ""} {rows ""}
         set colAlign "left"
 
         if {[llength $colAlignment]} {
-            set align [lindex $colAlignment [expr {$i - 1}]]
+            set align [lindex $colAlignment $i-1]
 
             if {[string length $align]} {
                 set colAlign $align
@@ -1454,23 +1460,29 @@ proc _ns_stats.hr {n {format %.2f}} {
 set page [ns_queryget @page]
 set ::raw [ns_queryget raw 0]
 
-if { [info command _ns_stats.$page] eq "" } {
+if { [info commands _ns_stats.$page] eq "" } {
   set page index
 }
 
 # Check user access if configured
 if { ($enabled == 0 && [ns_conn peeraddr] ni {"127.0.0.1" "::1"}) ||
      ($user ne "" && ([ns_conn authuser] ne $user || [ns_conn authpassword] ne $password)) } {
-  ns_returnunauthorized
-  return
-}
-# Produce page
-ns_set update [ns_conn outputheaders] "Expires" "now"
-set html [_ns_stats.$page]
-if {$html ne ""} {
-    ns_return 200 text/html $html
+    ns_returnunauthorized
+    return
 } else {
-    # We assume, that when _ns_stats returns empty, the page
-    # returned/redicted itself.
+    # Produce page
+    ns_set update [ns_conn outputheaders] "Expires" "now"
+    set html [_ns_stats.$page]
+    if {$html ne ""} {
+	ns_return 200 text/html $html
+    } else {
+	# We assume, that when _ns_stats returns empty, the page
+	# returned/redicted itself.
+    }
 }
-
+#
+# Local variables:
+#    mode: tcl
+#    tcl-indent-level: 4
+#    indent-tabs-mode: nil
+# End:
