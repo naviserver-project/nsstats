@@ -75,7 +75,7 @@ proc _ns_stats.header {{stat ""}} {
         set nav "<span class='current'>Main Menu</span>"
     }
 
-    return "\
+    return "<!DOCTYPE html>
     <html>
     <head>
     <title>$title</title>
@@ -850,7 +850,7 @@ proc _ns_stats.process {} {
 	    set reqs [join $reqs <br>]
 	    array set stats $rawstats
 	    set item \
-		"<tr'><td class='subtitle'>Connection Threads:</td><td class='colvalue'>$rawthreads</td></tr>\n"
+		"<tr><td class='subtitle'>Connection Threads:</td><td class='colvalue'>$rawthreads</td></tr>\n"
 	    if {$stats(requests) > 0} {
 		append item "<tr><td class='subtitle'>Request Handling:</td>" \
 		    "<td class='colvalue'>" \
