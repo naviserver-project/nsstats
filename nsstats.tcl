@@ -1123,7 +1123,7 @@ proc _ns_stats.jobs {} {
     set numericSort 1
     set rows        [list]
 
-    if { $queue == "" } {
+    if { $queue eq "" } {
 
       if {$col == 0 || $col == 1 || $col == 4} {
           set numericSort 0
