@@ -36,7 +36,7 @@
 #   pageroot which is usually /usr/local/ns/pages and point browser to it
 #
 
-# If this pages needs to be restricted assign username and password here
+# If this page needs to be restricted assign username and password here
 set user ""
 set password ""
 set enabled 1
@@ -126,19 +126,19 @@ proc _ns_stats.index {} {
     append html \
 	[_ns_stats.header] \
 	"<ul>" \
-	"<li> <a href='?@page=adp'>ADP</a></li>" \
-	"<li> <a href='?@page=cache'>Cache</a></li>" \
-	"<li> <a href='?@page=configfile'>Config File</a></li>" \
-	"<li> <a href='?@page=configparams'>Config Parameters</a></li>" \
-	"<li> <a href='?@page=jobs'>Jobs</a></li>" \
-	"<li> <a href='?@page=log'>Log</a></li>" \
-	"<li> <a href='?@page=loglevel'>Log Levels</a></li>" \
-	"<li> <a href='?@page=mempools'>Memory</a></li>" \
-	"<li> <a href='?@page=locks'>Mutex Locks</a></li>" \
-	"<li> <a href='?@page=nsvlocks'>Nsv Locks</a></li>" \
-	"<li> <a href='?@page=process'>Process</a></li>" \
-	"<li> <a href='?@page=sched'>Scheduled Procedures</a></li>" \
-	"<li> <a href='?@page=threads'>Threads</a></li>" \
+	"<li> <a href='?@page=adp'>ADP</a></li>" \n\
+	"<li> <a href='?@page=cache'>Cache</a></li>" \n\
+	"<li> <a href='?@page=configfile'>Config File</a></li>" \n\
+	"<li> <a href='?@page=configparams'>Config Parameters</a></li>" \n\
+	"<li> <a href='?@page=jobs'>Jobs</a></li>" \n\
+	"<li> <a href='?@page=log'>Log</a></li>" \n\
+	"<li> <a href='?@page=loglevel'>Log Levels</a></li>" \n\
+	"<li> <a href='?@page=mempools'>Memory</a></li>" \n\
+	"<li> <a href='?@page=locks'>Mutex Locks</a></li>" \n\
+	"<li> <a href='?@page=nsvlocks'>Nsv Locks</a></li>" \n\
+	"<li> <a href='?@page=process'>Process</a></li>" \n\
+	"<li> <a href='?@page=sched'>Scheduled Procedures</a></li>" \n\
+	"<li> <a href='?@page=threads'>Threads</a></li>" \n\
 	"</ul>\n" \
 	[_ns_stats.footer]
     return $html
