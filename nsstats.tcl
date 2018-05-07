@@ -32,7 +32,7 @@
 #
 #   Set of procedures implementing the NaviServer runtime statistics
 #
-#   To use it, set enabled to 1 and drop it somewehere under naviserver 
+#   To use it, set enabled to 1 and drop it somewehere under NaviServer
 #   pageroot which is usually /usr/local/ns/pages and point browser to it
 #
 
@@ -79,7 +79,7 @@ proc _ns_stats.header {{stat ""}} {
     <html>
     <head>
     <title>$title</title>
-    <style type='text/css'> 
+    <style type='text/css'>
 
        /* tooltip styling. by default the element to be styled is .tooltip  */
        .tip {
@@ -102,10 +102,10 @@ proc _ns_stats.header {{stat ""}} {
         td.colvalue {background-color: #ffffff;}
         table.navbar {border: 0px; cellpadding: 5px; border-spacing: 0px; width: 100%;}
         table.navbar td {padding: 5px; background: #666699; color: #ffffff; font-size: 10px;}
-	table.navbar td .current {color: #ffcc00;}
-	table.navbar td a {color: #ffffff; text-decoration: none;}
+        table.navbar td .current {color: #ffcc00;}
+        table.navbar td a {color: #ffffff; text-decoration: none;}
         table.data {border: 1px; cellpadding: 5px; border-spacing: 0px;}
-	table.data th {background: #999999; color: #ffffff; font-weight: normal; text-align: left;}
+        table.data th {background: #999999; color: #ffffff; font-weight: normal; text-align: left;}
     </style>
     </head>
 
@@ -124,23 +124,23 @@ proc _ns_stats.footer {} {
 
 proc _ns_stats.index {} {
     append html \
-	[_ns_stats.header] \
-	"<ul>" \
-	"<li> <a href='?@page=adp'>ADP</a></li>" \n\
-	"<li> <a href='?@page=cache'>Cache</a></li>" \n\
-	"<li> <a href='?@page=configfile'>Config File</a></li>" \n\
-	"<li> <a href='?@page=configparams'>Config Parameters</a></li>" \n\
-	"<li> <a href='?@page=jobs'>Jobs</a></li>" \n\
-	"<li> <a href='?@page=log'>Log</a></li>" \n\
-	"<li> <a href='?@page=loglevel'>Log Levels</a></li>" \n\
-	"<li> <a href='?@page=mempools'>Memory</a></li>" \n\
-	"<li> <a href='?@page=locks'>Mutex Locks</a></li>" \n\
-	"<li> <a href='?@page=nsvlocks'>Nsv Locks</a></li>" \n\
-	"<li> <a href='?@page=process'>Process</a></li>" \n\
-	"<li> <a href='?@page=sched'>Scheduled Procedures</a></li>" \n\
-	"<li> <a href='?@page=threads'>Threads</a></li>" \n\
-	"</ul>\n" \
-	[_ns_stats.footer]
+        [_ns_stats.header] \
+        "<ul>" \
+        "<li> <a href='?@page=adp'>ADP</a></li>" \n\
+        "<li> <a href='?@page=cache'>Cache</a></li>" \n\
+        "<li> <a href='?@page=configfile'>Config File</a></li>" \n\
+        "<li> <a href='?@page=configparams'>Config Parameters</a></li>" \n\
+        "<li> <a href='?@page=jobs'>Jobs</a></li>" \n\
+        "<li> <a href='?@page=log'>Log</a></li>" \n\
+        "<li> <a href='?@page=loglevel'>Log Levels</a></li>" \n\
+        "<li> <a href='?@page=mempools'>Memory</a></li>" \n\
+        "<li> <a href='?@page=locks'>Mutex Locks</a></li>" \n\
+        "<li> <a href='?@page=nsvlocks'>Nsv Locks</a></li>" \n\
+        "<li> <a href='?@page=process'>Process</a></li>" \n\
+        "<li> <a href='?@page=sched'>Scheduled Procedures</a></li>" \n\
+        "<li> <a href='?@page=threads'>Threads</a></li>" \n\
+        "</ul>\n" \
+        [_ns_stats.footer]
     return $html
 }
 
@@ -173,9 +173,9 @@ proc _ns_stats.adp {} {
     set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
 
     append html \
-	[_ns_stats.header ADP] \
-	[_ns_stats.results $col $colTitles ?@page=adp $rows $reverseSort] \
-	[_ns_stats.footer]
+        [_ns_stats.header ADP] \
+        [_ns_stats.results $col $colTitles ?@page=adp $rows $reverseSort] \
+        [_ns_stats.footer]
 
     return $html
 }
@@ -194,28 +194,28 @@ proc _ns_stats.cache {} {
     array set t {saved ""}
 
     foreach cache [ns_cache_names] {
-	array set t {commit 0 rollback 0}
+        array set t {commit 0 rollback 0}
         array set t [ns_cache_stats $cache]
-	set avgSize [expr {$t(entries) > 0 ? $t(size)/$t(entries) : 0}]
-	set savedPerByte [expr {$t(size) > 0 ? $t(saved)*1000.0/$t(size) : 0}]
+        set avgSize [expr {$t(entries) > 0 ? $t(size)/$t(entries) : 0}]
+        set savedPerByte [expr {$t(size) > 0 ? $t(saved)*1000.0/$t(size) : 0}]
         lappend results [list $cache $t(maxsize) $t(size) \
-			     [format %.2f [expr {$t(size)*100.0/$t(maxsize)}]]% \
-			     $t(entries) $avgSize $t(flushed) $t(hits) \
-			     [format %.0f [expr {$t(entries)>0 ? $t(hits)*1.0/$t(entries) : 0}]] \
-			     $t(missed) "$t(hitrate)%" $t(expired) $t(pruned) \
-			     $t(commit) $t(rollback) \
-			     [format %.4f $savedPerByte] [format %.2f $t(saved)]]
+                             [format %.2f [expr {$t(size)*100.0/$t(maxsize)}]]% \
+                             $t(entries) $avgSize $t(flushed) $t(hits) \
+                             [format %.0f [expr {$t(entries)>0 ? $t(hits)*1.0/$t(entries) : 0}]] \
+                             $t(missed) "$t(hitrate)%" $t(expired) $t(pruned) \
+                             $t(commit) $t(rollback) \
+                             [format %.4f $savedPerByte] [format %.2f $t(saved)]]
     }
 
     set colTitles   [list Cache Max Current Utilization Entries "Avg Size" Flushes Hits Reuse Misses "Hit Rate" Expired Pruned Commit Rollback "Saved/KB" Saved]
     set rows        [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
 
     append html \
-	[_ns_stats.header Cache] \
-	[_ns_stats.results $col $colTitles ?@page=cache $rows $reverseSort {
-	    left right right right right right right right right right right right right right right right right
-	}] \
-	[_ns_stats.footer]
+        [_ns_stats.header Cache] \
+        [_ns_stats.results $col $colTitles ?@page=cache $rows $reverseSort {
+            left right right right right right right right right right right right right right right right right
+        }] \
+        [_ns_stats.footer]
 
     return $html
 }
@@ -225,27 +225,30 @@ proc _ns_stats.locks {} {
     set reverseSort [ns_queryget reversesort 1]
 
     set numericSort 1
-    set colTitles   [list Name Owner ID Locks Busy Contention "Total Lock" "Avg Lock" "Total Wait" "Max Wait"]
+    set colTitles   [list Name ID Locks Busy Contention "Total Lock" "Avg Lock" "Total Wait" \
+                         "Max Wait" "Locks/Req" "Pot. Locks/sec"]
     set rows        ""
 
-    if {$col == 1 || $col == 2} {
+    if {$col == 1} {
         set numericSort 0
     }
 
     set results ""
     set sumWait 0
 
+    set totalRequests 0
+    foreach s [ns_info servers] {
+        foreach pool [lsort [ns_server -server $s pools]] {
+            incr totalRequests [dict get [ns_server -server $s -pool $pool stats] requests]
+        }
+    }
+
     foreach l [ns_info locks] {
-        set name      [lindex $l 0]
-        set owner     [lindex $l 1]
-        set id        [lindex $l 2]
-        set nlock     [lindex $l 3]
-        set nbusy     [lindex $l 4]
-        set totalWait [lindex $l 5]
-        set maxWait   [lindex $l 6]
-        set sumWait   [expr {$sumWait + $totalWait}]
-        set totalLock [lindex $l 7]
-        set avgLock   [expr {$totalLock ne "" && $nlock > 0 ? $totalLock * 1.0 / $nlock : 0}]
+        lassign $l name owner id nlock nbusy totalWait maxWait totalLock
+        set sumWait     [expr {$sumWait + $totalWait}]
+        set avgLock     [expr {$totalLock ne "" && $nlock > 0 ? $totalLock * 1.0 / $nlock : 0}]
+        set locksPerReq [expr {$nlock*1.0/$totalRequests}]
+        set maxLocks    [expr {1.0/$avgLock}]
 
         if {$nbusy == 0} {
             set contention 0.0
@@ -253,21 +256,19 @@ proc _ns_stats.locks {} {
             set contention [format %5.4f [expr {double($nbusy*100.0/$nlock)}]]
         }
 
-        lappend results [list $name $owner $id $nlock $nbusy $contention $totalLock $avgLock $totalWait $maxWait]
+        lappend results [list $name $id $nlock $nbusy $contention \
+                             $totalLock $avgLock $totalWait $maxWait \
+                             $locksPerReq $maxLocks]
     }
 
     foreach result [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort] {
-        set name        [lindex $result 0]
-        set owner       [lindex $result 1]
-        set id          [lindex $result 2]
-        set nlock       [lindex $result 3]
-        set nbusy       [lindex $result 4]
-        set contention  [format %.4f [lindex $result 5]]
-        set totalLock   [format %.4f [lindex $result 6]]
-        set avgLock     [format %.4f [lindex $result 7]]
-        set totalWait   [lindex $result 8]
-        set maxWait     [lindex $result 9]
+        lassign $result name id nlock nbusy contention totalLock avgLock totalWait maxWait locksPerReq maxLocks
+        set contention  [format %.4f $contention]
+        set totalLock   [format %.4f $totalLock]
+        set avgLock     [format %.8f $avgLock]
         set relWait     [expr {$sumWait > 0 ? $totalWait/$sumWait : 0}]
+        set locksPerReq [format %.2f $locksPerReq]
+        set maxLocks    [_ns_stats.hr $maxLocks]
 
         set color black
         set ccolor [expr {$contention < 2   ? $color : $contention < 5   ? "orange" : "red"}]
@@ -277,25 +278,26 @@ proc _ns_stats.locks {} {
         set ncolor [expr {$ccolor eq "red"    || $tcolor eq "red"    || $wcolor eq "red"    ? "red" : $ncolor}]
 
         lappend rows [list \
-			  "<font color=$ncolor>$name</font>" \
-			  "<font color=$color>$owner</font>" \
-			  "<font color=$color>$id</font>" \
-			  "<font color=$color>$nlock</font>" \
-			  "<font color=$color>$nbusy</font>" \
-			  "<font color=$ccolor>$contention</font>" \
-			  "<font color=$color>$totalLock</font>" \
-			  "<font color=$color>$avgLock</font>" \
-			  "<font color=$tcolor>$totalWait</font>" \
-			  "<font color=$wcolor>$maxWait</font>" \
-			 ]
+                          "<font color=$ncolor>$name</font>" \
+                          "<font color=$color>$id</font>" \
+                          "<font color=$color>$nlock</font>" \
+                          "<font color=$color>$nbusy</font>" \
+                          "<font color=$ccolor>$contention</font>" \
+                          "<font color=$color>$totalLock</font>" \
+                          "<font color=$color>$avgLock</font>" \
+                          "<font color=$tcolor>$totalWait</font>" \
+                          "<font color=$wcolor>$maxWait</font>" \
+                          "<font color=$color>$locksPerReq</font>" \
+                          "<font color=$color>$maxLocks</font>" \
+                         ]
     }
 
     append html \
-	[_ns_stats.header "Mutex Locks"] \
-	[_ns_stats.results $col $colTitles ?@page=locks $rows $reverseSort {
-	    left left right right right right right right right right
-	}] \
-	[_ns_stats.footer]
+        [_ns_stats.header "Mutex Locks"] \
+        [_ns_stats.results $col $colTitles ?@page=locks $rows $reverseSort {
+            left right right right right right right right right right right
+        }] \
+        [_ns_stats.footer]
 
     return $html
 }
@@ -312,7 +314,7 @@ proc _ns_stats.nsvlocks {} {
     if {$col == 1} {
         set numericSort 0
     }
-     
+
     # get the lock statistics for nsvs
     foreach l [ns_info locks] {
         set name      [lindex $l 0]
@@ -338,8 +340,8 @@ proc _ns_stats.nsvlocks {} {
     if {[info commands nsv_bucket] ne ""} {
       foreach b [nsv_bucket] {
         foreach e $b {
-	  lappend rows [lappend e $bucketNr {*}$mutexStats($bucketNr)]
-	}
+          lappend rows [lappend e $bucketNr {*}$mutexStats($bucketNr)]
+        }
         incr bucketNr
       }
     }
@@ -351,11 +353,11 @@ proc _ns_stats.nsvlocks {} {
     }
 
     append html \
-	[_ns_stats.header "Nsv Locks"] \
-	[_ns_stats.results $col $colTitles ?@page=nsvlocks \
-	     $rows \
-	     $reverseSort \
-	     {left right right right right right right right}]
+        [_ns_stats.header "Nsv Locks"] \
+        [_ns_stats.results $col $colTitles ?@page=nsvlocks \
+             $rows \
+             $reverseSort \
+             {left right right right right right right right}]
 
     if {[info exists truncated]} {
       append html "<a href='?@page=nsvlocks&col=$col&reversesort=$reverseSort&all=1'>...</a><br>"
@@ -384,9 +386,9 @@ proc _ns_stats.log {} {
     }
 
     append html \
-	[_ns_stats.header Log] \
-	"<font size=2><pre>$log</pre></font>" \
-	[_ns_stats.footer]
+        [_ns_stats.header Log] \
+        "<font size=2><pre>$log</pre></font>" \
+        [_ns_stats.footer]
 
     return $html
 }
@@ -449,7 +451,7 @@ proc _ns_stats.configparams {} {
       set tip [_ns_stats.tooltip $name $section_key]
       set tipclass [expr {$tip ne "" ? "tip" : ""}]
       lappend line "<tr><td title='$tip' class='coltitle $tipclass'>$section_key:</td>\n\
-	<td class='colvalue'>[join $keys($section_key) <br>]</td></tr>"
+        <td class='colvalue'>[join $keys($section_key) <br>]</td></tr>"
     }
     set table($name) [join $line \n]
   }
@@ -498,16 +500,16 @@ proc _ns_stats.configfile {} {
     set config ""
     set configFile [ns_info config]
     if {$configFile ne ""} {
-	catch {
-	    set f [open $configFile]
-	    set config [read $f]
-	    close $f
-	}
+        catch {
+            set f [open $configFile]
+            set config [read $f]
+            close $f
+        }
     }
     append html \
-	[_ns_stats.header Log] \
-	"<font size=2><pre>[ns_quotehtml $config]</pre></font>" \
-	[_ns_stats.footer]
+        [_ns_stats.header Log] \
+        "<font size=2><pre>[ns_quotehtml $config]</pre></font>" \
+        [_ns_stats.footer]
     return $html
 }
 
@@ -516,9 +518,9 @@ proc _ns_stats.configfile {} {
 if {[info commands ::dict] ne ""} {
   proc dictget? {dict key {def ""}} {
     if {[dict exists $dict $key]} {
-	return [dict get $dict $key]
+        return [dict get $dict $key]
     } else {
-	return $def
+        return $def
     }
   }
 } else {
@@ -546,7 +548,7 @@ proc _ns_stats.mempools {} {
         set trans [dict create]
         foreach thread [ns_info threads] {
           dict set trans thread0x[lindex $thread 2] [lindex $thread 0]
-	}
+        }
     }
 
     append html "\
@@ -575,43 +577,43 @@ proc _ns_stats.mempools {} {
                 <td valign=middle bgcolor=#999999><font color=#ffffff>Lock Waits</font></td>
              </tr>"
 
-	    foreach b [lrange $p 1 end] {
-		    set bs [lindex $b 0]
-		    set nf [lindex $b 1]
-		    set ng [lindex $b 2]
-		    set np [lindex $b 3]
-		    set nr [lindex $b 4]
-		    set nu [expr {$ng - $np}]
-		    set na [expr {$nu * $bs}]
+            foreach b [lrange $p 1 end] {
+                    set bs [lindex $b 0]
+                    set nf [lindex $b 1]
+                    set ng [lindex $b 2]
+                    set np [lindex $b 3]
+                    set nr [lindex $b 4]
+                    set nu [expr {$ng - $np}]
+                    set na [expr {$nu * $bs}]
 
-		    incr tops [expr {$ng + $np}]
-		    incr tlocks [lindex $b 5]
-		    incr twaits [lindex $b 6]
-		    incr tfree [expr {$bs * $nf}]
-		    incr talloc $na
-		    incr trequest $nr
-		    incr tused $nu
+                    incr tops [expr {$ng + $np}]
+                    incr tlocks [lindex $b 5]
+                    incr twaits [lindex $b 6]
+                    incr tfree [expr {$bs * $nf}]
+                    incr talloc $na
+                    incr trequest $nr
+                    incr tused $nu
 
-		    if {$nr != 0} {
-			    set ov [expr {$na - $nr}]
-			    set op [format %4.2f%% [expr {double($ov) * 100 / $nr}]]
-		    } else {
-			    set ov "N/A"
-			    set op "N/A"
-		    }
+                    if {$nr != 0} {
+                            set ov [expr {$na - $nr}]
+                            set op [format %4.2f%% [expr {double($ov) * 100 / $nr}]]
+                    } else {
+                            set ov "N/A"
+                            set op "N/A"
+                    }
 
-		    append html "<tr>"
+                    append html "<tr>"
 
-		    foreach e [linsert [lreplace $b 4 4] 4 $nr $na $op] {
-			    append html "<td bgcolor=#ffffff>$e</td>"
-		    }
+                    foreach e [linsert [lreplace $b 4 4] 4 $nr $na $op] {
+                            append html "<td bgcolor=#ffffff>$e</td>"
+                    }
 
-		    append html "</tr>"
-	    }
+                    append html "</tr>"
+            }
 
-	    append html "\
-	        </table>
-	        </td>
+            append html "\
+                </table>
+                </td>
         </tr>
         </table>
         <br>"
@@ -622,12 +624,12 @@ proc _ns_stats.mempools {} {
         set op [format %4.2f [expr {double($ov) * 100 / $trequest}]]
     }
     if { $tops > 0 } {
-    	set av [format %4.2f [expr {double(100) - (double($tlocks) * 100) / $tops}]]
+        set av [format %4.2f [expr {double(100) - (double($tlocks) * 100) / $tops}]]
     }
     if { $tlocks > 0 } {
-	set wr [format %4.2f [expr {double($twaits) / $tlocks}]]
+        set wr [format %4.2f [expr {double($twaits) / $tlocks}]]
     } else {
-	set wr N/A
+        set wr N/A
     }
 
     append html "\
@@ -669,7 +671,7 @@ proc _ns_stats.process.table {values} {
         </tr>
     }]
     foreach {key value} $values {
-	append html [subst {
+        append html [subst {
             <tr>
                 <td class='coltitle'>$key</td>
                 <td class='colvalue'>$value</td>
@@ -687,29 +689,29 @@ proc _ns_stats.process.table {values} {
 proc _ns_stats.process.dbpools {} {
     set lines ""
     if {![catch {set poolStats [ns_db stats]}]} {
-	foreach {pool stats} $poolStats {
-	    set gethandles [dict get $stats gethandles]
-	    if {$gethandles > 0} {
-		set avgWaitTime [expr {[dict get $stats waittime] / $gethandles}]
-		lappend stats avgwaittime $avgWaitTime
-	    }
-	    set statements [dict get $stats statements]
-	    if {$statements > 0} {
-		set avgSQLTime [expr {[dict get $stats sqltime] / $statements}]
-		lappend stats avgsqltime $avgSQLTime
-	    }
-	    set stats [_ns_stats.pretty {statements gethandles avgwaittime avgsqltime} $stats %.0f]
-	    lappend lines "<tr><td class='subtitle'>$pool:</td><td>$stats</td>"
-	}
+        foreach {pool stats} $poolStats {
+            set gethandles [dict get $stats gethandles]
+            if {$gethandles > 0} {
+                set avgWaitTime [expr {[dict get $stats waittime] / $gethandles}]
+                lappend stats avgwaittime $avgWaitTime
+            }
+            set statements [dict get $stats statements]
+            if {$statements > 0} {
+                set avgSQLTime [expr {[dict get $stats sqltime] / $statements}]
+                lappend stats avgsqltime $avgSQLTime
+            }
+            set stats [_ns_stats.pretty {statements gethandles avgwaittime avgsqltime} $stats %.0f]
+            lappend lines "<tr><td class='subtitle'>$pool:</td><td>$stats</td>"
+        }
     }
     return $lines
 }
 proc _ns_stats.process.callbacks {} {
     set lines ""
     foreach {entry} [ns_info callbacks] {
-	lassign $entry type call
-	set args [lrange $entry 2 end]
-	lappend lines "<tr><td class='subtitle'>$type:</td><td>$call</td><td>$args</td>"
+        lassign $entry type call
+        set args [lrange $entry 2 end]
+        lappend lines "<tr><td class='subtitle'>$type:</td><td>$call</td><td>$args</td>"
     }
     return $lines
 }
@@ -719,213 +721,213 @@ proc _ns_stats.process.callbacks {} {
 proc _ns_stats.loglevel {} {
     set toggle [ns_queryget toggle ""]
     if {$toggle ne ""} {
-	set old [ns_logctl severity $toggle]
-	ns_logctl severity $toggle [expr {! $old}]
-	ns_returnredirect [ns_conn url]?@page=[ns_queryget @page]
-	return
+        set old [ns_logctl severity $toggle]
+        ns_logctl severity $toggle [expr {! $old}]
+        ns_returnredirect [ns_conn url]?@page=[ns_queryget @page]
+        return
     }
     set values {}
     set dict {1 on 0 off}
     foreach s [lsort [ns_logctl severities]] {
-	set label [dict get $dict [ns_logctl severity $s]]
-	lappend values $s "<a href='[ns_conn url]?@page=[ns_queryget @page]&toggle=$s'>$label</a>"
+        set label [dict get $dict [ns_logctl severity $s]]
+        lappend values $s "<a href='[ns_conn url]?@page=[ns_queryget @page]&toggle=$s'>$label</a>"
     }
     append html \
-	[_ns_stats.header "Log Levels"] \
-	"<p>The following table shows the current loglevels:<p>\n" \
-	[_ns_stats.process.table $values] \
-	[_ns_stats.footer]
+        [_ns_stats.header "Log Levels"] \
+        "<p>The following table shows the current loglevels:<p>\n" \
+        [_ns_stats.process.table $values] \
+        [_ns_stats.footer]
     return $html
 }
 
 
 proc _ns_stats.process {} {
     if {[info commands ns_driver] ne ""} {
-	#
-	# Get certificates to report expire dates (assumes that the
-	# command "openssl" is on the search path)
-	#
-	set certInfo {}
-	foreach entry [ns_driver info] {
-	    set module [dict get $entry module]
-	    if {[dict get $entry type] eq "nsssl"} {
-		set server [dict get $entry server]
-		if {$server ne ""} {
-		    set certfile [ns_config ns/server/$server/module/$module certificate]
-		} else {
-		    set certfile [ns_config ns/module/$module certificate]
-		}
-		if {![info exists processed($certfile)]} {
-		    set notAfter [exec openssl x509 -enddate -noout -in $certfile]
-		    regexp {notAfter=(.*)$} $notAfter . date
-		    set days [expr {([clock scan $date] - [clock seconds])/(60*60*24.0)}]
-		    lappend certInfo "Certificate $certfile will expire in [format %.1f $days] days"
-		    set processed($certfile) 1
-		}
-	    }
-	}
-	#
-	# Combine driver stats with certificate infos
-	#
-	set driverInfo {}
-	foreach tuple [ns_driver stats] {
-	    lappend driverInfo [_ns_stats.pretty {received spooled partial} $tuple %.0f]
-	}
-	if {[llength $certInfo] > 0} {
-	    lappend driverInfo {} {*}$certInfo
-	}
-	set driverInfo [list "Driver Info" [join $driverInfo <br>]]
+        #
+        # Get certificates to report expire dates (assumes that the
+        # command "openssl" is on the search path)
+        #
+        set certInfo {}
+        foreach entry [ns_driver info] {
+            set module [dict get $entry module]
+            if {[dict get $entry type] eq "nsssl"} {
+                set server [dict get $entry server]
+                if {$server ne ""} {
+                    set certfile [ns_config ns/server/$server/module/$module certificate]
+                } else {
+                    set certfile [ns_config ns/module/$module certificate]
+                }
+                if {![info exists processed($certfile)]} {
+                    set notAfter [exec openssl x509 -enddate -noout -in $certfile]
+                    regexp {notAfter=(.*)$} $notAfter . date
+                    set days [expr {([clock scan $date] - [clock seconds])/(60*60*24.0)}]
+                    lappend certInfo "Certificate $certfile will expire in [format %.1f $days] days"
+                    set processed($certfile) 1
+                }
+            }
+        }
+        #
+        # Combine driver stats with certificate infos
+        #
+        set driverInfo {}
+        foreach tuple [ns_driver stats] {
+            lappend driverInfo [_ns_stats.pretty {received spooled partial} $tuple %.0f]
+        }
+        if {[llength $certInfo] > 0} {
+            lappend driverInfo {} {*}$certInfo
+        }
+        set driverInfo [list "Driver Info" [join $driverInfo <br>]]
 
     } else {
-	set driverInfo ""
+        set driverInfo ""
     }
     set values [list \
-		    Host 		"[ns_info hostname] ([ns_info address])" \
-		    "Boot Time"		[clock format [ns_info boottime] -format %c] \
-		    Uptime		[_ns_stats.fmtSeconds [ns_info uptime]] \
-		    Process		"[ns_info pid] [ns_info nsd]" \
-		    Home 		[ns_info home] \
-		    Configuration 	[ns_info config] \
-		    "Error Log"		[ns_info log] \
-		    "Log Statistics"	[_ns_stats.pretty {Notice Warning Debug(sql)} [ns_logctl stats] %.0f] \
-		    Version 		"[ns_info patchlevel] (tag [ns_info tag]))" \
-		    "Build Date" 	[ns_info builddate] \
-		    Servers 		[join [ns_info servers] <br>] \
-		    {*}${driverInfo} \
-		    DB-Pools 		"<table>[join [_ns_stats.process.dbpools]]</table>" \
-		    Callbacks 		"<table>[join [_ns_stats.process.callbacks]]</table>" \
-		    "Socket Callbacks"	[join [ns_info sockcallbacks] <br>] \
-		   ]
+                    Host                "[ns_info hostname] ([ns_info address])" \
+                    "Boot Time"		[clock format [ns_info boottime] -format %c] \
+                    Uptime		[_ns_stats.fmtSeconds [ns_info uptime]] \
+                    Process		"[ns_info pid] [ns_info nsd]" \
+                    Home                [ns_info home] \
+                    Configuration       [ns_info config] \
+                    "Error Log"		[ns_info log] \
+                    "Log Statistics"	[_ns_stats.pretty {Notice Warning Debug(sql)} [ns_logctl stats] %.0f] \
+                    Version             "[ns_info patchlevel] (tag [ns_info tag]))" \
+                    "Build Date"        [ns_info builddate] \
+                    Servers             [join [ns_info servers] <br>] \
+                    {*}${driverInfo} \
+                    DB-Pools            "<table>[join [_ns_stats.process.dbpools]]</table>" \
+                    Callbacks           "<table>[join [_ns_stats.process.callbacks]]</table>" \
+                    "Socket Callbacks"	[join [ns_info sockcallbacks] <br>] \
+                   ]
 
     set html [_ns_stats.header Process]
     append html [_ns_stats.process.table $values]
 
     foreach s [ns_info servers] {
-	set requests ""; set addresses ""; set writerThreads ""
-	foreach driver {nssock nsssl} {
-	    set section [ns_driversection -driver $driver -server $s]
-	    if {$section eq ""} continue
-	    set addr [ns_config ns/module/$driver/servers $s]
-	    if {$addr ne ""} {
-		lappend addresses $addr
-		lappend writerThreads $driver: [ns_config $section writerthreads 0]
-	    } else {
-		set port [ns_config $section port]
-		if {$port ne ""} {
-		    lappend addresses [ns_config $section address]:$port
-		    lappend writerThreads $driver: [ns_config $section writerthreads 0]
-		}
-	    }
-	}
-	set serverdir ""
-	catch {set serverdir [ns_server -server $s serverdir]}
+        set requests ""; set addresses ""; set writerThreads ""
+        foreach driver {nssock nsssl} {
+            set section [ns_driversection -driver $driver -server $s]
+            if {$section eq ""} continue
+            set addr [ns_config ns/module/$driver/servers $s]
+            if {$addr ne ""} {
+                lappend addresses $addr
+                lappend writerThreads $driver: [ns_config $section writerthreads 0]
+            } else {
+                set port [ns_config $section port]
+                if {$port ne ""} {
+                    lappend addresses [ns_config $section address]:$port
+                    lappend writerThreads $driver: [ns_config $section writerthreads 0]
+                }
+            }
+        }
+        set serverdir ""
+        catch {set serverdir [ns_server -server $s serverdir]}
 
-	#
-	# Per connection pool information
-	#
+        #
+        # Per connection pool information
+        #
         set poolItems ""
-	foreach pool [lsort [ns_server -server $s pools]] {
-	    #
-	    # provide a nicer name for the pool
-	    #
-	    set poolLabel "default"
-	    if {$pool ne {}} {set poolLabel $pool}
-	    #
-	    # statistics
-	    #
-	    set rawstats [ns_server -server $s -pool $pool stats]
-	    set rawthreads [list [ns_server -server $s -pool $pool threads] \
-				waiting {*}[ns_server -server $s -pool $pool waiting]]
-	    set rawreqs [ns_server -server $s -pool $pool all]
-	    set reqs {}
-	    foreach req $rawreqs {
-		set ts [expr {round([lindex $req end-1])}]
-		if {$ts >= 60} {
-		    lappend req [clock format [expr {[clock seconds] - $ts}] -format {%y/%m/%d %H:%M:%S}]
-		} else {
-		    lappend req .
-		}
-		lappend reqs $req
-	    }
-	    set reqs [join $reqs <br>]
-	    array set stats $rawstats
-	    set item \
-		"<tr><td class='subtitle'>Connection Threads:</td><td class='colvalue'>$rawthreads</td></tr>\n"
-	    if {$stats(requests) > 0} {
-		append item "<tr><td class='subtitle'>Request Handling:</td>" \
-		    "<td class='colvalue'>" \
-		    "requests " [_ns_stats.hr $stats(requests) %.1f], \
-		    " queued " [_ns_stats.hr $stats(queued) %1.f] \
-		    " ([format %.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%)," \
-		    " spooled " [_ns_stats.hr $stats(spools) %1.f] \
-		    " ([format %.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)</td></tr>\n"
-		append item "<tr><td class='subtitle'>Request Timing:</td>" \
-		    "<td class='colvalue'>avg queue time [format %5.4f [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
-		    " avg filter time [format %5.4f [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
-		    " avg run time [format %.4f [expr {$stats(runtime)*1.0/$stats(requests)}]]s" \
-		    " avg trace time [format %.4f [expr {$stats(tracetime)*1.0/$stats(requests)}]]s" \
-		    "</td></tr>\n"
-	    }
-	    append item \
-		"<tr><td class='subtitle'>Active Requests:</td><td class='colvalue'>$reqs</td></tr>\n"
-	    set nrMapped [llength [ns_server -pool $pool map]]
-	    if {$nrMapped > 0} {
-		append item \
-		    "<tr><td class='subtitle'>Mapped:</td>" \
-		    "<td class='colvalue'><a href='?@page=mapped&pool=$pool&server=$s'>$nrMapped</a></td></tr>\n"
-	    }
-	    lappend poolItems "Pool '$poolLabel'" "<table>$item</table>"
-	}
+        foreach pool [lsort [ns_server -server $s pools]] {
+            #
+            # provide a nicer name for the pool
+            #
+            set poolLabel "default"
+            if {$pool ne {}} {set poolLabel $pool}
+            #
+            # statistics
+            #
+            set rawstats [ns_server -server $s -pool $pool stats]
+            set rawthreads [list [ns_server -server $s -pool $pool threads] \
+                                waiting {*}[ns_server -server $s -pool $pool waiting]]
+            set rawreqs [ns_server -server $s -pool $pool all]
+            set reqs {}
+            foreach req $rawreqs {
+                set ts [expr {round([lindex $req end-1])}]
+                if {$ts >= 60} {
+                    lappend req [clock format [expr {[clock seconds] - $ts}] -format {%y/%m/%d %H:%M:%S}]
+                } else {
+                    lappend req .
+                }
+                lappend reqs $req
+            }
+            set reqs [join $reqs <br>]
+            array set stats $rawstats
+            set item \
+                "<tr><td class='subtitle'>Connection Threads:</td><td class='colvalue'>$rawthreads</td></tr>\n"
+            if {$stats(requests) > 0} {
+                append item "<tr><td class='subtitle'>Request Handling:</td>" \
+                    "<td class='colvalue'>" \
+                    "requests " [_ns_stats.hr $stats(requests) %.1f], \
+                    " queued " [_ns_stats.hr $stats(queued) %1.f] \
+                    " ([format %.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%)," \
+                    " spooled " [_ns_stats.hr $stats(spools) %1.f] \
+                    " ([format %.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)</td></tr>\n"
+                append item "<tr><td class='subtitle'>Request Timing:</td>" \
+                    "<td class='colvalue'>avg queue time [format %5.4f [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
+                    " avg filter time [format %5.4f [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
+                    " avg run time [format %.4f [expr {$stats(runtime)*1.0/$stats(requests)}]]s" \
+                    " avg trace time [format %.4f [expr {$stats(tracetime)*1.0/$stats(requests)}]]s" \
+                    "</td></tr>\n"
+            }
+            append item \
+                "<tr><td class='subtitle'>Active Requests:</td><td class='colvalue'>$reqs</td></tr>\n"
+            set nrMapped [llength [ns_server -pool $pool map]]
+            if {$nrMapped > 0} {
+                append item \
+                    "<tr><td class='subtitle'>Mapped:</td>" \
+                    "<td class='colvalue'><a href='?@page=mapped&pool=$pool&server=$s'>$nrMapped</a></td></tr>\n"
+            }
+            lappend poolItems "Pool '$poolLabel'" "<table>$item</table>"
+        }
 
         set proxyItems ""
-	if {[info commands ns_proxy] ne ""} {
-	    #
-	    # Use catch for the time being to handle forward
-	    # compatibility (when no ns_proxy stats are available)
-	    #
-	    if {[catch {
-		foreach pool [lsort [ns_proxy pools]] {
-		    #
-		    # Get configure values and statistics
-		    #
-		    set configValues [ns_proxy configure $pool]
-		    set rawstats [ns_proxy stats $pool]
-		    set requests [dict get $rawstats requests]
-		    if {$requests > 0} {
-			set avgruntime [expr {[dict get $rawstats runtime] / $requests}]
-			lappend rawstats avgruntime $avgruntime
-		    }
-		    set resultstats [_ns_stats.pretty {requests runtime avgruntime} $rawstats %.0f]
-		    set active [join [ns_proxy active $pool] <br>]
-		    set item ""
-		    append item \
-			"<tr><td class='subtitle'>Params:</td><td class='colvalue'>$configValues</td></tr>" \
-			"<tr><td class='subtitle'>Stats:</td><td class='colvalue'>$resultstats</td></tr>" \
-			"<tr><td class='subtitle'>Active:</td><td class='colvalue'>$active</td></tr>"
-		    lappend proxyItems "nsproxy '$pool'" "<table>$item</table>"
-		}
+        if {[info commands ns_proxy] ne ""} {
+            #
+            # Use catch for the time being to handle forward
+            # compatibility (when no ns_proxy stats are available)
+            #
+            if {[catch {
+                foreach pool [lsort [ns_proxy pools]] {
+                    #
+                    # Get configure values and statistics
+                    #
+                    set configValues [ns_proxy configure $pool]
+                    set rawstats [ns_proxy stats $pool]
+                    set requests [dict get $rawstats requests]
+                    if {$requests > 0} {
+                        set avgruntime [expr {[dict get $rawstats runtime] / $requests}]
+                        lappend rawstats avgruntime $avgruntime
+                    }
+                    set resultstats [_ns_stats.pretty {requests runtime avgruntime} $rawstats %.0f]
+                    set active [join [ns_proxy active $pool] <br>]
+                    set item ""
+                    append item \
+                        "<tr><td class='subtitle'>Params:</td><td class='colvalue'>$configValues</td></tr>" \
+                        "<tr><td class='subtitle'>Stats:</td><td class='colvalue'>$resultstats</td></tr>" \
+                        "<tr><td class='subtitle'>Active:</td><td class='colvalue'>$active</td></tr>"
+                    lappend proxyItems "nsproxy '$pool'" "<table>$item</table>"
+                }
 
-	    } errorMsg]} {
-		#lappend proxyItems "nsproxy '$pool'" "<table>$errorMsg</table>"
-	    }
-	}
+            } errorMsg]} {
+                #lappend proxyItems "nsproxy '$pool'" "<table>$errorMsg</table>"
+            }
+        }
 
-	set values [list \
-			"Address"            [join $addresses <br>] \
-			"Server Directory"   $serverdir \
-			"Page Directory"     [ns_server -server $s pagedir] \
-			"Tcl Library" 	     [ns_server -server $s tcllib] \
-			"Access Log" 	     [ns_config ns/server/$s/module/nslog file] \
-			"Writer Threads"     $writerThreads \
-			"Connection Pools"   [ns_server -server $s pools] \
-			{*}$poolItems \
-			{*}$proxyItems \
-			"Active Writer Jobs" [join [ns_writer list -server $s] <br>] \
-		       ]
-		
-	append html \
-	    "<h2>Server $s</h2>" \n \
-	    [_ns_stats.process.table $values]
+        set values [list \
+                        "Address"            [join $addresses <br>] \
+                        "Server Directory"   $serverdir \
+                        "Page Directory"     [ns_server -server $s pagedir] \
+                        "Tcl Library"        [ns_server -server $s tcllib] \
+                        "Access Log"         [ns_config ns/server/$s/module/nslog file] \
+                        "Writer Threads"     $writerThreads \
+                        "Connection Pools"   [ns_server -server $s pools] \
+                        {*}$poolItems \
+                        {*}$proxyItems \
+                        "Active Writer Jobs" [join [ns_writer list -server $s] <br>] \
+                       ]
+
+        append html \
+            "<h2>Server $s</h2>" \n \
+            [_ns_stats.process.table $values]
     }
 
     append html [_ns_stats.footer]
@@ -936,7 +938,7 @@ proc _ns_stats.process {} {
 proc _ns_stats.mapped {} {
     set col         [ns_queryget col 0]
     set reverseSort [ns_queryget reversesort 1]
-    
+
     set pool        [ns_queryget pool [ns_conn pool]]
     set server      [ns_queryget server [ns_conn server]]
     set numericSort 0
@@ -944,14 +946,14 @@ proc _ns_stats.mapped {} {
 
     set results ""
     foreach entry [ns_server -server $server -pool $pool map] {
-	#
-	# Currently, the url walker appends to a string without caring
-	# for proper list elements. Fix up the columns here.
-	#
+        #
+        # Currently, the url walker appends to a string without caring
+        # for proper list elements. Fix up the columns here.
+        #
         if {[llength $entry] > 4} {
             set entry [list [lindex $entry 0] [lrange $entry 1 end-2] [lindex $entry end-1] [lindex $entry end]]
         }
-	lappend results $entry
+        lappend results $entry
     }
 
     set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
@@ -962,11 +964,11 @@ proc _ns_stats.mapped {} {
     if {$serverName eq ""} {set serverName default}
 
     append html \
-	[_ns_stats.header Mapped] \
-	"<h3>Mapped URLs of Server $serverName pool $poolName</h3>" \
-	[_ns_stats.results $col $colTitles ?@page=mapped&pool=$pool&server=$server $rows $reverseSort] \
-	"<p>Back to <a href='?@page=process'>process</a> page</p>" \
-	[_ns_stats.footer]
+        [_ns_stats.header Mapped] \
+        "<h3>Mapped URLs of Server $serverName pool $poolName</h3>" \
+        [_ns_stats.results $col $colTitles ?@page=mapped&pool=$pool&server=$server $rows $reverseSort] \
+        "<p>Back to <a href='?@page=process'>process</a> page</p>" \
+        [_ns_stats.footer]
     return $html
 }
 
@@ -1015,10 +1017,10 @@ proc _ns_stats.sched {} {
         set state       [lindex $s 1]
         set flags       [join [_ns_stats.getSchedFlagTypes [lindex $s 4]] "<br>"]
         set next        [_ns_stats.fmtTime [lindex $s 9]]
-	set lastqueue   [_ns_stats.fmtTime [lindex $s 5]]
-	set laststart   [_ns_stats.fmtTime [lindex $s 6]]
-	set lastend     [_ns_stats.fmtTime [lindex $s 7]]
-	set proc        [lindex $s 2]
+        set lastqueue   [_ns_stats.fmtTime [lindex $s 5]]
+        set laststart   [_ns_stats.fmtTime [lindex $s 6]]
+        set lastend     [_ns_stats.fmtTime [lindex $s 7]]
+        set proc        [lindex $s 2]
         set arg         [lindex $s 3]
         set duration    [_ns_stats.fmtSeconds [lindex $s 8]]
 
@@ -1026,11 +1028,11 @@ proc _ns_stats.sched {} {
     }
 
     set colTitles [list ID Status Callback Data Flags "Last Queue" "Last Start" "Last End" Duration "Next Run"]
-    
+
     append html \
-	[_ns_stats.header "Scheduled Procedures"] \
-	[_ns_stats.results $col $colTitles ?@page=sched $rows $reverseSort] \
-	[_ns_stats.footer]
+        [_ns_stats.header "Scheduled Procedures"] \
+        [_ns_stats.results $col $colTitles ?@page=sched $rows $reverseSort] \
+        [_ns_stats.footer]
     return $html
 }
 
@@ -1052,7 +1054,7 @@ proc _ns_stats.threads {} {
        set align       {left   left   right left   left         left}
        set osInfo      0
     }
-  
+
     if {$osInfo} {
         set ti {}
         foreach t $threadInfo {
@@ -1072,7 +1074,7 @@ proc _ns_stats.threads {} {
                   nswap cnswap ext_signal processor
                 set state "$state [format %.2d $processor]"
             } else {
-              lassign {} tid state 
+              lassign {} tid state
               lassign {0 0} utime stime
            }
            lappend ti [linsert $t 5 $tid $state $utime $stime]
@@ -1109,9 +1111,9 @@ proc _ns_stats.threads {} {
     }
 
     append html \
-	[_ns_stats.header Threads] \
-	[_ns_stats.results $col $colTitles ?@page=threads $rows $reverseSort $align] \
-	[_ns_stats.footer]
+        [_ns_stats.header Threads] \
+        [_ns_stats.results $col $colTitles ?@page=threads $rows $reverseSort $align] \
+        [_ns_stats.footer]
     return $html
 }
 
@@ -1149,7 +1151,7 @@ proc _ns_stats.jobs {} {
       set results     [list]
 
       foreach jl [ns_job joblist $queue] {
-        array set ja $jl  
+        array set ja $jl
         set ja(starttime) [_ns_stats.fmtTime $ja(starttime)]
         set ja(endtime) [_ns_stats.fmtTime $ja(endtime)]
         set ja(time) "[expr [lindex [split $ja(time) .] 0]/1000] sec"
@@ -1160,9 +1162,9 @@ proc _ns_stats.jobs {} {
     }
 
     append html \
-	[_ns_stats.header Jobs] \
-	[_ns_stats.results $col $colTitles ?@page=jobs&queue=$queue $rows $reverseSort] \
-	[_ns_stats.footer]
+        [_ns_stats.header Jobs] \
+        [_ns_stats.results $col $colTitles ?@page=jobs&queue=$queue $rows $reverseSort] \
+        [_ns_stats.footer]
     return $html
 }
 
@@ -1336,11 +1338,11 @@ proc _ns_stats.fmtSeconds {seconds} {
     set secs  [expr {$seconds - (($hours * 3600) + ($mins * 60))}]
 
     if {$hours > 24} {
-	set days  [expr {$hours / 24}]
-	set hours [expr {$hours % 24}]
-	return "$days day[expr {$days<2 ? {} : {s}}] ${hours}:${mins}:${secs} (h:m:s)"
+        set days  [expr {$hours / 24}]
+        set hours [expr {$hours % 24}]
+        return "$days day[expr {$days<2 ? {} : {s}}] ${hours}:${mins}:${secs} (h:m:s)"
     } else {
-	return "${hours}:${mins}:${secs} (h:m:s)"
+        return "${hours}:${mins}:${secs} (h:m:s)"
     }
 }
 
@@ -1354,7 +1356,7 @@ proc _ns_stats.fmtTime {time} {
 
 proc _ns_stats.sortResults {results field numeric {reverse 0}} {
     global _sortListTmp
-    
+
     set _sortListTmp(field)     $field
     set _sortListTmp(numeric)   $numeric
     set _sortListTmp(reverse)   $reverse
@@ -1398,10 +1400,10 @@ proc _ns_stats.cmpNumeric {n1 n2} {
 proc _ns_stats.pretty {keys kvlist {format %.2f}} {
     set stats {}
     foreach {k v} $kvlist {
-	if {$k in $keys} {
-	    set v [_ns_stats.hr $v $format]
-	}
-	lappend stats $k $v
+        if {$k in $keys} {
+            set v [_ns_stats.hr $v $format]
+        }
+        lappend stats $k $v
     }
     return $stats
 }
@@ -1419,39 +1421,39 @@ proc _ns_stats.hr {n {format %.2f}} {
     set r $n
     set units {15 P 12 T 9 G 6 M 3 K 0 "" -3 m -6 µ -9 n}
     if {[regexp {^([0-9.]+)e(.[0-9]+)$} [format %e $n] _ val exp]} {
-	set exp [string trimleft $exp +]
-	set exp [string trimleft $exp 0]
-	if {$exp eq ""} {set exp 0}
-	foreach {e u} $units {
-	    #puts "$exp >= $e"
-	    if {$exp >= $e} {
-		#puts "[format %e $n] $val*10 ** ($exp-$e)"
-		set v [format $format [expr {$val*10**($exp-$e)}]]
-		if {[string first . $v] > -1} {
-		    set v [string trimright [string trimright $v 0] .]
-		}
-		set r $v$u
-		set found 1
-		break
-		puts stderr BREAK
-	    }
-	}
-	if {![info exists found]} {
-	    # fall back to nano
-	    #puts stderr fallback
-	    set e -9
-	    if {[regexp {^-0([0-9]+)$} $exp . e1]} {
-		set exp -$e1
-	    }
-	    #puts "[format %e $n] $val*10 ** ($exp-$e) // exp <$exp>"
-	    set v [format $format [expr {$val * 10 ** ($exp - $e)}]]
-	    if {[string first . $v] > -1} {
-		set v [string trimright [string trimright $v 0] .]
-	    }
-	    set r $v$u
-	}
+        set exp [string trimleft $exp +]
+        set exp [string trimleft $exp 0]
+        if {$exp eq ""} {set exp 0}
+        foreach {e u} $units {
+            #puts "$exp >= $e"
+            if {$exp >= $e} {
+                #puts "[format %e $n] $val*10 ** ($exp-$e)"
+                set v [format $format [expr {$val*10**($exp-$e)}]]
+                if {[string first . $v] > -1} {
+                    set v [string trimright [string trimright $v 0] .]
+                }
+                set r $v$u
+                set found 1
+                break
+                puts stderr BREAK
+            }
+        }
+        if {![info exists found]} {
+            # fall back to nano
+            #puts stderr fallback
+            set e -9
+            if {[regexp {^-0([0-9]+)$} $exp . e1]} {
+                set exp -$e1
+            }
+            #puts "[format %e $n] $val*10 ** ($exp-$e) // exp <$exp>"
+            set v [format $format [expr {$val * 10 ** ($exp - $e)}]]
+            if {[string first . $v] > -1} {
+                set v [string trimright [string trimright $v 0] .]
+            }
+            set r $v$u
+        }
     } else {
-	puts "no match"
+        puts "no match"
     }
     return $r
 }
@@ -1474,10 +1476,10 @@ if { ($enabled == 0 && [ns_conn peeraddr] ni {"127.0.0.1" "::1"}) ||
     ns_set update [ns_conn outputheaders] "Expires" "now"
     set html [_ns_stats.$page]
     if {$html ne ""} {
-	ns_return 200 text/html $html
+        ns_return 200 text/html $html
     } else {
-	# We assume, that when _ns_stats returns empty, the page
-	# returned/redicted itself.
+        # We assume, that when _ns_stats returns empty, the page
+        # returned/redicted itself.
     }
 }
 #
