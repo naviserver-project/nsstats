@@ -226,7 +226,7 @@ proc _ns_stats.locks {} {
 
     set numericSort 1
     set colTitles   [list Name ID Locks Busy Contention "Total Lock" "Avg Lock" "Total Wait" \
-                         "Max Wait" "Locks/Req" "Pot. Locks/sec"]
+                         "Max Wait" "Locks/Req" "Pot.Locks/sec" "Pot.Reqs/sec"]
     set rows        ""
 
     if {$col == 1} {
@@ -247,8 +247,15 @@ proc _ns_stats.locks {} {
         lassign $l name owner id nlock nbusy totalWait maxWait totalLock
         set sumWait     [expr {$sumWait + $totalWait}]
         set avgLock     [expr {$totalLock ne "" && $nlock > 0 ? $totalLock * 1.0 / $nlock : 0}]
-        set locksPerReq [expr {$nlock*1.0/$totalRequests}]
-        set maxLocks    [expr {1.0/$avgLock}]
+        if {$nlock > 2} {
+            set maxLocks    [expr {1.0/$avgLock}]
+            set locksPerReq [expr {$nlock*1.0/$totalRequests}]
+            set reqsPerSec  [expr {$maxLocks/$locksPerReq}]
+        } else {
+            set maxLocks    -1
+            set locksPerReq -1
+            set reqsPerSec  -1
+        }
 
         if {$nbusy == 0} {
             set contention 0.0
@@ -258,17 +265,19 @@ proc _ns_stats.locks {} {
 
         lappend results [list $name $id $nlock $nbusy $contention \
                              $totalLock $avgLock $totalWait $maxWait \
-                             $locksPerReq $maxLocks]
+                             $locksPerReq $maxLocks $reqsPerSec]
     }
 
     foreach result [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort] {
-        lassign $result name id nlock nbusy contention totalLock avgLock totalWait maxWait locksPerReq maxLocks
+        lassign $result name id nlock nbusy contention totalLock avgLock totalWait maxWait \
+            locksPerReq maxLocks reqsPerSec
         set contention  [format %.4f $contention]
         set totalLock   [format %.4f $totalLock]
         set avgLock     [format %.8f $avgLock]
         set relWait     [expr {$sumWait > 0 ? $totalWait/$sumWait : 0}]
         set locksPerReq [format %.2f $locksPerReq]
         set maxLocks    [_ns_stats.hr $maxLocks]
+        set reqsPerSec  [_ns_stats.hr $reqsPerSec]
 
         set color black
         set ccolor [expr {$contention < 2   ? $color : $contention < 5   ? "orange" : "red"}]
@@ -289,13 +298,14 @@ proc _ns_stats.locks {} {
                           "<font color=$wcolor>$maxWait</font>" \
                           "<font color=$color>$locksPerReq</font>" \
                           "<font color=$color>$maxLocks</font>" \
+                          "<font color=$color>$reqsPerSec</font>" \
                          ]
     }
 
     append html \
         [_ns_stats.header "Mutex Locks"] \
         [_ns_stats.results $col $colTitles ?@page=locks $rows $reverseSort {
-            left right right right right right right right right right right
+            left right right right right right right right right right right right
         }] \
         [_ns_stats.footer]
 
