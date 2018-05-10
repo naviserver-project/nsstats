@@ -235,6 +235,7 @@ proc _ns_stats.locks {} {
 
     set results ""
     set sumWait 0
+    set sumLockTime 0
     set sumLocks 0
 
     set totalRequests 0
@@ -247,6 +248,7 @@ proc _ns_stats.locks {} {
     foreach l [ns_info locks] {
         lassign $l name owner id nlock nbusy totalWait maxWait totalLock
         set sumWait     [expr {$sumWait + $totalWait}]
+        set sumLockTime [expr {$sumLockTime + $totalLock}]
         set sumLocks    [expr {$sumLocks + $nlock}]
         set avgLock     [expr {$totalLock ne "" && $nlock > 0 ? $totalLock * 1.0 / $nlock : 0}]
         if {$nlock > 2} {
@@ -291,20 +293,20 @@ proc _ns_stats.locks {} {
         lappend rows [list \
                           "<font color=$ncolor>$name</font>" \
                           "<font color=$color>$id</font>" \
-                          "<font color=$color>$nlock</font>" \
-                          "<font color=$color>$nbusy</font>" \
+                          "<font color=$color>[_ns_stats.hr $nlock]</font>" \
+                          "<font color=$color>[_ns_stats.hr $nbusy]</font>" \
                           "<font color=$ccolor>$contention</font>" \
-                          "<font color=$color>$totalLock</font>" \
-                          "<font color=$color>$avgLock</font>" \
-                          "<font color=$tcolor>$totalWait</font>" \
-                          "<font color=$wcolor>$maxWait</font>" \
+                          "<font color=$color>[_ns_stats.hr $totalLock]</font>" \
+                          "<font color=$color>[_ns_stats.hr $avgLock]</font>" \
+                          "<font color=$tcolor>[_ns_stats.hr $totalWait]</font>" \
+                          "<font color=$wcolor>[_ns_stats.hr $maxWait]</font>" \
                           "<font color=$color>$locksPerReq</font>" \
                           "<font color=$color>$maxLocksPerSec</font>" \
                           "<font color=$color>$reqsPerSec</font>" \
                          ]
     }
 
-    set avgLock          [expr {$sumWait/$sumLocks}]
+    set avgLock          [expr {$sumLockTime/$sumLocks}]
     set locksPerReq      [expr {$sumLocks/$totalRequests}]
     set lockTimePerReq   [expr {$sumWait/$totalRequests}]
     set maxLocksPerSec   [expr {1.0/$avgLock}]
@@ -318,7 +320,7 @@ proc _ns_stats.locks {} {
     set p_totalRequests  [_ns_stats.hr $totalRequests]
 
     set line "Total locks: $p_sumLocks, total requests $p_totalRequests,\
-        locks per req $p_locksPerReq, avg lock time $p_avgLock, lock time per req $p_lockTimePerReq, maxPages $p_maxPages"
+        locks per req $p_locksPerReq, avg lock time $p_avgLock, lock time per req $p_lockTimePerReq, max req per sec $p_maxPages"
     append html \
         [_ns_stats.header "Mutex Locks"] \
         "<h3>$line</h3>" \
