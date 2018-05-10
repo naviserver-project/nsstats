@@ -248,7 +248,7 @@ proc _ns_stats.locks {} {
     foreach l [ns_info locks] {
         lassign $l name owner id nlock nbusy totalWait maxWait totalLock
         set sumWait     [expr {$sumWait + $totalWait}]
-        if {$name ne "ns:sched"} {
+        if {$name ni {"ns:sched" "jobThreadPool"}} {
             set sumLockTime [expr {$sumLockTime + $totalLock}]
         }
         set sumLocks    [expr {$sumLocks + $nlock}]
@@ -323,7 +323,7 @@ proc _ns_stats.locks {} {
 
     set line "Total locks: $p_sumLocks, total requests $p_totalRequests,\
         locks per req $p_locksPerReq, avg lock time $p_avgLock,\
-        lock time per req $p_lockTimePerReq, max req per sec $p_maxPages (except ns:sched)"
+        lock time per req $p_lockTimePerReq, max req per sec $p_maxPages (except ns:sched and jobThreadPool)"
     append html \
         [_ns_stats.header "Mutex Locks"] \
         "<h3>$line</h3>" \
