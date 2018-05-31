@@ -99,6 +99,8 @@ proc _ns_stats.header {{stat ""}} {
         td td.subtitle {text-align: right; font-style: italic; font-size: 7pt; background-color: #f5f5f5;}
         td.coltitle {text-align: right; background-color: eaeaea;}
         td.colsection {font-size: 12pt; font-style: bold;}
+        td.colsection h3 {margin-top:2px;margin-bottom:2px;}
+        td.colsection h4 {margin-top:2px;;margin-bottom:2px;}
         td.colvalue {background-color: #ffffff;}
         table.navbar {border: 0px; cellpadding: 5px; border-spacing: 0px; width: 100%;}
         table.navbar td {padding: 5px; background: #666699; color: #ffffff; font-size: 10px;}
@@ -504,24 +506,24 @@ proc _ns_stats.configparams {} {
       set name [string map {~ /} $section]
       lappend toc "<a href='#ref-$name'>$name</a>"
       set anchor "<a name='ref-$name'>$name</a>"
-      append sectionhtml "\n<tr><td colspan='2' class='colsection'>$anchor</td></tr>\n$table($section)\n"
+      append sectionhtml "\n<tr><td colspan='2' class='colsection'><h4>$anchor</h4></td></tr>\n$table($section)\n"
       unset table($section)
     }
   }
   if {[array size table] > 0} {
-    append sectionhtml "\n<tr><td colspan='2' class='colsection'>Extra Parameters</td></tr>\n\n"
+    append sectionhtml "\n<tr><td colspan='2' class='colsection'><h3>Extra Parameters</h3></td></tr>\n\n"
     foreach section [lsort [array names table]] {
       set name [string map {~ /} $section]
       lappend toc "<a href='#ref-$name'>$name</a>"
       set anchor "<a name='ref-$name'>$name</a>"
-      append sectionhtml "\n<tr><td colspan='2' class='colsection'>$anchor</td></tr>\n$table($section)\n"
+      append sectionhtml "\n<tr><td colspan='2' class='colsection'><h4>$anchor</h4></td></tr>\n$table($section)\n"
     }
   }
     append html \
       [_ns_stats.header "Config Parameters"] \
-      "The following values are defined in the configuration database:<br>" \
-      "<table><tr><td valign='top'>" \
-      "<ul><li>[join $toc </li><li>]</li></ul>" \
+      "<h3>The following values are defined in the configuration database:</h3>" \
+      "<table><tr><td valign='top' style='background:#eeeeee;'>" \
+      "<ul style='list-style-type: none; margin: 0; padding: 0;'><li>[join $toc </li><li>]</li></ul>" \
       </td><td> \
       <table>$sectionhtml</table> \
       </td></tr> \
