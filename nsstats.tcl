@@ -99,26 +99,32 @@ proc _ns_stats.header {args} {
        }
 
         body    { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; color: #000000; background-color: #ffffff; }
-        td,th   { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; }
+        td,th   { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; padding: 4px;}
         pre     { font-family: courier new, courier; font-size: 10pt; }
         form    { font-family: verdana,helvetica,arial,sans-serif; font-size: 10pt; }
         i       { font-style: italic; }
         b       { font-style: bold; }
         hl      { font-family: verdana,arial,helvetica,sans-serif; font-style: bold; font-size: 12pt; }
         small   { font-size: smaller; }
+
+        table {border: 1px solid #cccccc; background-color: #cccccc; padding:0px; border-spacing: 1px;}
         td td.subtitle {text-align: right; font-style: italic; font-size: 7pt; background-color: #f5f5f5;}
-        td.coltitle {text-align: right; background-color: eaeaea;}
+        td.coltitle {text-align: right; background-color: #eaeaea;}
         td.colsection {font-size: 12pt; font-style: bold;}
         td.colsection h3 {margin-top:2px;margin-bottom:2px;}
         td.colsection h4 {margin-top:2px;;margin-bottom:2px;}
         td.colvalue {background-color: #ffffff;}
-        table.navbar {border: 0px; cellpadding: 5px; border-spacing: 0px; width: 100%;}
+
+        table.navbar {border: 1px; padding: 2px; border-spacing: 0px; width: 100%;}
         table.navbar td {padding: 5px; background: #666699; color: #ffffff; font-size: 10px;}
         table.navbar td .current {color: #ffcc00;}
         table.navbar td a {color: #ffffff; text-decoration: none;}
-        table.data {background-color: #cccccc; border: 1px solid #cccccc; cellpadding: 5px; border-spacing: 1px; border-collapse: xcollapse;}
+
+        table.data {border: 1px solid #cccccc; padding: 0px; border-spacing: 1px}
+        table.data td.coltitle {text-align: right; background-color: #eaeaea;}
+        table.data td td.subtitle {text-align: right; font-style: italic; font-size: 7pt; background-color: #f5f5f5;}
         table.data th {background-color: #999999; color: #ffffff; font-weight: normal; text-align: left;}
-        table.data td {background-color: #ffffff;}
+        table.data td {background-color: #ffffff; padding: 4px;}
     </style>
     </head>
 
@@ -746,9 +752,6 @@ proc _ns_stats.mempools {} {
 proc _ns_stats.process.table {values} {
     set html [subst {
     <table class="data">
-    <tr>
-        <td valign="middle" align="center">
-        <table class="data2" border="0" cellpadding="3" cellspacing="1"  bgcolor="#cccccc">
         <tr>
             <th valign="middle">Key</th>
             <th valign="middle">Value</th>
@@ -762,11 +765,7 @@ proc _ns_stats.process.table {values} {
             </tr>}]
     }
 
-    append html [subst {
-        </table>
-        </td>
-    </tr>
-    </table>}]
+    append html "</table>"
     return $html
 }
 
@@ -1268,10 +1267,7 @@ proc _ns_stats.results {{selectedColNum ""} {colTitles ""} {colUrl ""} {rows ""}
     }
 
     set html "\
-    <table border='0' cellpadding='0' cellspacing='1' bgcolor='#cccccc'>
-    <tr>
-        <td valign='middle' align='center'>
-        <table border='0' cellpadding='4' cellspacing='1' width='100%'>
+        <table>
         <tr>"
 
     set i 1
@@ -1328,10 +1324,7 @@ proc _ns_stats.results {{selectedColNum ""} {colTitles ""} {colUrl ""} {rows ""}
     }
 
     append html "\
-        </table>
-        </td>
-    </tr>
-    </table>"
+        </table>"
 
     return $html
 }
