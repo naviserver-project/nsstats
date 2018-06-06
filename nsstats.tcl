@@ -301,23 +301,23 @@ proc _ns_stats.locks {} {
             incr totalRequests [dict get [ns_server -server $s -pool $pool stats] requests]
         }
     }
-
+    set non_per_req_locks {interp jobThreadPool ns:sched tcljob:jobs}
     foreach l [ns_info locks] {
         lassign $l name owner id nlock nbusy totalWait maxWait totalLock
         set sumWait     [expr {$sumWait + $totalWait}]
-        if {$name ni {"ns:sched" "jobThreadPool"}} {
+        if {$name ni $non_per_req_locks} {
             set sumLockTime [expr {$sumLockTime + $totalLock}]
         }
         set sumLocks    [expr {$sumLocks + $nlock}]
         set avgLock     [expr {$totalLock ne "" && $nlock > 0 ? $totalLock * 1.0 / $nlock : 0}]
-        if {$nlock > 2} {
+        if {$nlock > 2 && $name ni $non_per_req_locks} {
             set maxLocksPerSec [expr {1.0/$avgLock}]
             set locksPerReq    [expr {$nlock*1.0/$totalRequests}]
-            set reqsPerSec     [expr {$maxLocksPerSec/$locksPerReq}]
+            set maxReqsPerSec  [expr {$maxLocksPerSec/$locksPerReq}]
         } else {
-            set maxLocksPerSec -1
+            set maxLocksPerSec [expr {1.0/0}]
             set locksPerReq    -1
-            set reqsPerSec     -1
+            set maxReqsPerSec  [expr {1.0/0}]
         }
 
         if {$nbusy == 0} {
@@ -328,19 +328,19 @@ proc _ns_stats.locks {} {
 
         lappend results [list $name $id $nlock $nbusy $contention \
                              $totalLock $avgLock $totalWait $maxWait \
-                             $locksPerReq $maxLocksPerSec $reqsPerSec]
+                             $locksPerReq $maxLocksPerSec $maxReqsPerSec]
     }
 
     foreach result [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort] {
         lassign $result name id nlock nbusy contention totalLock avgLock totalWait maxWait \
-            locksPerReq maxLocksPerSec reqsPerSec
+            locksPerReq maxLocksPerSec maxReqsPerSec
         set contention     [format %.4f $contention]
         set totalLock      [format %.4f $totalLock]
         set avgLock        [format %.8f $avgLock]
         set relWait        [expr {$sumWait > 0 ? $totalWait/$sumWait : 0}]
         set locksPerReq    [format %.2f $locksPerReq]
         set maxLocksPerSec [_ns_stats.hr $maxLocksPerSec]
-        set reqsPerSec     [_ns_stats.hr $reqsPerSec]
+        set maxReqsPerSec  [_ns_stats.hr $maxReqsPerSec]
 
         set color black
         set ccolor [expr {$contention < 2   ? $color : $contention < 5   ? "orange" : "red"}]
@@ -361,7 +361,7 @@ proc _ns_stats.locks {} {
                           "<font color=$wcolor>[_ns_stats.hr $maxWait]</font>" \
                           "<font color=$color>$locksPerReq</font>" \
                           "<font color=$color>$maxLocksPerSec</font>" \
-                          "<font color=$color>$reqsPerSec</font>" \
+                          "<font color=$color>$maxReqsPerSec</font>" \
                          ]
     }
 
@@ -380,7 +380,7 @@ proc _ns_stats.locks {} {
 
     set line "Total locks: $p_sumLocks, total requests $p_totalRequests,\
         locks per req $p_locksPerReq, avg lock time $p_avgLock,\
-        lock time per req $p_lockTimePerReq, max req per sec $p_maxPages (except ns:sched and jobThreadPool)"
+        lock time per req $p_lockTimePerReq, max req per sec $p_maxPages <br>(except: [join $non_per_req_locks {, }])"
     append html \
         [_ns_stats.header "Mutex Locks"] \
         "<h3>$line</h3>" \
