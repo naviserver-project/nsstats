@@ -107,8 +107,8 @@ proc _ns_stats.header {args} {
         hl      { font-family: verdana,arial,helvetica,sans-serif; font-style: bold; font-size: 12pt; }
         small   { font-size: smaller; }
 
-        table {border: 1px solid #cccccc; background-color: #cccccc; padding:0px; border-spacing: 1px;}
-        td td.subtitle {text-align: right; font-style: italic; font-size: 7pt; background-color: #f5f5f5;}
+        table {background-color: #cccccc; padding:0px; border-spacing: 1px;}
+        td td.subtitle {text-align: right; white-space: nowrap; font-style: italic; font-size: 7pt; background-color: #f5f5f5;}
         td.coltitle {text-align: right; background-color: #eaeaea;}
         td.colsection {font-size: 12pt; font-style: bold;}
         td.colsection h3 {margin-top:2px;margin-bottom:2px;}
@@ -120,9 +120,9 @@ proc _ns_stats.header {args} {
         table.navbar td .current {color: #ffcc00;}
         table.navbar td a {color: #ffffff; text-decoration: none;}
 
-        table.data {border: 1px solid #cccccc; padding: 0px; border-spacing: 1px}
+        table.data {padding: 0px; border-spacing: 1px}
         table.data td.coltitle {text-align: right; background-color: #eaeaea;}
-        table.data td td.subtitle {text-align: right; font-style: italic; font-size: 7pt; background-color: #f5f5f5;}
+        table.data td td.subtitle {text-align: right; white-space: nowrap; font-style: italic; font-size: 7pt; background-color: #f5f5f5;}
         table.data th {background-color: #999999; color: #ffffff; font-weight: normal; text-align: left;}
         table.data td {background-color: #ffffff; padding: 4px;}
     </style>
@@ -651,10 +651,10 @@ proc _ns_stats.mempools {} {
         <b>[lindex $p 0]:</b>
         <b>[dictget? $trans [lindex $p 0]]</b>
         <br><br>
-        <table border=0 cellpadding=0 cellspacing=1 bgcolor=#cccccc width=\"100%\">
+        <table border=0 cellpadding=0 cellspacing=1 bgcolor=#cccccc width='100%'>
         <tr>
             <td valign=middle align=center>
-            <table border=0 cellpadding=4 cellspacing=1 width=\"100%\">
+            <table border=0 cellpadding=4 cellspacing=1 width='100%'>
             <tr>
                 <td valign=middle bgcolor=#999999><font color=#ffffff>Block Size</font></td>
                 <td valign=middle bgcolor=#999999><font color=#ffffff>Frees</font></td>
@@ -784,7 +784,7 @@ proc _ns_stats.process.dbpools {} {
                 lappend stats avgsqltime $avgSQLTime
             }
             set stats [_ns_stats.pretty {statements gethandles avgwaittime avgsqltime} $stats %.0f]
-            lappend lines "<tr><td class='subtitle'>$pool:</td><td>$stats</td>"
+            lappend lines "<tr><td class='subtitle'>$pool:</td><td width='100%'>$stats</td>"
         }
     }
     return $lines
@@ -794,7 +794,7 @@ proc _ns_stats.process.callbacks {} {
     foreach {entry} [ns_info callbacks] {
         lassign $entry type call
         set args [lrange $entry 2 end]
-        lappend lines "<tr><td class='subtitle'>$type:</td><td>$call</td><td>$args</td>"
+        lappend lines "<tr><td class='subtitle'>$type:</td><td>$call</td><td width='100%'>$args</td>"
     }
     return $lines
 }
@@ -919,8 +919,8 @@ proc _ns_stats.process {} {
             # statistics
             #
             set rawstats [ns_server -server $s -pool $pool stats]
-            set rawthreads [list [ns_server -server $s -pool $pool threads] \
-                                waiting {*}[ns_server -server $s -pool $pool waiting]]
+            set rawthreads [list {*}[ns_server -server $s -pool $pool threads] \
+                                waiting [ns_server -server $s -pool $pool waiting]]
             set rawreqs [ns_server -server $s -pool $pool all]
             set reqs {}
             foreach req $rawreqs {
@@ -935,7 +935,7 @@ proc _ns_stats.process {} {
             set reqs [join $reqs <br>]
             array set stats $rawstats
             set item \
-                "<tr><td class='subtitle'>Connection Threads:</td><td class='colvalue'>$rawthreads</td></tr>\n"
+                "<tr><td class='subtitle'>Connection Threads:</td><td class='colvalue' width='100%'>$rawthreads</td></tr>\n"
             if {$stats(requests) > 0} {
                 append item "<tr><td class='subtitle'>Request Handling:</td>" \
                     "<td class='colvalue'>" \
