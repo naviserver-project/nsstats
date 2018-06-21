@@ -783,7 +783,7 @@ proc _ns_stats.process.dbpools {} {
                 set avgSQLTime [expr {[dict get $stats sqltime] / $statements}]
                 lappend stats avgsqltime $avgSQLTime
             }
-            set stats [_ns_stats.pretty {statements gethandles avgwaittime avgsqltime} $stats %.0f]
+            set stats [_ns_stats.pretty {statements gethandles {avgwaittime s} {avgsqltime s}} $stats %.1f]
             lappend lines "<tr><td class='subtitle'>$pool:</td><td width='100%'>$stats</td>"
         }
     }
@@ -945,10 +945,10 @@ proc _ns_stats.process {} {
                     " spooled " [_ns_stats.hr $stats(spools) %1.f] \
                     " ([format %.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)</td></tr>\n"
                 append item "<tr><td class='subtitle'>Request Timing:</td>" \
-                    "<td class='colvalue'>avg queue time [format %5.4f [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
-                    " avg filter time [format %5.4f [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
-                    " avg run time [format %.4f [expr {$stats(runtime)*1.0/$stats(requests)}]]s" \
-                    " avg trace time [format %.4f [expr {$stats(tracetime)*1.0/$stats(requests)}]]s" \
+                    "<td class='colvalue'>avg queue time [_ns_stats.hr [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
+                    " avg filter time [_ns_stats.hr [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
+                    " avg run time [_ns_stats.hr [expr {$stats(runtime)*1.0/$stats(requests)}]]s" \
+                    " avg trace time [_ns_stats.hr [expr {$stats(tracetime)*1.0/$stats(requests)}]]s" \
                     "</td></tr>\n"
             }
             append item \
@@ -980,7 +980,7 @@ proc _ns_stats.process {} {
                         set avgruntime [expr {[dict get $rawstats runtime] / $requests}]
                         lappend rawstats avgruntime $avgruntime
                     }
-                    set resultstats [_ns_stats.pretty {requests runtime avgruntime} $rawstats %.0f]
+                    set resultstats [_ns_stats.pretty {requests runtime {avgruntime s}} $rawstats %.0f]
                     set active [join [ns_proxy active $pool] <br>]
                     set item ""
                     append item \
@@ -1476,9 +1476,15 @@ proc _ns_stats.cmpNumeric {n1 n2} {
 
 proc _ns_stats.pretty {keys kvlist {format %.2f}} {
     set stats {}
+    set nkeys {}
+    foreach k $keys {
+        lassign $k key s
+        set suffix($key) $s
+        lappend nkeys $key
+    }
     foreach {k v} $kvlist {
-        if {$k in $keys} {
-            set v [_ns_stats.hr $v $format]
+        if {$k in $nkeys} {
+            set v [_ns_stats.hr $v $format]$suffix($k)
         }
         lappend stats $k $v
     }
