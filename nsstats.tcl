@@ -216,9 +216,10 @@ proc _ns_stats.cache {} {
             lassign $row key hits size expire
             if {$expire == 0} {
                 set expire -1
+            } else {
+                lassign [split [ns_time format $expire] .] secs usecs
+                set expire [_ns_stats.fmtTime $secs]
             }
-            lassign [split [ns_time format $expire] .] secs usecs
-            set expire [_ns_stats.fmtTime $secs]
             append body "<tr><td>$key</td><td align='right'>$hits</td><td align='right'>$size</td><td align='center'>$expire</td></tr>\n"
         }
         append body <table>
