@@ -125,6 +125,7 @@ proc _ns_stats.header {args} {
         table.data td td.subtitle {text-align: right; white-space: nowrap; font-style: italic; font-size: 7pt; background-color: #f5f5f5;}
         table.data th {background-color: #999999; color: #ffffff; font-weight: normal; text-align: left;}
         table.data td {background-color: #ffffff; padding: 4px;}
+        table.data td table {background-color: #ffffff; border-spacing: 0px;}
     </style>
     </head>
 
@@ -206,7 +207,7 @@ proc _ns_stats.cache {} {
     set currentUrl  "./[lindex [ns_conn urlv] end]?@page=cache&col=$col&reverseSort=$reverseSort"
 
     if {$statDetails ne ""} {
-        set max 50
+        set max  [ns_queryget max 50]
         set body "<h3>$max most frequently used entries from cache '$statDetails'</h3>"
 
         set stats [ns_cache_stats -contents $statDetails]
