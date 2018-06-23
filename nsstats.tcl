@@ -259,13 +259,12 @@ proc _ns_stats.cache {} {
             Cache Max Current Utilization Entries "Avg Size" Flushes Hits Reuse Misses
             "Hit Rate" Expired Pruned Commit Rollback "Saved/KB" Saved
         }
-        set rows        [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
+        set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
 
         set table {}
         foreach row $rows {
             set cache_name [lindex $row 0]
             lset row 0 "<a href='$currentUrl&statDetails=$cache_name'>$cache_name</a>"
-            ns_log notice "row=$row"
             lappend table $row
         }
 
@@ -1538,7 +1537,7 @@ proc _ns_stats.hr {n {format %.2f}} {
             set r $v$u
         }
     } else {
-        puts "no match"
+        #puts "no match"
     }
     return $r
 }
