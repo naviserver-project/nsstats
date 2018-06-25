@@ -121,11 +121,12 @@ proc _ns_stats.header {args} {
         table.navbar td a {color: #ffffff; text-decoration: none;}
 
         table.data {padding: 0px; border-spacing: 1px}
-        table.data td.coltitle {text-align: right; background-color: #eaeaea;}
+        table.data td.coltitle {width: 100px; text-align: right; background-color: #eaeaea;}
         table.data td td.subtitle {text-align: right; white-space: nowrap; font-style: italic; font-size: 7pt; background-color: #f5f5f5;}
         table.data th {background-color: #999999; color: #ffffff; font-weight: normal; text-align: left;}
         table.data td {background-color: #ffffff; padding: 4px;}
         table.data td table {background-color: #ffffff; border-spacing: 0px;}
+        table.data td table td {padding: 2px;}
     </style>
     </head>
 
