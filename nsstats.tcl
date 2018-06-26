@@ -347,9 +347,9 @@ proc _ns_stats.locks {} {
         set color black
         set ccolor [expr {$contention < 2   ? $color : $contention < 5   ? "orange" : "red"}]
         set tcolor [expr {$relWait    < 0.1 ? $color : $totalWait  < 0.5 ? "orange" : "red"}]
-        set wcolor [expr {$maxWait    < 0.1 ? $color : $maxWait    < 1   ? "orange" : "red"}]
-        set ncolor [expr {$ccolor eq "orange" || $tcolor eq "orange" || $wcolor eq "orange" ? "orange" : $color}]
-        set ncolor [expr {$ccolor eq "red"    || $tcolor eq "red"    || $wcolor eq "red"    ? "red" : $ncolor}]
+        set wcolor [expr {$maxWait    < 0.01 ? $color : $maxWait    < 0.1   ? "orange" : "red"}]
+        set ncolor [expr {"orange" in [list $ccolor $tcolor $wcolor] ? "orange" : $color}]
+        set ncolor [expr {"red "   in [list $ccolor $tcolor $wcolor] ? "red" : $ncolor}]
 
         lappend rows [list \
                           "<font color=$ncolor>$name</font>" \
