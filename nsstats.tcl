@@ -30,16 +30,21 @@
 #
 # nsstats.tcl --
 #
-#   Set of procedures implementing the NaviServer runtime statistics
+#   Simple Web-based interface for NaviServer runtime statistics.
+#   The whole application is implemented as a single file.
 #
-#   To use it, set enabled to 1 and drop it somewehere under NaviServer
-#   pageroot which is usually /usr/local/ns/pages and point browser to it
+#   To use it, set enabled to 1 and place this file somewhere under
+#   NaviServer pageroot which is usually /usr/local/ns/pages and point
+#   browser to it.
 #
 
-# If this page needs to be restricted assign username and password here
-set user ""
-set password ""
-set enabled 1
+# If this page needs to be restricted assign username and password in
+# the config file in the section "ns/module/nsstats" or here locally
+# in this file.
+#
+set user     [ns_config ns/module/nsstats user ""]
+set password [ns_config ns/module/nsstats password ""]
+set enabled  [ns_config ns/module/nsstats enabled 1]
 
 if { ![nsv_exists _ns_stats threads_0] } {
   nsv_set _ns_stats thread_0      "OK"
@@ -304,6 +309,8 @@ proc _ns_stats.locks {} {
         }
     }
     set non_per_req_locks {interp jobThreadPool ns:sched tcljob:jobs}
+    lappend non_per_req_locks {*}[ns_config ns/module/nsstats bglocks ""]
+    set non_per_req_locks [lsort $non_per_req_locks]
     foreach l [ns_info locks] {
         lassign $l name owner id nlock nbusy totalWait maxWait totalLock
         set sumWait     [expr {$sumWait + $totalWait}]
@@ -497,7 +504,7 @@ set ::tips(ns~parameters\$,logexpanded) "Double-spaced error.log (boolean, false
 set ::tips(ns~parameters\$,logmaxbackup) "The number of old error.log files to keep around if log rolling is enabled.(integer, 10)"
 set ::tips(ns~parameters\$,logroll) "If true, the log file will be rolled when the server receives a SIGHUP signal (boolean, true)"
 set ::tips(ns~parameters\$,logusec) "If true, error.log entries will have timestamps with microsecond resolution(boolean, true)"
-set ::tips(ns~parameters\$,schedmaxelapsed) "Write warning, when a scheduled proc takes more than this this seconds (integer, 2)"
+set ::tips(ns~parameters\$,schedmaxelapsed) "Write warning, when a scheduled proc takes more than this seconds (integer, 2)"
 set ::tips(ns~parameters\$,schedsperthread) "Default number of scheduled procs per thread (similar to connsperthread) (integer, 0)"
 set ::tips(ns~server~\[^~\]+\$,compressenable) "Compress dynamic content per default. (boolean, false)"
 set ::tips(ns~server~\[^~\]+\$,compresslevel) "Compression level, when compress is enabled. (integer 1-9, 4)"
@@ -1132,7 +1139,7 @@ proc _ns_stats.threads {} {
        set colTitles   {Thread Parent ID    Flags "Create Time" TID   State utime stime Args}
        set align       {left   left   right left   left         right right right right left}
        set osInfo      1
-       set HZ          100  ;# for more reliable handling, we should implememnt jiffies_to_timespec or jiffies_to_secs in C
+       set HZ          100  ;# for more reliable handling, we should implement jiffies_to_timespec or jiffies_to_secs in C
     } else {
        set colNumSort  {. 0 0 1 1 1 0}
        set colTitles   {Thread Parent ID    Flags "Create Time" Args}

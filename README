@@ -1,5 +1,5 @@
-Statistics Module for NaviServer 4.99.16
-Release 1.6
+Statistics Module for NaviServer 4.99.17
+Release 1.7
 vlad@crystalballinc.com
 neumann@wu-wien.ac.at
 
@@ -43,22 +43,40 @@ Installation
 
    To use it, set enabled to 1 and drop it somewhere under naviserver
    pageroot which is usually /usr/local/ns/pages and point browser to it.
-
+   On OpenACS, place it e.g. under acs-subsite/www/admin/nsstats.tcl
+   to have it accessible from all subsites.
 
 Configuration
 
-   Look at the top of nsstats.tcl for these variables:
+   The nststats module can be configured by the following variables,
+   which can be configured in the NaviServer config file.
 
-   set enabled 0
+       ns_section "ns/module/nsstats"
+       ns_param enabled  1
+       ns_param user     ""
+       ns_param password ""    
+       ns_param bglocks  {oacs:sched_procs}
 
-      By default it is disabled, if set to 1 this pages can be accessed to see 
-      runtime statistics
+   These variables have the following meanings:
+
+   * enabled (boolean value, default 1)
+
+      Enable/disable the nsstats module for this nsd
     
-   set user ""
-   set password ""
+   * user (string, default "")
+   * password (string, default "")
 
-      By default it will not ask for username and password but if needed, set it with
-      non-empty values and browser will ask for password
+      Set user and password for the nsstats modules.  By default it
+      will not ask for username and password but if needed, set it
+      with non-empty values and browser will ask for password.
+
+   * bglocks (list, default "")
+
+      The "Mutex Locks" statistics list mutexes and in relation to
+      page requests. When a site has application specific locks used
+      predominantly in background processing, then the putting these
+      in relation with requests makes no much sense. One example for
+      such a lock is the "oacs:sched_procs" lock in OpenACS
   
 Authors
      Vlad Seryakov vlad@crystalballinc.com
