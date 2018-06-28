@@ -451,10 +451,17 @@ proc _ns_stats.nsvlocks {} {
        set truncated 1
     }
 
+    set table {}
+    foreach row $rows {
+        lset row 6 [_ns_stats.hr [lindex $row 6]]s
+        lset row 7 [_ns_stats.hr [lindex $row 7]]s
+        lappend table $row
+    }
+
     append html \
         [_ns_stats.header "Nsv Locks"] \
         [_ns_stats.results $col $colTitles ?@page=nsvlocks \
-             $rows \
+             $table \
              $reverseSort \
              {left right right right right right right right}]
 
