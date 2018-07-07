@@ -302,15 +302,18 @@ proc _ns_stats.locks {} {
     set sumLockTime 0
     set sumLocks 0
 
+    set non_per_req_locks {interp jobThreadPool ns:sched tcljob:jobs}
+    lappend non_per_req_locks {*}[ns_config ns/module/nsstats bglocks ""]
+
     set totalRequests 0
     foreach s [ns_info servers] {
         foreach pool [lsort [ns_server -server $s pools]] {
             incr totalRequests [dict get [ns_server -server $s -pool $pool stats] requests]
         }
+        lappend non_per_req_locks tcljob:ns_eval_q:$s
     }
-    set non_per_req_locks {interp jobThreadPool ns:sched tcljob:jobs}
-    lappend non_per_req_locks {*}[ns_config ns/module/nsstats bglocks ""]
     set non_per_req_locks [lsort $non_per_req_locks]
+
     foreach l [ns_info locks] {
         lassign $l name owner id nlock nbusy totalWait maxWait totalLock
         set sumWait     [expr {$sumWait + $totalWait}]
@@ -364,10 +367,10 @@ proc _ns_stats.locks {} {
                           "<font color=$color>[_ns_stats.hr $nlock]</font>" \
                           "<font color=$color>[_ns_stats.hr $nbusy]</font>" \
                           "<font color=$ccolor>$contention</font>" \
-                          "<font color=$color>[_ns_stats.hr $totalLock]</font>" \
-                          "<font color=$color>[_ns_stats.hr $avgLock]</font>" \
-                          "<font color=$tcolor>[_ns_stats.hr $totalWait]</font>" \
-                          "<font color=$wcolor>[_ns_stats.hr $maxWait]</font>" \
+                          "<font color=$color>[_ns_stats.hr $totalLock]s</font>" \
+                          "<font color=$color>[_ns_stats.hr $avgLock]s</font>" \
+                          "<font color=$tcolor>[_ns_stats.hr $totalWait]s</font>" \
+                          "<font color=$wcolor>[_ns_stats.hr $maxWait]s</font>" \
                           "<font color=$color>$locksPerReq</font>" \
                           "<font color=$color>$maxLocksPerSec</font>" \
                           "<font color=$color>$maxReqsPerSec</font>" \
