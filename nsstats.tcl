@@ -258,7 +258,9 @@ proc _ns_stats.cache {} {
                                  [format %.0f [expr {$t(entries)>0 ? $t(hits)*1.0/$t(entries) : 0}]] \
                                  $t(missed) "$t(hitrate)%" $t(expired) $t(pruned) \
                                  $t(commit) $t(rollback) \
-                                 [format %.4f $savedPerByte] [format %.2f $t(saved)]]
+                                 [format %.4f $savedPerByte] \
+                                 $t(saved) \
+                                ]
         }
 
         set colTitles   {
@@ -271,6 +273,7 @@ proc _ns_stats.cache {} {
         foreach row $rows {
             set cache_name [lindex $row 0]
             lset row 0 "<a href='$currentUrl&statDetails=$cache_name'>$cache_name</a>"
+            lset row 16 [_ns_stats.hr [lindex $row 16]]s
             lappend table $row
         }
 
@@ -1096,7 +1099,7 @@ proc _ns_stats.sched {} {
         if {[catch {
             set duration [expr {$lastend - $laststart}]
         }]} {
-            set duration "0"
+            set duration 0
         }
 
         set state "pending"
@@ -1192,20 +1195,20 @@ proc _ns_stats.threads {} {
         set flags   [_ns_stats.getThreadType [lindex $t 3]]
         set create  [_ns_stats.fmtTime [lindex $t 4]]
         if {$osInfo} {
-            set tid     [lindex $t 5]
-            set state   [lindex $t 6]
-            set utime   [lindex $t 7]
-            set stime   [lindex $t 8]
-            set proc    [lindex $t 9]
-            set arg     [lindex $t 10]
+            set tid      [lindex $t 5]
+            set state    [lindex $t 6]
+            set utime    [lindex $t 7]
+            set stime    [lindex $t 8]
+            set proc     [lindex $t 9]
+            set arg      [lindex $t 10]
             if {"p:0x0" eq $proc} { set proc "NULL" }
             if {"a:0x0" eq $arg} { set arg "NULL" }
-            set stime [format %.3f [expr {$stime*1.0/$HZ}]]
-            set utime [format %.3f [expr {$utime*1.0/$HZ}]]
+            set stime    [_ns_stats.hr [expr {$stime*1.0/$HZ}]]s
+            set utime    [_ns_stats.hr [expr {$utime*1.0/$HZ}]]s
             lappend rows [list $thread $parent $id $flags $create $tid $state $utime $stime $arg]
         } else {
-            set proc    [lindex $t 5]
-            set arg     [lindex $t 6]
+            set proc     [lindex $t 5]
+            set arg      [lindex $t 6]
             if {"p:0x0" eq $proc} { set proc "NULL" }
             if {"a:0x0" eq $arg} { set arg "NULL" }
             lappend rows [list $thread $parent $id $flags $create $arg]
@@ -1419,14 +1422,14 @@ proc _ns_stats.getSchedFlagTypes {flags} {
 
 proc _ns_stats.fmtSeconds {seconds} {
     if {$seconds < 60} {
-        return "${seconds} (s)"
+        return "${seconds}s"
     }
 
     if {$seconds < 3600} {
         set mins [expr {$seconds/60}]
         set secs [expr {$seconds - ($mins * 60)}]
 
-        return "${mins}:${secs} (m:s)"
+        return "${mins}m ${secs}s"
     }
 
     set hours [expr {$seconds/3600}]
@@ -1436,9 +1439,9 @@ proc _ns_stats.fmtSeconds {seconds} {
     if {$hours > 24} {
         set days  [expr {$hours / 24}]
         set hours [expr {$hours % 24}]
-        return "$days day[expr {$days<2 ? {} : {s}}] ${hours}:${mins}:${secs} (h:m:s)"
+        return "${days}d ${hours}h ${mins}m ${secs}s"
     } else {
-        return "${hours}:${mins}:${secs} (h:m:s)"
+        return "${hours}h {mins}m ${secs}s"
     }
 }
 
