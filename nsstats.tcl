@@ -1441,7 +1441,7 @@ proc _ns_stats.fmtSeconds {seconds} {
         set hours [expr {$hours % 24}]
         return "${days}d ${hours}h ${mins}m ${secs}s"
     } else {
-        return "${hours}h {mins}m ${secs}s"
+        return "${hours}h ${mins}m ${secs}s"
     }
 }
 
