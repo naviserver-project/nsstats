@@ -245,27 +245,28 @@ proc _ns_stats.cache {} {
         }
 
         set results ""
+        set totalRequests [_ns_stats.totalRequests]
         array set t {saved ""}
 
         foreach cache [ns_cache_names] {
             array set t {commit 0 rollback 0}
             array set t [ns_cache_stats $cache]
             set avgSize [expr {$t(entries) > 0 ? $t(size)/$t(entries) : 0}]
-            set savedPerByte [expr {$t(size) > 0 ? $t(saved)*1000.0/$t(size) : 0}]
             lappend results [list $cache $t(maxsize) $t(size) \
-                                 [format %.2f [expr {$t(size)*100.0/$t(maxsize)}]]% \
-                                 $t(entries) $avgSize $t(flushed) $t(hits) \
-                                 [format %.0f [expr {$t(entries)>0 ? $t(hits)*1.0/$t(entries) : 0}]] \
-                                 $t(missed) "$t(hitrate)%" $t(expired) $t(pruned) \
+                                 [expr {$t(size)*100.0/$t(maxsize)}] \
+                                 $t(entries) $avgSize $t(flushed) \
+                                 $t(hits) \
+                                 [format %.4f [expr {$totalRequests > 0 ? $t(hits)*1.0/$totalRequests : 0}]] \
+                                 [format %.f [expr {$t(entries)>0 ? $t(hits)*1.0/$t(entries) : 0}]] \
+                                 $t(missed) $t(hitrate) $t(expired) $t(pruned) \
                                  $t(commit) $t(rollback) \
-                                 [format %.4f $savedPerByte] \
-                                 $t(saved) \
+                                 [expr {$totalRequests > 0 ? $t(saved)/$totalRequests : 0}] \
                                 ]
         }
 
         set colTitles   {
-            Cache Max Current Utilization Entries "Avg Size" Flushes Hits Reuse Misses
-            "Hit Rate" Expired Pruned Commit Rollback "Saved/KB" Saved
+            Cache Max Current Utilization Entries "Avg Size" Flushes Hits Hits/Req Reuse Misses
+            "Hit Rate" Expired Pruned Commit Rollback "Saved/Req"
         }
         set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
 
@@ -273,6 +274,8 @@ proc _ns_stats.cache {} {
         foreach row $rows {
             set cache_name [lindex $row 0]
             lset row 0 "<a href='$currentUrl&statDetails=$cache_name'>$cache_name</a>"
+            lset row 3 [format %.2f [lindex $row 3]]%
+            lset row 11 [format %.2f [lindex $row 11]]%
             lset row 16 [_ns_stats.hr [lindex $row 16]]s
             lappend table $row
         }
@@ -285,6 +288,15 @@ proc _ns_stats.cache {} {
             [_ns_stats.footer]
     }
     return $html
+}
+proc _ns_stats.totalRequests {} {
+    set totalRequests 0
+    foreach s [ns_info servers] {
+        foreach pool [ns_server -server $s pools] {
+            incr totalRequests [dict get [ns_server -server $s -pool $pool stats] requests]
+        }
+    }
+    return $totalRequests
 }
 
 proc _ns_stats.locks {} {
@@ -304,15 +316,11 @@ proc _ns_stats.locks {} {
     set sumWait 0
     set sumLockTime 0
     set sumLocks 0
+    set totalRequests [_ns_stats.totalRequests]
 
     set non_per_req_locks {interp jobThreadPool ns:sched tcljob:jobs}
     lappend non_per_req_locks {*}[ns_config ns/module/nsstats bglocks ""]
-
-    set totalRequests 0
     foreach s [ns_info servers] {
-        foreach pool [lsort [ns_server -server $s pools]] {
-            incr totalRequests [dict get [ns_server -server $s -pool $pool stats] requests]
-        }
         lappend non_per_req_locks tcljob:ns_eval_q:$s
     }
     set non_per_req_locks [lsort $non_per_req_locks]
