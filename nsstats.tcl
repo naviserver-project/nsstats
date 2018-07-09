@@ -246,8 +246,8 @@ proc _ns_stats.cache {} {
 
         set results ""
         set totalRequests [_ns_stats.totalRequests]
-        array set t {saved ""}
 
+        array set t {saved ""}
         foreach cache [ns_cache_names] {
             array set t {commit 0 rollback 0}
             array set t [ns_cache_stats $cache]
@@ -260,13 +260,14 @@ proc _ns_stats.cache {} {
                                  [format %.f [expr {$t(entries)>0 ? $t(hits)*1.0/$t(entries) : 0}]] \
                                  $t(missed) $t(hitrate) $t(expired) $t(pruned) \
                                  $t(commit) $t(rollback) \
+                                 [expr {$t(hits) > 0 ? $t(saved)*1.0/$t(hits) : 0}] \
                                  [expr {$totalRequests > 0 ? $t(saved)/$totalRequests : 0}] \
                                 ]
         }
 
         set colTitles   {
             Cache Max Current Utilization Entries "Avg Size" Flushes Hits Hits/Req Reuse Misses
-            "Hit Rate" Expired Pruned Commit Rollback "Saved/Req"
+            "Hit Rate" Expired Pruned Commit Rollback "Saved/Hit" "Saved/Req"
         }
         set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
 
@@ -277,13 +278,14 @@ proc _ns_stats.cache {} {
             lset row 3 [format %.2f [lindex $row 3]]%
             lset row 11 [format %.2f [lindex $row 11]]%
             lset row 16 [_ns_stats.hr [lindex $row 16]]s
+            lset row 17 [_ns_stats.hr [lindex $row 17]]s
             lappend table $row
         }
 
         append html \
             [_ns_stats.header Cache] \
             [_ns_stats.results $col $colTitles ?@page=cache $table $reverseSort {
-                left right right right right right right right right right right right right right right right right
+                left right right right right right right right right right right right right right right right right right
             }] \
             [_ns_stats.footer]
     }
@@ -1284,7 +1286,7 @@ proc _ns_stats.jobs {} {
 proc _ns_stats.results {{selectedColNum ""} {colTitles ""} {colUrl ""} {rows ""} {reverseSort ""} {colAlignment ""}} {
     set numCols [llength $colTitles]
 
-    for {set colNum 1} {$colNum < $numCols + 1} {incr colNum} {
+    for {set colNum 1} {$colNum <= $numCols} {incr colNum} {
         if {$colNum == $selectedColNum} {
             set colHdrColor($colNum)        "#666666"
             set colHdrFontColor($colNum)    "#ffffff"
