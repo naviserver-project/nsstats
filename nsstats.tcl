@@ -149,22 +149,26 @@ proc _ns_stats.footer {} {
 }
 
 proc _ns_stats.index {} {
+    set param ""
+    if {$::raw eq "1"} {
+        set param "&raw=1"
+    }
     append html \
         [_ns_stats.header] \
         "<ul>" \
-        "<li> <a href='?@page=adp'>ADP</a></li>" \n\
-        "<li> <a href='?@page=cache'>Cache</a></li>" \n\
-        "<li> <a href='?@page=configfile'>Config File</a></li>" \n\
-        "<li> <a href='?@page=configparams'>Config Parameters</a></li>" \n\
-        "<li> <a href='?@page=jobs'>Jobs</a></li>" \n\
-        "<li> <a href='?@page=log'>Log</a></li>" \n\
-        "<li> <a href='?@page=loglevel'>Log Levels</a></li>" \n\
-        "<li> <a href='?@page=mempools'>Memory</a></li>" \n\
-        "<li> <a href='?@page=locks'>Mutex Locks</a></li>" \n\
-        "<li> <a href='?@page=nsvlocks'>Nsv Locks</a></li>" \n\
-        "<li> <a href='?@page=process'>Process</a></li>" \n\
-        "<li> <a href='?@page=sched'>Scheduled Procedures</a></li>" \n\
-        "<li> <a href='?@page=threads'>Threads</a></li>" \n\
+        "<li> <a href='?@page=adp$param'>ADP</a></li>" \n\
+        "<li> <a href='?@page=cache$param'>Cache</a></li>" \n\
+        "<li> <a href='?@page=configfile$param'>Config File</a></li>" \n\
+        "<li> <a href='?@page=configparams$param'>Config Parameters</a></li>" \n\
+        "<li> <a href='?@page=jobs$param'>Jobs</a></li>" \n\
+        "<li> <a href='?@page=log$param'>Log</a></li>" \n\
+        "<li> <a href='?@page=loglevel$param'>Log Levels</a></li>" \n\
+        "<li> <a href='?@page=mempools$param'>Memory</a></li>" \n\
+        "<li> <a href='?@page=locks$param'>Mutex Locks</a></li>" \n\
+        "<li> <a href='?@page=nsvlocks$param'>Nsv Locks</a></li>" \n\
+        "<li> <a href='?@page=process$param'>Process</a></li>" \n\
+        "<li> <a href='?@page=sched$param'>Scheduled Procedures</a></li>" \n\
+        "<li> <a href='?@page=threads$param'>Threads</a></li>" \n\
         "</ul>\n" \
         [_ns_stats.footer]
     return $html

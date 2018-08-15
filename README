@@ -31,8 +31,8 @@ Changes since 1.0
   - threads: added user time, system times, processor number and state
     (Linux only)
   - added log statistics
-  - added Page for showing/toggling log levels
-  - added Page for showing urls mapped to connection threads pools
+  - added page for showing/toggling log levels
+  - added page for showing URLs mapped to connection threads pools
   - added information about drivers (threads, stats)
   - format values in human readable form
 
