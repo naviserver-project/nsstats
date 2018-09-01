@@ -72,9 +72,10 @@ if { ![nsv_exists _ns_stats threads_0] } {
 }
 
 proc _ns_stats.header {args} {
+
     if {[llength $args] == 1} {
         set title "NaviServer Stats: [ns_info hostname] - [lindex $args 0]"
-        set nav "<a href='?@page=index'>Main Menu</a> &gt; <span class='current'>[lindex $args 0]</span>"
+        set nav "<a href='?@page=index$::rawparam'>Main Menu</a> &gt; <span class='current'>[lindex $args 0]</span>"
     } elseif {[llength $args] == 2} {
         set node [lindex $args 0]
         if {[llength $node] > 1} {
@@ -84,7 +85,7 @@ proc _ns_stats.header {args} {
             set menu_entry $node
         }
         set title "NaviServer Stats: [ns_info hostname] - $node - [lindex $args 1]"
-        set nav "<a href='?@page=index'>Main Menu</a> &gt; $menu_entry &gt; <span class='current'>[lindex $args 1]</span>"
+        set nav "<a href='?@page=index$::rawparam'>Main Menu</a> &gt; $menu_entry &gt; <span class='current'>[lindex $args 1]</span>"
     } else {
         set title "NaviServer Stats: [ns_info hostname]"
         set nav "<span class='current'>Main Menu</span>"
@@ -149,26 +150,22 @@ proc _ns_stats.footer {} {
 }
 
 proc _ns_stats.index {} {
-    set param ""
-    if {$::raw eq "1"} {
-        set param "&raw=1"
-    }
     append html \
         [_ns_stats.header] \
         "<ul>" \
-        "<li> <a href='?@page=adp$param'>ADP</a></li>" \n\
-        "<li> <a href='?@page=cache$param'>Cache</a></li>" \n\
-        "<li> <a href='?@page=configfile$param'>Config File</a></li>" \n\
-        "<li> <a href='?@page=configparams$param'>Config Parameters</a></li>" \n\
-        "<li> <a href='?@page=jobs$param'>Jobs</a></li>" \n\
-        "<li> <a href='?@page=log$param'>Log</a></li>" \n\
-        "<li> <a href='?@page=loglevel$param'>Log Levels</a></li>" \n\
-        "<li> <a href='?@page=mempools$param'>Memory</a></li>" \n\
-        "<li> <a href='?@page=locks$param'>Mutex Locks</a></li>" \n\
-        "<li> <a href='?@page=nsvlocks$param'>Nsv Locks</a></li>" \n\
-        "<li> <a href='?@page=process$param'>Process</a></li>" \n\
-        "<li> <a href='?@page=sched$param'>Scheduled Procedures</a></li>" \n\
-        "<li> <a href='?@page=threads$param'>Threads</a></li>" \n\
+        "<li> <a href='?@page=adp$::rawparam'>ADP</a></li>" \n\
+        "<li> <a href='?@page=cache$::rawparam'>Cache</a></li>" \n\
+        "<li> <a href='?@page=configfile$::rawparam'>Config File</a></li>" \n\
+        "<li> <a href='?@page=configparams$::rawparam'>Config Parameters</a></li>" \n\
+        "<li> <a href='?@page=jobs$::rawparam'>Jobs</a></li>" \n\
+        "<li> <a href='?@page=log$::rawparam'>Log</a></li>" \n\
+        "<li> <a href='?@page=loglevel$::rawparam'>Log Levels</a></li>" \n\
+        "<li> <a href='?@page=mempools$::rawparam'>Memory</a></li>" \n\
+        "<li> <a href='?@page=locks$::rawparam'>Mutex Locks</a></li>" \n\
+        "<li> <a href='?@page=nsvlocks$::rawparam'>Nsv Locks</a></li>" \n\
+        "<li> <a href='?@page=process$::rawparam'>Process</a></li>" \n\
+        "<li> <a href='?@page=sched$::rawparam'>Scheduled Procedures</a></li>" \n\
+        "<li> <a href='?@page=threads$::rawparam'>Threads</a></li>" \n\
         "</ul>\n" \
         [_ns_stats.footer]
     return $html
@@ -1042,6 +1039,7 @@ proc _ns_stats.process {} {
                         {*}$poolItems \
                         {*}$proxyItems \
                         "Active Writer Jobs" [join [ns_writer list -server $s] <br>] \
+                        "Connchan Jobs"      [join [ns_connchan list -server $s] <br>] \
                        ]
 
         append html \
@@ -1287,7 +1285,14 @@ proc _ns_stats.jobs {} {
     return $html
 }
 
-proc _ns_stats.results {{selectedColNum ""} {colTitles ""} {colUrl ""} {rows ""} {reverseSort ""} {colAlignment ""}} {
+proc _ns_stats.results {
+                        {selectedColNum ""}
+                        {colTitles ""}
+                        {colUrl ""}
+                        {rows ""}
+                        {reverseSort ""}
+                        {colAlignment ""}
+                    } {
     set numCols [llength $colTitles]
 
     for {set colNum 1} {$colNum <= $numCols} {incr colNum} {
@@ -1331,7 +1336,11 @@ proc _ns_stats.results {{selectedColNum ""} {colTitles ""} {colUrl ""} {rows ""}
             }
         }
 
-        append html "<td valign=middle align=$colAlign bgcolor=$colHdrColor($i)><a href='$url&col=$i'><font color=$colHdrFontColor($i)>$title</font></a></td>"
+        append html \
+            "<td valign='middle' align='$colAlign' bgcolor='$colHdrColor($i)'>" \
+            "<a href='$url&col=$i$::rawparam'>" \
+            "<font color='$colHdrFontColor($i)'>$title</font>" \
+            "</a></td>"
 
         incr i
     }
@@ -1579,7 +1588,15 @@ proc _ns_stats.hr {n {format %.2f}} {
 
 # Main processing logic
 set page [ns_queryget @page]
+
+#
+# raw number display
+#
 set ::raw [ns_queryget raw 0]
+set ::rawparam ""
+if {$::raw eq "1"} {
+    set ::rawparam "&raw=1"
+}
 
 if { [info commands _ns_stats.$page] eq "" } {
   set page index
