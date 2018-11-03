@@ -1,5 +1,5 @@
 Statistics Module for NaviServer 4.99.17
-Release 1.7
+Release 1.8
 vlad@crystalballinc.com
 neumann@wu-wien.ac.at
 
@@ -35,7 +35,7 @@ Changes since 1.0
   - added page for showing URLs mapped to connection threads pools
   - added information about drivers (threads, stats)
   - format values in human readable form
-
+  - extended cache and mutex statistics
 
 /*--------------------------------------------------------------------*/
 
