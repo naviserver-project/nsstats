@@ -1039,7 +1039,7 @@ proc _ns_stats.process {} {
                         {*}$poolItems \
                         {*}$proxyItems \
                         "Active Writer Jobs" [join [ns_writer list -server $s] <br>] \
-                        "Connchan Jobs"      [join [ns_connchan list -server $s] <br>] \
+                        "Active Connchan Jobs" [join [ns_connchan list -server $s] <br>] \
                        ]
 
         append html \
