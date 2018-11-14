@@ -541,6 +541,8 @@ set ::tips(ns~server~\[^~\]+\$,noticedetail) "Notice server details (version num
 set ::tips(~fastpath\$,directoryadp) "Name of directory ADP"
 set ::tips(~fastpath\$,directoryproc) "Name of directory proc"
 set ::tips(~module~,deferaccept) "TCP Performance option; use TCP_FASTOPEN or TCP_DEFER_ACCEPT or SO_ACCEPTFILTER. (boolean, false)"
+set ::tips(~module~,keepwait) "Timeout in seconds for keep-alive. (integer, 5)"
+set ::tips(~module~,closewait) "Timeout in seconds for close on socket to drain potential garbage if no keep alive is performed. (integer, 2)"
 set ::tips(~module~,nodelay) "TCP Performance option; use TCP_NODELAY (OS-default on Linux). (boolean, false)"
 set ::tips(~module~,writersize) "Use writer threads for replies above this size. (integer, 1048576)"
 set ::tips(~module~,writerstreaming) "Use writer threads for streaming HTML output (e.g. ns_write ...). (boolean, false)"
@@ -857,6 +859,37 @@ proc _ns_stats.loglevel {} {
 }
 
 
+proc _ns_stats.process.running_scheds {} {
+    set running [lmap j [ns_info scheduled] {
+        if {![_ns_stats.isThreadRunning [lindex $j 1]]} continue; set j
+    }]
+
+    set sched_info {}
+    set now        [clock seconds]
+    set nowms      [clock milliseconds]
+    if {[llength $running] > 0} {
+        ns_log notice "running $running"
+    }
+
+    foreach s $running {
+        set id          [lindex $s 0]
+        set flags       [lindex $s 1]
+        set startTime   [lindex $s 5]
+        set proc        [lindex $s 7]
+        set arg         [lrange $s 8 end]
+        set startFmt    [clock format $startTime -format {%H:%M:%S}]
+        set duration    [expr {$now - $startTime}]
+        if {$duration < 10} {
+            set durationFmt [format %.2f [expr {($nowms - $startTime*1000.0)/1000.0}]]s
+        } else {
+            set durationFmt [_ns_stats.fmtSeconds $duration]
+        }
+        lappend sched_info "$id: start $startFmt - $proc $arg - duration $durationFmt"
+    }
+    return $sched_info
+}
+
+
 proc _ns_stats.process {} {
     if {[info commands ns_driver] ne ""} {
         #
@@ -898,21 +931,22 @@ proc _ns_stats.process {} {
         set driverInfo ""
     }
     set values [list \
-                    Host                "[ns_info hostname] ([ns_info address])" \
-                    "Boot Time"		[clock format [ns_info boottime] -format %c] \
-                    Uptime		[_ns_stats.fmtSeconds [ns_info uptime]] \
-                    Process		"[ns_info pid] [ns_info nsd]" \
-                    Home                [ns_info home] \
-                    Configuration       [ns_info config] \
-                    "Error Log"		[ns_info log] \
-                    "Log Statistics"	[_ns_stats.pretty {Notice Warning Debug(sql)} [ns_logctl stats] %.0f] \
-                    Version             "[ns_info patchlevel] (tag [ns_info tag]))" \
-                    "Build Date"        [ns_info builddate] \
-                    Servers             [join [ns_info servers] <br>] \
+                    Host                 "[ns_info hostname] ([ns_info address])" \
+                    "Boot Time"           [clock format [ns_info boottime] -format %c] \
+                    Uptime                [_ns_stats.fmtSeconds [ns_info uptime]] \
+                    Process              "[ns_info pid] [ns_info nsd]" \
+                    Home                  [ns_info home] \
+                    Configuration         [ns_info config] \
+                    "Error Log"           [ns_info log] \
+                    "Log Statistics"      [_ns_stats.pretty {Notice Warning Debug(sql)} [ns_logctl stats] %.0f] \
+                    Version              "[ns_info patchlevel] (tag [ns_info tag]))" \
+                    "Build Date"          [ns_info builddate] \
+                    Servers               [join [ns_info servers] <br>] \
                     {*}${driverInfo} \
-                    DB-Pools            "<table>[join [_ns_stats.process.dbpools]]</table>" \
-                    Callbacks           "<table>[join [_ns_stats.process.callbacks]]</table>" \
-                    "Socket Callbacks"	[join [ns_info sockcallbacks] <br>] \
+                    DB-Pools             "<table>[join [_ns_stats.process.dbpools]]</table>" \
+                    Callbacks            "<table>[join [_ns_stats.process.callbacks]]</table>" \
+                    "Socket Callbacks"    [join [ns_info sockcallbacks] <br>] \
+                    "Running Scheduled Procs (repated )" [join [_ns_stats.process.running_scheds] <br>] \
                    ]
 
     set html [_ns_stats.header Process]
