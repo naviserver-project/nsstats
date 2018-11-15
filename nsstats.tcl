@@ -858,15 +858,22 @@ proc _ns_stats.loglevel {} {
     return $html
 }
 
+proc _ns_stats.process.format_duration {duration nowms startTime} {
+    if {$duration < 10} {
+        return [format %.2f [expr {($nowms - $startTime*1000.0)/1000.0}]]s
+    } else {
+        return [_ns_stats.fmtSeconds $duration]
+    }
+}
 
 proc _ns_stats.process.running_scheds {} {
     set running [lmap j [ns_info scheduled] {
         if {![_ns_stats.isThreadRunning [lindex $j 1]]} continue; set j
     }]
 
-    set sched_info {}
-    set now        [clock seconds]
-    set nowms      [clock milliseconds]
+    set results {}
+    set now     [clock seconds]
+    set nowms   [clock milliseconds]
     if {[llength $running] > 0} {
         ns_log notice "running $running"
     }
@@ -879,14 +886,37 @@ proc _ns_stats.process.running_scheds {} {
         set arg         [lrange $s 8 end]
         set startFmt    [clock format $startTime -format {%H:%M:%S}]
         set duration    [expr {$now - $startTime}]
-        if {$duration < 10} {
-            set durationFmt [format %.2f [expr {($nowms - $startTime*1000.0)/1000.0}]]s
-        } else {
-            set durationFmt [_ns_stats.fmtSeconds $duration]
-        }
-        lappend sched_info "$id: start $startFmt - $proc $arg - duration $durationFmt"
+        set durationFmt [_ns_stats.process.format_duration $duration $nowms $startTime]
+        lappend results "$id: start $startFmt - $proc $arg - duration $durationFmt"
     }
-    return $sched_info
+    return $results
+}
+
+proc _ns_stats.process.running_jobs {} {
+    set results {}
+
+    foreach ql [ns_job queuelist] {
+        set numrunning [dict get $ql numrunning]
+        if {$numrunning > 0} {
+            set now        [clock seconds]
+            set nowms      [clock milliseconds]
+            set queue [dict get $ql name]
+            foreach jobinfo [ns_job joblist $queue] {
+                ns_log notice "jobinfo: $jobinfo"
+                set state     [dict get $jobinfo state]
+                if {$state eq "running"} {
+                    set startTime   [dict get $jobinfo starttime]
+                    set id          [dict get $jobinfo id]
+                    set script      [dict get $jobinfo script]
+                    set startFmt    [clock format $startTime -format {%H:%M:%S}]
+                    set duration    [expr {$now - $startTime}]
+                    set durationFmt [_ns_stats.process.format_duration $duration $nowms $startTime]
+                    lappend results "$queue $id: start $startFmt - $script - duration $durationFmt"
+                }
+            }
+        }
+    }
+    return $results
 }
 
 
@@ -947,6 +977,7 @@ proc _ns_stats.process {} {
                     Callbacks            "<table>[join [_ns_stats.process.callbacks]]</table>" \
                     "Socket Callbacks"    [join [ns_info sockcallbacks] <br>] \
                     "Running Scheduled Procs (repated )" [join [_ns_stats.process.running_scheds] <br>] \
+                    "Running Jobs"        [join [_ns_stats.process.running_jobs] <br>] \
                    ]
 
     set html [_ns_stats.header Process]
