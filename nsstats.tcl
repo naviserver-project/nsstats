@@ -47,28 +47,28 @@ set password [ns_config ns/module/nsstats password ""]
 set enabled  [ns_config ns/module/nsstats enabled 1]
 
 if { ![nsv_exists _ns_stats threads_0] } {
-  nsv_set _ns_stats thread_0      "OK"
-  nsv_set _ns_stats thread_-1     "ERROR"
-  nsv_set _ns_stats thread_-2     "TIMEOUT"
-  nsv_set _ns_stats thread_200    "MAXTLS"
-  nsv_set _ns_stats thread_1      "DETACHED"
-  nsv_set _ns_stats thread_2      "JOINED"
-  nsv_set _ns_stats thread_4      "EXITED"
-  nsv_set _ns_stats thread_32     "NAMESIZE"
+    nsv_set _ns_stats thread_0      "OK"
+    nsv_set _ns_stats thread_-1     "ERROR"
+    nsv_set _ns_stats thread_-2     "TIMEOUT"
+    nsv_set _ns_stats thread_200    "MAXTLS"
+    nsv_set _ns_stats thread_1      "DETACHED"
+    nsv_set _ns_stats thread_2      "JOINED"
+    nsv_set _ns_stats thread_4      "EXITED"
+    nsv_set _ns_stats thread_32     "NAMESIZE"
 
-  nsv_set _ns_stats sched_1       "thread"
-  nsv_set _ns_stats sched_2       "once"
-  nsv_set _ns_stats sched_4       "daily"
-  nsv_set _ns_stats sched_8       "weekly"
-  nsv_set _ns_stats sched_16      "paused"
-  nsv_set _ns_stats sched_32      "running"
+    nsv_set _ns_stats sched_1       "thread"
+    nsv_set _ns_stats sched_2       "once"
+    nsv_set _ns_stats sched_4       "daily"
+    nsv_set _ns_stats sched_8       "weekly"
+    nsv_set _ns_stats sched_16      "paused"
+    nsv_set _ns_stats sched_32      "running"
 
-  nsv_set _ns_stats sched_thread  1
-  nsv_set _ns_stats sched_once    2
-  nsv_set _ns_stats sched_daily   4
-  nsv_set _ns_stats sched_weekly  8
-  nsv_set _ns_stats sched_paused  16
-  nsv_set _ns_stats sched_running 32
+    nsv_set _ns_stats sched_thread  1
+    nsv_set _ns_stats sched_once    2
+    nsv_set _ns_stats sched_daily   4
+    nsv_set _ns_stats sched_weekly  8
+    nsv_set _ns_stats sched_paused  16
+    nsv_set _ns_stats sched_running 32
 }
 
 proc _ns_stats.header {args} {
@@ -92,17 +92,17 @@ proc _ns_stats.header {args} {
     }
 
     return [subst {<!DOCTYPE html>
-    <html>
-    <head>
-    <title>$title</title>
-    <style type='text/css'>
+        <html>
+        <head>
+        <title>$title</title>
+        <style type='text/css'>
 
-       /* tooltip styling. by default the element to be styled is .tooltip  */
-       .tip {
-          cursor: help;
-          text-decoration:underline;
-          color: #777777;
-       }
+        /* tooltip styling. by default the element to be styled is .tooltip  */
+        .tip {
+            cursor: help;
+            text-decoration:underline;
+            color: #777777;
+        }
 
         body    { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; color: #000000; background-color: #ffffff; }
         td,th   { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; padding: 4px;}
@@ -133,16 +133,16 @@ proc _ns_stats.header {args} {
         table.data td {background-color: #ffffff; padding: 4px;}
         table.data td table {background-color: #ffffff; border-spacing: 0px;}
         table.data td table td {padding: 2px;}
-    </style>
-    </head>
+        </style>
+        </head>
 
-    <table class='navbar'>
-    <tr>
+        <table class='navbar'>
+        <tr>
         <td valign='middle'><b>$nav</b></td>
         <td valign='middle' align='right'><b>[_ns_stats.fmtTime [ns_time]]</b></td>
-    </tr>
-    </table>
-    <br>}]
+        </tr>
+        </table>
+        <br>}]
 }
 
 proc _ns_stats.footer {} {
@@ -454,18 +454,18 @@ proc _ns_stats.nsvlocks {} {
     set rows ""
     set bucketNr 0
     if {[info commands nsv_bucket] ne ""} {
-      foreach b [nsv_bucket] {
-        foreach e $b {
-          lappend rows [lappend e $bucketNr {*}$mutexStats($bucketNr)]
+        foreach b [nsv_bucket] {
+            foreach e $b {
+                lappend rows [lappend e $bucketNr {*}$mutexStats($bucketNr)]
+            }
+            incr bucketNr
         }
-        incr bucketNr
-      }
     }
     set rows [_ns_stats.sortResults $rows [expr {$col - 1}] $numericSort $reverseSort]
     set max 200
     if {[llength $rows]>$max && !$all} {
-       set rows [lrange $rows 0 $max]
-       set truncated 1
+        set rows [lrange $rows 0 $max]
+        set truncated 1
     }
 
     set table {}
@@ -483,7 +483,7 @@ proc _ns_stats.nsvlocks {} {
              {left right right right right right right right}]
 
     if {[info exists truncated]} {
-      append html "<a href='?@page=nsvlocks&col=$col&reversesort=$reverseSort&all=1'>...</a><br>"
+        append html "<a href='?@page=nsvlocks&col=$col&reversesort=$reverseSort&all=1'>...</a><br>"
     }
     append html [_ns_stats.footer]
 
@@ -551,74 +551,76 @@ set ::tips(~tcl\$,errorlogheaders) "Connection headers to be logged in case of e
 
 
 proc _ns_stats.tooltip {section field} {
-  foreach n [array names ::tips] {
-    lassign [split $n ,] re f
-    if {$field eq $f && [regexp $re $section]} {return $::tips($n)}
-  }
-  return ""
+    foreach n [array names ::tips] {
+        lassign [split $n ,] re f
+        if {$field eq $f && [regexp $re $section]} {return $::tips($n)}
+    }
+    return ""
 }
 
 proc _ns_stats.configparams {} {
-  set out [list]
-  foreach section [lsort [ns_configsections]] {
-    # We want to have e.g. "aaa/pools" before "aaa/pool/foo",
-    # therefore we map "/" to "" to put it in the collating sequence
-    # after plain chars
-    set name [string map {/ ~} [ns_set name $section]]
+    set out [list]
+    foreach section [lsort [ns_configsections]] {
+        # We want to have e.g. "aaa/pools" before "aaa/pool/foo",
+        # therefore we map "/" to "" to put it in the collating sequence
+        # after plain chars
+        set name [string map {/ ~} [ns_set name $section]]
 
-    array unset keys
-    for { set i 0 } { $i < [ns_set size $section] } { incr i } {
-      lappend keys([string tolower [ns_set key $section $i]]) [ns_set value $section $i]
-    }
+        array unset keys
+        for { set i 0 } { $i < [ns_set size $section] } { incr i } {
+            lappend keys([string tolower [ns_set key $section $i]]) [ns_set value $section $i]
+        }
 
-    set line ""
-    foreach section_key [lsort [array names keys]] {
-      set tip [_ns_stats.tooltip $name $section_key]
-      set tipclass [expr {$tip ne "" ? "tip" : ""}]
-      lappend line "<tr><td title='$tip' class='coltitle $tipclass'>$section_key:</td>\n\
+        set line ""
+        foreach section_key [lsort [array names keys]] {
+            set tip [_ns_stats.tooltip $name $section_key]
+            set tipclass [expr {$tip ne "" ? "tip" : ""}]
+            lappend line "<tr><td title='$tip' class='coltitle $tipclass'>$section_key:</td>\n\
         <td class='colvalue'>[join $keys($section_key) <br>]</td></tr>"
+        }
+        set table($name) [join $line \n]
     }
-    set table($name) [join $line \n]
-  }
-  set order {
-    ns~parameters ns~encodings ns~mimetypes ns~fastpath ns~threads .br
-    ns~modules ns~module~.* .br
-    ns~servers ns~server~.* .br
-    ns~db~drivers ns~db~driver~* .br
-    ns~db~pools ns~db~pool~* .br
-  }
+    set order {
+        ns~parameters ns~encodings ns~mimetypes ns~fastpath ns~threads .br
+        ns~modules ns~module~.* .br
+        ns~servers ns~server~.* .br
+        ns~db~drivers ns~db~driver~* .br
+        ns~db~pools ns~db~pool~* .br
+    }
 
-  set toc ""
-  set sectionhtml ""
-  foreach e $order {
-    if {$e eq ".br"} {append sectionhtml "<tr><td colspan='2'>&nbsp</td></tr>\n"}
-    foreach section [lsort [array names table -regexp $e]] {
-      set name [string map {~ /} $section]
-      lappend toc "<a href='#ref-$name'>$name</a>"
-      set anchor "<a name='ref-$name'>$name</a>"
-      append sectionhtml "\n<tr><td colspan='2' class='colsection'><h4>$anchor</h4></td></tr>\n$table($section)\n"
-      unset table($section)
+    set toc ""
+    set sectionhtml ""
+    foreach e $order {
+        if {$e eq ".br"} {
+            append sectionhtml "<tr><td colspan='2'>&nbsp</td></tr>\n"
+        }
+        foreach section [lsort [array names table -regexp $e]] {
+            set name [string map {~ /} $section]
+            lappend toc "<a href='#ref-$name'>$name</a>"
+            set anchor "<a name='ref-$name'>$name</a>"
+            append sectionhtml "\n<tr><td colspan='2' class='colsection'><h4>$anchor</h4></td></tr>\n$table($section)\n"
+            unset table($section)
+        }
     }
-  }
-  if {[array size table] > 0} {
-    append sectionhtml "\n<tr><td colspan='2' class='colsection'><h3>Extra Parameters</h3></td></tr>\n\n"
-    foreach section [lsort [array names table]] {
-      set name [string map {~ /} $section]
-      lappend toc "<a href='#ref-$name'>$name</a>"
-      set anchor "<a name='ref-$name'>$name</a>"
-      append sectionhtml "\n<tr><td colspan='2' class='colsection'><h4>$anchor</h4></td></tr>\n$table($section)\n"
+    if {[array size table] > 0} {
+        append sectionhtml "\n<tr><td colspan='2' class='colsection'><h3>Extra Parameters</h3></td></tr>\n\n"
+        foreach section [lsort [array names table]] {
+            set name [string map {~ /} $section]
+            lappend toc "<a href='#ref-$name'>$name</a>"
+            set anchor "<a name='ref-$name'>$name</a>"
+            append sectionhtml "\n<tr><td colspan='2' class='colsection'><h4>$anchor</h4></td></tr>\n$table($section)\n"
+        }
     }
-  }
     append html \
-      [_ns_stats.header "Config Parameters"] \
-      "<h3>The following values are defined in the configuration database:</h3>" \
-      "<table><tr><td valign='top' style='background:#eeeeee;'>" \
-      "<ul style='list-style-type: none; margin: 0; padding: 0;'><li>[join $toc </li><li>]</li></ul>" \
-      </td><td> \
-      <table>$sectionhtml</table> \
-      </td></tr> \
-      [_ns_stats.footer]
-  return $html
+        [_ns_stats.header "Config Parameters"] \
+        "<h3>The following values are defined in the configuration database:</h3>" \
+        "<table><tr><td valign='top' style='background:#eeeeee;'>" \
+        "<ul style='list-style-type: none; margin: 0; padding: 0;'><li>[join $toc </li><li>]</li></ul>" \
+        </td><td> \
+        <table>$sectionhtml</table> \
+        </td></tr> \
+        [_ns_stats.footer]
+    return $html
 }
 
 proc _ns_stats.configfile {} {
@@ -641,17 +643,17 @@ proc _ns_stats.configfile {} {
 # minimal backwards compatibility for tcl 8.4
 
 if {[info commands ::dict] ne ""} {
-  proc dictget? {dict key {def ""}} {
-    if {[dict exists $dict $key]} {
-        return [dict get $dict $key]
-    } else {
-        return $def
+    proc dictget? {dict key {def ""}} {
+        if {[dict exists $dict $key]} {
+            return [dict get $dict $key]
+        } else {
+            return $def
+        }
     }
-  }
 } else {
-  proc dictget? {dict key {def ""}} {
-    return $key
-  }
+    proc dictget? {dict key {def ""}} {
+        return $key
+    }
 }
 
 
@@ -672,7 +674,7 @@ proc _ns_stats.mempools {} {
     if {[info commands ::dict] ne ""} {
         set trans [dict create]
         foreach thread [ns_info threads] {
-          dict set trans thread0x[lindex $thread 2] [lindex $thread 0]
+            dict set trans thread0x[lindex $thread 2] [lindex $thread 0]
         }
     }
 
@@ -702,41 +704,41 @@ proc _ns_stats.mempools {} {
                 <td valign=middle bgcolor=#999999><font color=#ffffff>Lock Waits</font></td>
              </tr>"
 
-            foreach b [lrange $p 1 end] {
-                    set bs [lindex $b 0]
-                    set nf [lindex $b 1]
-                    set ng [lindex $b 2]
-                    set np [lindex $b 3]
-                    set nr [lindex $b 4]
-                    set nu [expr {$ng - $np}]
-                    set na [expr {$nu * $bs}]
+        foreach b [lrange $p 1 end] {
+            set bs [lindex $b 0]
+            set nf [lindex $b 1]
+            set ng [lindex $b 2]
+            set np [lindex $b 3]
+            set nr [lindex $b 4]
+            set nu [expr {$ng - $np}]
+            set na [expr {$nu * $bs}]
 
-                    incr tops [expr {$ng + $np}]
-                    incr tlocks [lindex $b 5]
-                    incr twaits [lindex $b 6]
-                    incr tfree [expr {$bs * $nf}]
-                    incr talloc $na
-                    incr trequest $nr
-                    incr tused $nu
+            incr tops [expr {$ng + $np}]
+            incr tlocks [lindex $b 5]
+            incr twaits [lindex $b 6]
+            incr tfree [expr {$bs * $nf}]
+            incr talloc $na
+            incr trequest $nr
+            incr tused $nu
 
-                    if {$nr != 0} {
-                            set ov [expr {$na - $nr}]
-                            set op [format %4.2f%% [expr {double($ov) * 100 / $nr}]]
-                    } else {
-                            set ov "N/A"
-                            set op "N/A"
-                    }
-
-                    append html "<tr>"
-
-                    foreach e [linsert [lreplace $b 4 4] 4 $nr $na $op] {
-                            append html "<td bgcolor=#ffffff>$e</td>"
-                    }
-
-                    append html "</tr>"
+            if {$nr != 0} {
+                set ov [expr {$na - $nr}]
+                set op [format %4.2f%% [expr {double($ov) * 100 / $nr}]]
+            } else {
+                set ov "N/A"
+                set op "N/A"
             }
 
-            append html "\
+            append html "<tr>"
+
+            foreach e [linsert [lreplace $b 4 4] 4 $nr $na $op] {
+                append html "<td bgcolor=#ffffff>$e</td>"
+            }
+
+            append html "</tr>"
+        }
+
+        append html "\
                 </table>
                 </td>
         </tr>
@@ -786,17 +788,17 @@ proc _ns_stats.mempools {} {
 
 proc _ns_stats.process.table {values} {
     set html [subst {
-    <table class="data">
+        <table class="data">
         <tr>
-            <th valign="middle">Key</th>
-            <th valign="middle">Value</th>
+        <th valign="middle">Key</th>
+        <th valign="middle">Value</th>
         </tr>
     }]
     foreach {key value} $values {
         append html [subst {
             <tr>
-                <td class='coltitle'>$key</td>
-                <td class='colvalue'>$value</td>
+            <td class='coltitle'>$key</td>
+            <td class='colvalue'>$value</td>
             </tr>}]
     }
 
@@ -1225,16 +1227,16 @@ proc _ns_stats.threads {} {
     set pid [pid]
     set threadInfo [ns_info threads]
     if {[file readable /proc/$pid/statm] && [llength [lindex $threadInfo 0]] > 7} {
-       set colNumSort  {. 0 0 1 1 1 0 0 1 1 0}
-       set colTitles   {Thread Parent ID    Flags "Create Time" TID   State utime stime Args}
-       set align       {left   left   right left   left         right right right right left}
-       set osInfo      1
-       set HZ          100  ;# for more reliable handling, we should implement jiffies_to_timespec or jiffies_to_secs in C
+        set colNumSort  {. 0 0 1 1 1 0 0 1 1 0}
+        set colTitles   {Thread Parent ID    Flags "Create Time" TID   State utime stime Args}
+        set align       {left   left   right left   left         right right right right left}
+        set osInfo      1
+        set HZ          100  ;# for more reliable handling, we should implement jiffies_to_timespec or jiffies_to_secs in C
     } else {
-       set colNumSort  {. 0 0 1 1 1 0}
-       set colTitles   {Thread Parent ID    Flags "Create Time" Args}
-       set align       {left   left   right left   left         left}
-       set osInfo      0
+        set colNumSort  {. 0 0 1 1 1 0}
+        set colTitles   {Thread Parent ID    Flags "Create Time" Args}
+        set align       {left   left   right left   left         left}
+        set osInfo      0
     }
 
     if {$osInfo} {
@@ -1250,16 +1252,16 @@ proc _ns_stats.threads {} {
             }
             if {$s ne ""} {
                 lassign $s tid comm state ppid pgrp session tty_nr tpgid flags minflt \
-                  cminflt majflt cmajflt utime stime cutime cstime priority nice \
-                  numthreads itrealval starttime vsize rss rsslim startcode endcode \
-                  startstack kstkesp kstkeip signal blocked sigignore sigcatch wchan \
-                  nswap cnswap ext_signal processor
+                    cminflt majflt cmajflt utime stime cutime cstime priority nice \
+                    numthreads itrealval starttime vsize rss rsslim startcode endcode \
+                    startstack kstkesp kstkeip signal blocked sigignore sigcatch wchan \
+                    nswap cnswap ext_signal processor
                 set state "$state [format %.2d $processor]"
             } else {
-              lassign {} tid state
-              lassign {0 0} utime stime
-           }
-           lappend ti [linsert $t 5 $tid $state $utime $stime]
+                lassign {} tid state
+                lassign {0 0} utime stime
+            }
+            lappend ti [linsert $t 5 $tid $state $utime $stime]
         }
         set threadInfo $ti
     }
@@ -1309,38 +1311,38 @@ proc _ns_stats.jobs {} {
 
     if { $queue eq "" } {
 
-      if {$col == 0 || $col == 1 || $col == 4} {
-          set numericSort 0
-      }
+        if {$col == 0 || $col == 1 || $col == 4} {
+            set numericSort 0
+        }
 
-      set colTitles [list Name Desc maxThreads numRunning Req]
+        set colTitles [list Name Desc maxThreads numRunning Req]
 
-      foreach ql [ns_job queuelist] {
-        array set qa $ql
-        set name "<a href='?@page=jobs&queue=$qa(name)'>$qa(name)</a>"
-        lappend results [list $name $qa(desc) $qa(maxthreads) $qa(numrunning) $qa(req)]
-      }
+        foreach ql [ns_job queuelist] {
+            array set qa $ql
+            set name "<a href='?@page=jobs&queue=$qa(name)'>$qa(name)</a>"
+            lappend results [list $name $qa(desc) $qa(maxthreads) $qa(numrunning) $qa(req)]
+        }
 
-      set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
+        set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
 
     } else {
 
-      if {$col == 0 || $col == 1 || $col == 2 || $col == 3 || $col == 4} {
-          set numericSort 0
-      }
+        if {$col == 0 || $col == 1 || $col == 2 || $col == 3 || $col == 4} {
+            set numericSort 0
+        }
 
-      set colTitles   [list ID State Script Code Type Started Stopped Time]
-      set results     [list]
+        set colTitles   [list ID State Script Code Type Started Stopped Time]
+        set results     [list]
 
-      foreach jl [ns_job joblist $queue] {
-        array set ja $jl
-        set ja(starttime) [_ns_stats.fmtTime $ja(starttime)]
-        set ja(endtime) [_ns_stats.fmtTime $ja(endtime)]
-        set ja(time) "[expr [lindex [split $ja(time) .] 0]/1000] sec"
-        lappend results [list $ja(id) $ja(state) $ja(script) $ja(code) $ja(type) $ja(starttime) $ja(endtime) $ja(time)]
-      }
+        foreach jl [ns_job joblist $queue] {
+            array set ja $jl
+            set ja(starttime) [_ns_stats.fmtTime $ja(starttime)]
+            set ja(endtime) [_ns_stats.fmtTime $ja(endtime)]
+            set ja(time) "[expr [lindex [split $ja(time) .] 0]/1000] sec"
+            lappend results [list $ja(id) $ja(state) $ja(script) $ja(code) $ja(type) $ja(starttime) $ja(endtime) $ja(time)]
+        }
 
-      set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
+        set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
     }
 
     append html \
@@ -1664,7 +1666,7 @@ if {$::raw eq "1"} {
 }
 
 if { [info commands _ns_stats.$page] eq "" } {
-  set page index
+    set page index
 }
 
 # Check user access if configured
