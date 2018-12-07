@@ -614,7 +614,7 @@ proc _ns_stats.configparams {} {
     append html \
         [_ns_stats.header "Config Parameters"] \
         "<h3>The following values are defined in the configuration database:</h3>" \
-        "<table><tr><td valign='top' style='background:#eeeeee;'>" \
+        "<table><tr><td valign='top' style='background:#eeeeee; white-space:nowrap;'>" \
         "<ul style='list-style-type: none; margin: 0; padding: 0;'><li>[join $toc </li><li>]</li></ul>" \
         </td><td> \
         <table>$sectionhtml</table> \
