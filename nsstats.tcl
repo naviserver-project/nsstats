@@ -986,19 +986,21 @@ proc _ns_stats.process {} {
     append html [_ns_stats.process.table $values]
 
     foreach s [ns_info servers] {
-        set requests ""; set addresses ""; set writerThreads ""
-        foreach driver {nssock nsssl} {
+        set requests ""; set addresses ""; set writerThreads ""; set spoolerThreads ""
+        foreach driver [ns_driver names] {
             set section [ns_driversection -driver $driver -server $s]
             if {$section eq ""} continue
             set addr [ns_config ns/module/$driver/servers $s]
             if {$addr ne ""} {
                 lappend addresses $addr
                 lappend writerThreads $driver: [ns_config $section writerthreads 0]
+                lappend spoolerThreads $driver: [ns_config $section spoolerthreads 0]
             } else {
                 set port [ns_config $section port]
                 if {$port ne ""} {
                     lappend addresses [ns_config $section address]:$port
                     lappend writerThreads $driver: [ns_config $section writerthreads 0]
+                    lappend spoolerThreads $driver: [ns_config $section spoolerthreads 0]
                 }
             }
         }
@@ -1102,6 +1104,7 @@ proc _ns_stats.process {} {
                         "Tcl Library"        [ns_server -server $s tcllib] \
                         "Access Log"         [ns_config ns/server/$s/module/nslog file] \
                         "Writer Threads"     $writerThreads \
+                        "Spooler Threads"    $spoolerThreads \
                         "Connection Pools"   [ns_server -server $s pools] \
                         {*}$poolItems \
                         {*}$proxyItems \
