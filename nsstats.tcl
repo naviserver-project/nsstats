@@ -1022,7 +1022,8 @@ proc _ns_stats.process {} {
             #
             set rawstats [ns_server -server $s -pool $pool stats]
             set rawthreads [list {*}[ns_server -server $s -pool $pool threads] \
-                                waiting [ns_server -server $s -pool $pool waiting]]
+                                waiting [ns_server -server $s -pool $pool waiting] \
+                                started [dict get $rawstats connthreads]]
             set rawreqs [ns_server -server $s -pool $pool all]
             set reqs {}
             foreach req $rawreqs {
