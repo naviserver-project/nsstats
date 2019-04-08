@@ -929,7 +929,11 @@ proc _ns_stats.process {} {
         # command "openssl" is on the search path)
         #
         set certInfo {}
+        set driverInfo {}
+
         foreach entry [ns_driver info] {
+            dict unset entry extraheaders
+            lappend driverInfo $entry
             set module [dict get $entry module]
             if {[dict get $entry type] eq "nsssl"} {
                 set server [dict get $entry server]
@@ -947,10 +951,10 @@ proc _ns_stats.process {} {
                 }
             }
         }
+        lappend driverInfo {}
         #
         # Combine driver stats with certificate infos
         #
-        set driverInfo {}
         foreach tuple [ns_driver stats] {
             lappend driverInfo [_ns_stats.pretty {received spooled partial} $tuple %.0f]
         }
