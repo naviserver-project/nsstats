@@ -861,11 +861,7 @@ proc _ns_stats.loglevel {} {
 }
 
 proc _ns_stats.process.format_duration {duration nowms startTime} {
-    if {$duration < 10} {
-        return [format %.2f [expr {($nowms - $startTime*1000.0)/1000.0}]]s
-    } else {
-        return [_ns_stats.fmtSeconds $duration]
-    }
+    return [_ns_stats.hr $duration]s
 }
 
 proc _ns_stats.process.running_scheds {} {
@@ -886,7 +882,7 @@ proc _ns_stats.process.running_scheds {} {
         set startTime   [lindex $s 5]
         set proc        [lindex $s 7]
         set arg         [lrange $s 8 end]
-        set startFmt    [clock format $startTime -format {%H:%M:%S}]
+        set startFmt    [clock format [expr {int($startTime)}] -format {%H:%M:%S}]
         set duration    [expr {$now - $startTime}]
         set durationFmt [_ns_stats.process.format_duration $duration $nowms $startTime]
         lappend results "$id: start $startFmt - $proc $arg - duration $durationFmt"
@@ -910,7 +906,7 @@ proc _ns_stats.process.running_jobs {} {
                     set startTime   [dict get $jobinfo starttime]
                     set id          [dict get $jobinfo id]
                     set script      [dict get $jobinfo script]
-                    set startFmt    [clock format $startTime -format {%H:%M:%S}]
+                    set startFmt    [clock format [expr {int($startTime)}] -format {%H:%M:%S}]
                     set duration    [expr {$now - $startTime}]
                     set durationFmt [_ns_stats.process.format_duration $duration $nowms $startTime]
                     lappend results "$queue $id: start $startFmt - $script - duration $durationFmt"
@@ -1218,16 +1214,18 @@ proc _ns_stats.sched {} {
         set lastend     [_ns_stats.fmtTime [lindex $s 7]]
         set proc        [lindex $s 2]
         set arg         [lindex $s 3]
-        set duration    [_ns_stats.fmtSeconds [lindex $s 8]]
+        set duration    [_ns_stats.hr [lindex $s 8]]s
 
         lappend rows [list $id $state $proc $arg $flags $lastqueue $laststart $lastend $duration $next]
     }
 
     set colTitles [list ID Status Callback Data Flags "Last Queue" "Last Start" "Last End" Duration "Next Run"]
+    set align [lrepeat [llength $colTitles] left]
+    lset align end-1 right
 
     append html \
         [_ns_stats.header "Scheduled Procedures"] \
-        [_ns_stats.results $col $colTitles ?@page=sched $rows $reverseSort] \
+        [_ns_stats.results $col $colTitles ?@page=sched $rows $reverseSort $align] \
         [_ns_stats.footer]
     return $html
 }
@@ -1557,9 +1555,7 @@ proc _ns_stats.fmtTime {time} {
     if {$time < 0} {
         return "never"
     }
-    # Accept fractional seconds as input
-    set time [expr {int($time)}]
-    return [clock format $time -format "%H:%M:%S %m/%d/%Y"]
+    return [clock format [expr {int($time)}] -format "%H:%M:%S %m/%d/%Y"]
 }
 
 proc _ns_stats.sortResults {results field numeric {reverse 0}} {
@@ -1624,9 +1620,11 @@ proc _ns_stats.pretty {keys kvlist {format %.2f}} {
 
 proc _ns_stats.hr {n {format %.2f}} {
     #
-    # use global setting ::raw for returning raw values
+    # Use global setting ::raw for returning raw values
     #
-    if {[info exists ::raw] && $::raw} {return $n}
+    if {[info exists ::raw] && $::raw} {
+        return $n
+    }
 
     #
     # Return the number in human readable form -gn
