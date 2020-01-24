@@ -1212,10 +1212,10 @@ proc _ns_stats.sched {} {
         set id          [lindex $s 0]
         set state       [lindex $s 1]
         set flags       [join [_ns_stats.getSchedFlagTypes [lindex $s 4]] "<br>"]
-        set next        [_ns_stats.fmtTime [expr {int([lindex $s 9])}]]
-        set lastqueue   [_ns_stats.fmtTime [expr {int([lindex $s 5])}]]
-        set laststart   [_ns_stats.fmtTime [expr {int([lindex $s 6])}]]
-        set lastend     [_ns_stats.fmtTime [expr {int([lindex $s 7])}]]
+        set next        [_ns_stats.fmtTime [lindex $s 9]]
+        set lastqueue   [_ns_stats.fmtTime [lindex $s 5]]
+        set laststart   [_ns_stats.fmtTime [lindex $s 6]]
+        set lastend     [_ns_stats.fmtTime [lindex $s 7]]
         set proc        [lindex $s 2]
         set arg         [lindex $s 3]
         set duration    [_ns_stats.fmtSeconds [lindex $s 8]]
@@ -1557,7 +1557,8 @@ proc _ns_stats.fmtTime {time} {
     if {$time < 0} {
         return "never"
     }
-
+    # Accept fractional seconds as input
+    set time [expr {int($time)}]
     return [clock format $time -format "%H:%M:%S %m/%d/%Y"]
 }
 
