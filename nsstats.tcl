@@ -90,7 +90,10 @@ proc _ns_stats.header {args} {
         set title "NaviServer Stats: [ns_info hostname]"
         set nav "<span class='current'>Main Menu</span>"
     }
-
+    set rawLabel [expr {$::raw ? "true" : "false"}]
+    set s [ns_getform]
+    ns_set update $s raw [expr {!$::raw}]
+    set rawUrl [ns_conn url]?[join [lmap {k v} [ns_set array $s] {set _ [ns_urlencode $k]=[ns_urlencode $v]}] &]
     return [subst {<!DOCTYPE html>
         <html>
         <head>
@@ -139,7 +142,8 @@ proc _ns_stats.header {args} {
         <table class='navbar'>
         <tr>
         <td valign='middle'><b>$nav</b></td>
-        <td valign='middle' align='right'><b>[_ns_stats.fmtTime [ns_time]]</b></td>
+        <td valign='middle' align='right'>Raw: <a class='current' href='$rawUrl'>$rawLabel</a>
+        &middot; <b>[_ns_stats.fmtTime [ns_time]]</b></td>
         </tr>
         </table>
         <br>}]
