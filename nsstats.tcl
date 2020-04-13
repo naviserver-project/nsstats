@@ -280,8 +280,15 @@ proc _ns_stats.cache {} {
         foreach row $rows {
             set cache_name [lindex $row 0]
             lset row 0 "<a href='$currentUrl&statDetails=$cache_name'>$cache_name</a>"
+            lset row 1 [_ns_stats.hr [lindex $row 1]]
+            lset row 2 [_ns_stats.hr [lindex $row 2]]
             lset row 3 [format %.2f [lindex $row 3]]%
+            lset row 4 [_ns_stats.hr [lindex $row 4]]
+            lset row 7 [_ns_stats.hr [lindex $row 7]]
+            lset row 10 [_ns_stats.hr [lindex $row 10]]
             lset row 11 [format %.2f [lindex $row 11]]%
+            lset row 12 [_ns_stats.hr [lindex $row 12]]
+            lset row 13 [_ns_stats.hr [lindex $row 13]]
             lset row 16 [_ns_stats.hr [lindex $row 16]]s
             lset row 17 [_ns_stats.hr [lindex $row 17]]s
             lappend table $row
@@ -384,7 +391,7 @@ proc _ns_stats.locks {} {
                           "<font color=$color>$id</font>" \
                           "<font color=$color>[_ns_stats.hr $nlock]</font>" \
                           "<font color=$color>[_ns_stats.hr $nbusy]</font>" \
-                          "<font color=$ccolor>$contention</font>" \
+                          "<font color=$ccolor>$contention%</font>" \
                           "<font color=$color>[_ns_stats.hr $totalLock]s</font>" \
                           "<font color=$color>[_ns_stats.hr $avgLock]s</font>" \
                           "<font color=$tcolor>[_ns_stats.hr $totalWait]s</font>" \
@@ -474,6 +481,10 @@ proc _ns_stats.nsvlocks {} {
 
     set table {}
     foreach row $rows {
+        lset row 1 [_ns_stats.hr [lindex $row 1]]
+        lset row 3 [_ns_stats.hr [lindex $row 3]]
+        lset row 4 [_ns_stats.hr [lindex $row 4]]
+        lset row 5 [format %.4f [lindex $row 5]]%
         lset row 6 [_ns_stats.hr [lindex $row 6]]s
         lset row 7 [_ns_stats.hr [lindex $row 7]]s
         lappend table $row
