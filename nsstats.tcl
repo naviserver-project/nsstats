@@ -284,6 +284,8 @@ proc _ns_stats.cache {} {
             lset row 2 [_ns_stats.hr [lindex $row 2]]
             lset row 3 [format %.2f [lindex $row 3]]%
             lset row 4 [_ns_stats.hr [lindex $row 4]]
+            lset row 5 [_ns_stats.hr [lindex $row 5]]
+            lset row 6 [_ns_stats.hr [lindex $row 6]]
             lset row 7 [_ns_stats.hr [lindex $row 7]]
             lset row 10 [_ns_stats.hr [lindex $row 10]]
             lset row 11 [format %.2f [lindex $row 11]]%
