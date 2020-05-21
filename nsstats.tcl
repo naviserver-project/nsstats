@@ -538,9 +538,9 @@ proc _ns_stats.nsvsize {} {
         incr totalElements $size
         incr totalBytes $sizeBytes
     }
+    incr totalBytes [expr {$nrArrays * 120}] ;# add approximate size of a single nsv array structure
 
     set rows [_ns_stats.sortResults $rows [expr {$col - 1}] $numericSort $reverseSort]
-
     set table {}
     foreach row $rows {
         lset row 1 [_ns_stats.hr [lindex $row 1]]
@@ -551,7 +551,7 @@ proc _ns_stats.nsvsize {} {
 
     append html \
         [_ns_stats.header "Nsv Size"] \
-        "<p>Nsv arrays: $nrArrays, elements: [_ns_stats.hr $totalElements]B, total bytes: [_ns_stats.hr $totalBytes]B</p>" \
+        "<p>Nsv arrays: $nrArrays, elements: [_ns_stats.hr $totalElements], total bytes: [_ns_stats.hr $totalBytes]B</p>" \
         [_ns_stats.results $col $colTitles ?@page=nsvsize \
              $table \
              $reverseSort \
