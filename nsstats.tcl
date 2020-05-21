@@ -167,6 +167,7 @@ proc _ns_stats.index {} {
         "<li> <a href='?@page=mempools$::rawparam'>Memory</a></li>" \n\
         "<li> <a href='?@page=locks$::rawparam'>Mutex Locks</a></li>" \n\
         "<li> <a href='?@page=nsvlocks$::rawparam'>Nsv Locks</a></li>" \n\
+        "<li> <a href='?@page=nsvsize$::rawparam'>Nsv Size</a></li>" \n\
         "<li> <a href='?@page=process$::rawparam'>Process</a></li>" \n\
         "<li> <a href='?@page=sched$::rawparam'>Scheduled Procedures</a></li>" \n\
         "<li> <a href='?@page=threads$::rawparam'>Threads</a></li>" \n\
@@ -432,7 +433,7 @@ proc _ns_stats.locks {} {
 }
 
 proc _ns_stats.nsvlocks {} {
-    set col         [ns_queryget col 1]
+    set col         [ns_queryget col 2]
     set reverseSort [ns_queryget reversesort 1]
     set all         [ns_queryget all 0]
 
@@ -506,6 +507,60 @@ proc _ns_stats.nsvlocks {} {
 
     return $html
 }
+
+proc _ns_stats.nsvsize {} {
+    set col         [ns_queryget col 3]
+    set reverseSort [ns_queryget reversesort 1]
+    set all         [ns_queryget all 0]
+
+    set numericSort 1
+    set colTitles   [list Array Elements Bytes "Agv. Content-Size"]
+    set rows        ""
+
+    if {$col == 1} {
+        set numericSort 0
+    }
+
+    set nrArrays 0; set totalElements 0; set totalBytes 0
+    set rows ""
+    # get the array size statistics for nsvs array
+    foreach array [nsv_names] {
+        incr nrArrays
+        set contentBytes 0
+        set sizeBytes 0
+        set size    [nsv_array size $array]
+        foreach {key value} [nsv_array get $array] {
+            set valueLength [string length $value]
+            incr contentBytes $valueLength
+            incr sizeBytes [expr {$valueLength + [string length $key] + 40}] ;# Tcl_HashEntry
+        }
+        lappend rows [list $array $size $sizeBytes [expr {$size > 0 ? $contentBytes*1.0/$size : 0}]]
+        incr totalElements $size
+        incr totalBytes $sizeBytes
+    }
+
+    set rows [_ns_stats.sortResults $rows [expr {$col - 1}] $numericSort $reverseSort]
+
+    set table {}
+    foreach row $rows {
+        lset row 1 [_ns_stats.hr [lindex $row 1]]
+        lset row 2 [_ns_stats.hr [lindex $row 2]]B
+        lset row 3 [format %.2f [lindex $row 3]]
+        lappend table $row
+    }
+
+    append html \
+        [_ns_stats.header "Nsv Size"] \
+        "<p>Nsv arrays: $nrArrays, elements: [_ns_stats.hr $totalElements]B, total bytes: [_ns_stats.hr $totalBytes]B</p>" \
+        [_ns_stats.results $col $colTitles ?@page=nsvsize \
+             $table \
+             $reverseSort \
+             {left right right right}]
+
+    append html [_ns_stats.footer]
+    return $html
+}
+
 
 proc _ns_stats.log {} {
     set log ""

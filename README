@@ -1,15 +1,15 @@
 Statistics Module for NaviServer 4.99.17
-Release 1.8
+Release 1.9
 vlad@crystalballinc.com
 neumann@wu-wien.ac.at
 
-Nsstats is a small pure Tcl module for NaviServer to report several
+Nsstats is a pure Tcl module for NaviServer to report several
 statistics about the liveliness off you naviserver installation. In
 particular, nsstats provides information about e.g.
   - cache usage
   - configuration parameters
   - mutex lock statistics
-  - nsv lock statistics
+  - nsv usage and lock statistics
   - runtime statistics from the virtual server(s) and pool(s)
   - scheduled procedures
   - threads
@@ -35,7 +35,9 @@ Changes since 1.0
   - added page for showing URLs mapped to connection threads pools
   - added information about drivers (threads, stats)
   - format values in human readable form
-  - extended cache and mutex statistics
+  - display of running writers, connchan jobs, nsproxy jobs
+  - db pool statistics
+  - nsv size statistics
 
 /*--------------------------------------------------------------------*/
 
