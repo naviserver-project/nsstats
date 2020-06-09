@@ -165,7 +165,7 @@ proc _ns_stats.index {} {
         "<li> <a href='?@page=log$::rawparam'>Log</a></li>" \n\
         "<li> <a href='?@page=loglevel$::rawparam'>Log Levels</a></li>" \n\
         "<li> <a href='?@page=mempools$::rawparam'>Memory</a></li>" \n\
-        "<li> <a href='?@page=locks$::rawparam'>Mutex Locks</a></li>" \n\
+        "<li> <a href='?@page=locks$::rawparam'>Locks</a></li>" \n\
         "<li> <a href='?@page=nsvlocks$::rawparam'>Nsv Locks</a></li>" \n\
         "<li> <a href='?@page=nsvsize$::rawparam'>Nsv Size</a></li>" \n\
         "<li> <a href='?@page=process$::rawparam'>Process</a></li>" \n\
@@ -426,7 +426,7 @@ proc _ns_stats.locks {} {
         locks per req $p_locksPerReq, avg lock time $p_avgLock,\
         lock time per req $p_lockTimePerReq, max req per sec $p_maxPages <br>(except: [join $non_per_req_locks {, }])"
     append html \
-        [_ns_stats.header "Mutex Locks"] \
+        [_ns_stats.header "Locks"] \
         "<h3>$line</h3>" \
         [_ns_stats.results $col $colTitles ?@page=locks $rows $reverseSort {
             left right right right right right right right right right right right right right
@@ -847,8 +847,8 @@ proc _ns_stats.mempools {} {
             <tr><td>Bytes Allocated:</td><td>$talloc</td></tr>
             <tr><td>Bytes Wasted:</td><td>$ov</td></tr>
             <tr><td>Byte Overhead:</td><td>${op}%</td></tr>
-            <tr><td>Mutex Locks:</td><td>$tlocks</td></tr>
-            <tr><td>Mutex Lock Waits:</td><td>$twaits</td></tr>
+            <tr><td>Locks:</td><td>$tlocks</td></tr>
+            <tr><td>Lock Waits:</td><td>$twaits</td></tr>
             <tr><td>Lock Wait Ratio:</td><td>${wr}%</td></tr>
             <tr><td>Gets/Puts:</td><td>${tops}</td></tr>
             <tr><td>Lock Avoidance:</td><td>${av}%</td></tr>
