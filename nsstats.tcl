@@ -1120,13 +1120,16 @@ proc _ns_stats.process {} {
             set item \
                 "<tr><td class='subtitle'>Connection Threads:</td><td class='colvalue' width='100%'>$rawthreads</td></tr>\n"
             if {$stats(requests) > 0} {
+                incr stats(dropped) 0
                 append item "<tr><td class='subtitle'>Request Handling:</td>" \
                     "<td class='colvalue'>" \
                     "requests " [_ns_stats.hr $stats(requests) %.1f], \
                     " queued " [_ns_stats.hr $stats(queued) %1.f] \
                     " ([format %.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%)," \
                     " spooled " [_ns_stats.hr $stats(spools) %1.f] \
-                    " ([format %.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)</td></tr>\n"
+                    " ([format %.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)," \
+                    " dropped " [_ns_stats.hr $stats(dropped) %1.f] \
+                    "</td></tr>\n"
                 append item "<tr><td class='subtitle'>Request Timing:</td>" \
                     "<td class='colvalue'>avg queue time [_ns_stats.hr [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
                     " avg filter time [_ns_stats.hr [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
