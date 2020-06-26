@@ -365,15 +365,16 @@ proc _ns_stats.locks {} {
         } else {
             set contention [format %5.4f [expr {double($nbusy*100.0/$nlock)}]]
         }
+        set writePercent   [expr {$write ne "" ? ($write*100.0/($write+$read)) : ""}]
 
         lappend results [list $name $id $nlock $nbusy $contention \
                              $totalLock $avgLock $totalWait $maxWait \
-                             $locksPerReq $maxLocksPerSec $maxReqsPerSec $read $write]
+                             $locksPerReq $maxLocksPerSec $maxReqsPerSec $read $write $writePercent]
     }
 
     foreach result [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort] {
         lassign $result name id nlock nbusy contention totalLock avgLock totalWait maxWait \
-            locksPerReq maxLocksPerSec maxReqsPerSec read write
+            locksPerReq maxLocksPerSec maxReqsPerSec read write writePercent
         set contention     [format %.4f $contention]
         set totalLock      [format %.4f $totalLock]
         set avgLock        [format %.8f $avgLock]
@@ -382,7 +383,7 @@ proc _ns_stats.locks {} {
         set maxLocksPerSec [_ns_stats.hr $maxLocksPerSec]
         set maxReqsPerSec  [_ns_stats.hr $maxReqsPerSec]
 
-        set writePercent   [expr {$write ne "" ? [format %.2f%% [expr {$write*100.0/($write+$read)}]] : ""}]
+        set writePercent   [expr {$write ne "" ? [format %.2f%% $writePercent] : ""}]
         set read           [expr {$read ne "" ? [_ns_stats.hr $read] : $read}]
         set write          [expr {$write ne "" ? [_ns_stats.hr $write] : $write}]
 
