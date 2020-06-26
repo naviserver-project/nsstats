@@ -383,7 +383,7 @@ proc _ns_stats.locks {} {
         set maxLocksPerSec [_ns_stats.hr $maxLocksPerSec]
         set maxReqsPerSec  [_ns_stats.hr $maxReqsPerSec]
 
-        set writePercent   [expr {$writePercent ne "" ? "[format %.2f% $writePercent]%" : ""}]
+        set writePercent   [expr {$writePercent ne "" ? "[format %.2f $writePercent]%" : ""}]
         set read           [expr {$read ne "" ? [_ns_stats.hr $read] : $read}]
         set write          [expr {$write ne "" ? [_ns_stats.hr $write] : $write}]
 
