@@ -322,7 +322,7 @@ proc _ns_stats.locks {} {
 
     set numericSort 1
     set colTitles   [list Name ID Locks Busy Contention "Total Lock" "Avg Lock" "Total Wait" \
-                         "Max Wait" "Locks/Req" "Pot.Locks/sec" "Pot.Reqs/sec" "Read" "Write"]
+                         "Max Wait" "Locks/Req" "Pot.Locks/sec" "Pot.Reqs/sec" "Read" "Write" "Write %"]
     set rows        ""
 
     if {$col == 1} {
@@ -381,6 +381,8 @@ proc _ns_stats.locks {} {
         set locksPerReq    [format %.2f $locksPerReq]
         set maxLocksPerSec [_ns_stats.hr $maxLocksPerSec]
         set maxReqsPerSec  [_ns_stats.hr $maxReqsPerSec]
+
+        set writePercent   [expr {$write ne "" ? [format %.2f%% [expr {$write*100.0/($write+$read)}]] : ""}]
         set read           [expr {$read ne "" ? [_ns_stats.hr $read] : $read}]
         set write          [expr {$write ne "" ? [_ns_stats.hr $write] : $write}]
 
@@ -406,6 +408,7 @@ proc _ns_stats.locks {} {
                           "<font color=$color>$maxReqsPerSec</font>" \
                           "<font color=$color>$read</font>" \
                           "<font color=$color>$write</font>" \
+                          "<font color=$color>$writePercent</font>" \
                          ]
     }
 
@@ -429,7 +432,7 @@ proc _ns_stats.locks {} {
         [_ns_stats.header "Locks"] \
         "<h3>$line</h3>" \
         [_ns_stats.results $col $colTitles ?@page=locks $rows $reverseSort {
-            left right right right right right right right right right right right right right
+            left right right right right right right right right right right right right right right
         }] \
         [_ns_stats.footer]
 
