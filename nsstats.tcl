@@ -1170,7 +1170,7 @@ proc _ns_stats.process {} {
                         set avgruntime [expr {[dict get $rawstats runtime] / $requests}]
                         lappend rawstats avgruntime $avgruntime
                     }
-                    set resultstats [_ns_stats.pretty {requests runtime {avgruntime s}} $rawstats %.0f]
+                    set resultstats [_ns_stats.pretty {requests {runtime s} {avgruntime s}} $rawstats %.2f]
                     set active [join [ns_proxy active $pool] <br>]
                     set item ""
                     append item \
