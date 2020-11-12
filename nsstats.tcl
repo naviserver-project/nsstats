@@ -598,17 +598,17 @@ proc _ns_stats.log {} {
 
 
 set ::tips(module~nslog\$,checkforproxy) "Log peer address provided by X-Forwarded-For. (boolean, false)"
-set ::tips(ns~db~pool~,checkinterval) "Check in this interval if handles are not stale. (secs, 600)"
-set ::tips(ns~db~pool~,maxidle) "Close handles which are idle for at least this interval. (secs, 600)"
-set ::tips(ns~db~pool~,maxopen) "Close handles which open longer than this interval. (secs, 3600)"
+set ::tips(ns~db~pool~,checkinterval) "Check in this interval if handles are not stale. (60m)"
+set ::tips(ns~db~pool~,maxidle) "Close handles which are idle for at least this interval. (60m)"
+set ::tips(ns~db~pool~,maxopen) "Close handles which open longer than this interval. (60m)"
 set ::tips(ns~parameters\$,asynclogwriter) "Write logfiles (error.log and access.log) asynchronously via writer threads (boolean, false)"
 set ::tips(ns~parameters\$,jobsperthread) "Default number of ns_jobs per thread (similar to connsperthread) (integer, 0)"
-set ::tips(ns~parameters\$,jobtimeout) "Default timeout for ns_job (integer, 300)"
+set ::tips(ns~parameters\$,jobtimeout) "Default timeout for ns_job (5m)"
 set ::tips(ns~parameters\$,logexpanded) "Double-spaced error.log (boolean, false)"
 set ::tips(ns~parameters\$,logmaxbackup) "The number of old error.log files to keep around if log rolling is enabled.(integer, 10)"
 set ::tips(ns~parameters\$,logroll) "If true, the log file will be rolled when the server receives a SIGHUP signal (boolean, true)"
 set ::tips(ns~parameters\$,logusec) "If true, error.log entries will have timestamps with microsecond resolution(boolean, true)"
-set ::tips(ns~parameters\$,schedmaxelapsed) "Write warning, when a scheduled proc takes more than this seconds (integer, 2)"
+set ::tips(ns~parameters\$,schedmaxelapsed) "Write warning, when a scheduled proc takes more than this number of seconds (integer, 2)"
 set ::tips(ns~parameters\$,schedsperthread) "Default number of scheduled procs per thread (similar to connsperthread) (integer, 0)"
 set ::tips(ns~server~\[^~\]+\$,compressenable) "Compress dynamic content per default. (boolean, false)"
 set ::tips(ns~server~\[^~\]+\$,compresslevel) "Compression level, when compress is enabled. (integer 1-9, 4)"
@@ -624,7 +624,7 @@ set ::tips(~module~,deferaccept) "TCP Performance option; use TCP_FASTOPEN or TC
 set ::tips(~module~,keepwait) "Timeout in seconds for keep-alive. (integer, 5)"
 set ::tips(~module~,closewait) "Timeout in seconds for close on socket to drain potential garbage if no keep alive is performed. (integer, 2)"
 set ::tips(~module~,nodelay) "TCP Performance option; use TCP_NODELAY (OS-default on Linux). (boolean, false)"
-set ::tips(~module~,writersize) "Use writer threads for replies above this size. (integer, 1048576)"
+set ::tips(~module~,writersize) "Use writer threads for replies above this size. (1MB)"
 set ::tips(~module~,writerstreaming) "Use writer threads for streaming HTML output (e.g. ns_write ...). (boolean, false)"
 set ::tips(~module~,writerthreads) "Number of writer threads. (integer, 0)"
 set ::tips(~tcl\$,errorlogheaders) "Connection headers to be logged in case of error (list)"
@@ -976,12 +976,11 @@ proc _ns_stats.process.running_jobs {} {
     foreach ql [ns_job queuelist] {
         set numrunning [dict get $ql numrunning]
         if {$numrunning > 0} {
-            set now        [clock seconds]
-            set nowms      [clock milliseconds]
+            set now   [clock seconds]
+            set nowms [clock milliseconds]
             set queue [dict get $ql name]
             foreach jobinfo [ns_job joblist $queue] {
-                ns_log notice "jobinfo: $jobinfo"
-                set state     [dict get $jobinfo state]
+                set state [dict get $jobinfo state]
                 if {$state eq "running"} {
                     set startTime   [dict get $jobinfo starttime]
                     set id          [dict get $jobinfo id]
