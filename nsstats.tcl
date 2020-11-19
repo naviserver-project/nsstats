@@ -1096,17 +1096,27 @@ proc _ns_stats.process {} {
         set poolItems ""
         foreach pool [lsort [ns_server -server $s pools]] {
             #
-            # provide a nicer name for the pool
+            # Provide a nicer name for the pool.
             #
             set poolLabel "default"
             if {$pool ne {}} {set poolLabel $pool}
+
             #
-            # statistics
+            # Pool and server specifc pool path. The empty pool name
+            # has to be treated differently.
+            #
+            set config_path [expr {$pool eq "" ? "ns/server/$s" : "ns/server/$s/pool/$pool"}]
+
+            #
+            # Collect statistics
             #
             set rawstats [ns_server -server $s -pool $pool stats]
             set rawthreads [list {*}[ns_server -server $s -pool $pool threads] \
                                 waiting [ns_server -server $s -pool $pool waiting] \
-                                started [dict get $rawstats connthreads]]
+                                started [dict get $rawstats connthreads] \
+                                maxconnections [ns_config $config_path maxconnections] \
+                               ]
+
             set rawreqs [ns_server -server $s -pool $pool all]
             set reqs {}
             foreach req $rawreqs {
