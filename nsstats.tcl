@@ -1126,7 +1126,7 @@ proc _ns_stats.process {} {
                 } else {
                     lappend req .
                 }
-                lappend reqs $req
+                lappend reqs [ns_quotehtml $req]
             }
             set reqs [join $reqs <br>]
             array set stats $rawstats
@@ -1189,7 +1189,7 @@ proc _ns_stats.process {} {
                         lappend rawstats avgruntime $avgruntime
                     }
                     set resultstats [_ns_stats.pretty {requests {runtime s} {avgruntime s}} $rawstats %.2f]
-                    set active [join [ns_proxy active $pool] <br>]
+                    set active [join [lmap l [ns_proxy active $pool] {ns_quotehtml $l}] <br>]
                     set item ""
                     append item \
                         "<tr><td class='subtitle'>Params:</td><td class='colvalue'>$configValues</td></tr>" \
@@ -1214,8 +1214,8 @@ proc _ns_stats.process {} {
                         "Connection Pools"   [ns_server -server $s pools] \
                         {*}$poolItems \
                         {*}$proxyItems \
-                        "Active Writer Jobs" [join [ns_writer list -server $s] <br>] \
-                        "Active Connchan Jobs" [join [ns_connchan list -server $s] <br>] \
+                        "Active Writer Jobs" [join [lmap l [ns_writer list -server $s] {ns_quotehtml $l}] <br>] \
+                        "Active Connchan Jobs" [join [lmap l [ns_connchan list -server $s] {ns_quotehtml $l}] <br>] \
                        ]
 
         append html \
