@@ -1134,6 +1134,14 @@ proc _ns_stats.process {} {
                 "<tr><td class='subtitle'>Connection Threads:</td><td class='colvalue' width='100%'>$rawthreads</td></tr>\n"
             if {$stats(requests) > 0} {
                 incr stats(dropped) 0
+                #
+                # Take total time (except queue time) to calculate the
+                # total number of requests that this pool can handle
+                # based on collected data (when configured max threads
+                # are running).
+                #
+                set avgTotalTime [expr {($stats(filtertime) + $stats(runtime) + $stats(tracetime)) /$stats(requests)}]
+                set maxReqs [expr {[dict get $rawthreads max]/$avgTotalTime}]
                 append item "<tr><td class='subtitle'>Request Handling:</td>" \
                     "<td class='colvalue'>" \
                     "requests " [_ns_stats.hr $stats(requests) %.1f], \
@@ -1142,6 +1150,7 @@ proc _ns_stats.process {} {
                     " spooled " [_ns_stats.hr $stats(spools) %1.f] \
                     " ([format %.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)," \
                     " dropped " [_ns_stats.hr $stats(dropped) %1.f] \
+                    " possible-max-reqs " [_ns_stats.hr $maxReqs %1.1f]rps \
                     "</td></tr>\n"
                 append item "<tr><td class='subtitle'>Request Timing:</td>" \
                     "<td class='colvalue'>avg queue time [_ns_stats.hr [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
@@ -1241,6 +1250,12 @@ proc _ns_stats.mapped {} {
     }
 
     set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
+    set htmlRows [lmap row $rows {
+        list [lindex $row 0] \
+            [ns_quotehtml [lindex $row 1]] \
+            [ns_quotehtml [lindex $row 2]] \
+            [ns_quotehtml [lindex $row 3]]
+    }]
 
     set poolName $pool
     if {$poolName eq ""} {set poolName default}
@@ -1250,7 +1265,7 @@ proc _ns_stats.mapped {} {
     append html \
         [_ns_stats.header Mapped] \
         "<h3>Mapped URLs of Server $serverName pool $poolName</h3>" \
-        [_ns_stats.results $col $colTitles ?@page=mapped&pool=$pool&server=$server $rows $reverseSort] \
+        [_ns_stats.results $col $colTitles ?@page=mapped&pool=$pool&server=$server $htmlRows $reverseSort] \
         "<p>Back to <a href='?@page=process'>process</a> page</p>" \
         [_ns_stats.footer]
     return $html
