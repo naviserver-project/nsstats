@@ -1102,7 +1102,7 @@ proc _ns_stats.process {} {
             if {$pool ne {}} {set poolLabel $pool}
 
             #
-            # Pool and server specifc pool path. The empty pool name
+            # Pool and server specific pool path. The empty pool name
             # has to be treated differently.
             #
             set config_path [expr {$pool eq "" ? "ns/server/$s" : "ns/server/$s/pool/$pool"}]

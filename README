@@ -70,7 +70,7 @@ Configuration
 
       Set user and password for the nsstats modules.  By default it
       will not ask for username and password but if needed, set it
-      with non-empty values and browser will ask for password.
+      with nonempty values and browser will ask for password.
 
    * bglocks (list, default "")
 
