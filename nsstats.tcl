@@ -252,7 +252,7 @@ Highcharts.chart('histogram', {
   chart:    { type: 'column' },
   title:    { text: 'Cache-entry reuse in $cacheName' },
   subtitle: { text: '(Entries: $nrEntries, bucket size: $bucketSize)' },
-  yAxis:    { min: 0, title: { text: 'Hits' } },
+  yAxis:    { title: { text: 'Hits' }, type: 'logarithmic' },
   xAxis:    { title: { text: 'Percentage'}, categories: [$categories] },
   legend:   {enabled: false},
   tooltip:  {
