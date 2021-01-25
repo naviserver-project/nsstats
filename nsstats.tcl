@@ -94,6 +94,9 @@ proc _ns_stats.header {args} {
     set s [ns_getform]
     ns_set update $s raw [expr {!$::raw}]
     set rawUrl [ns_conn url]?[join [lmap {k v} [ns_set array $s] {set _ [ns_urlencode $k]=[ns_urlencode $v]}] &]
+    if {![info exists ::extraHeadEntries]} {
+        set ::extraHeadEntries ""
+    }
     return [subst {<!DOCTYPE html>
         <html>
         <head>
@@ -137,6 +140,7 @@ proc _ns_stats.header {args} {
         table.data td table {background-color: #ffffff; border-spacing: 0px;}
         table.data td table td {padding: 2px;}
         </style>
+        $::extraHeadEntries
         </head>
 
         <table class='navbar'>
@@ -212,6 +216,61 @@ proc _ns_stats.adp {} {
     return $html
 }
 
+proc _ns_stats.cache.histogram {cacheName sorted} {
+    set nrEntries [llength $sorted]
+    set nrBuckets [expr {$nrEntries > 50 ? 50 : $nrEntries}]
+    set bucketSize [expr {$nrEntries/$nrBuckets}]
+    set r ""
+    #append r "<pre>nrEntries $nrEntries bucketSize $bucketSize\n"
+    set reuses {}
+    set labels {}
+    for {set b 0} {$b < $nrBuckets} {incr b} {
+        set subset [lrange $sorted [expr {$b*$bucketSize}] [expr {($b+1)*$bucketSize - 1}]]
+        set sumHits 0
+        foreach e $subset {
+            incr sumHits [lindex $e 2]
+        }
+        set avgHits [expr {$sumHits*1.0/$bucketSize}]
+        lappend reuses $avgHits
+        #lappend labels '[expr {$b+1}]'
+        lappend labels '[format %.2f [expr {($b+1.0)*$bucketSize/$nrEntries}]]'
+        #append r "$b: from [expr {$b*$bucketSize}] to [expr {($b+1)*$bucketSize - 1}] sumHits $sumHits avgHits $avgHits\n"
+    }
+    #append r </pre>\n
+    set ::extraHeadEntries {
+        <script src="https://code.highcharts.com/highcharts.js"></script>
+        <script src="https://code.highcharts.com/modules/exporting.js"></script>
+        <script src="https://code.highcharts.com/modules/export-data.js"></script>
+    }
+    set data [join $reuses ,]
+    set categories [join $labels ,]
+    # margin: 0 auto
+    append r [subst -nocommands {
+        <div id="histogram" style="min-width: 310px; height: 400px; width: 70%; "></div>
+<script>
+Highcharts.chart('histogram', {
+  chart:    { type: 'column' },
+  title:    { text: 'Cache-entry reuse in $cacheName' },
+  subtitle: { text: '(Entries: $nrEntries, bucket size: $bucketSize)' },
+  yAxis:    { min: 0, title: { text: 'Hits' } },
+  xAxis:    { title: { text: 'Percentage'}, categories: [$categories] },
+  legend:   {enabled: false},
+  tooltip:  {
+    headerFormat: '<span style="font-size:10px">{point.key}</span><table>',
+    pointFormat: '<tr><td style="color:{series.color};padding:0">{series.name}: </td>' +
+      '<td style="padding:0"><b>{point.y:.1f} hits</b></td></tr>',
+    footerFormat: '</table>',
+    shared: true,
+    useHTML: true
+  },
+  plotOptions: { column: { pointPadding: 0, borderWidth: 0, groupPadding: 0, shadow: false } },
+  series: [{ name: 'Reuse', data: [$data] }]
+});
+</script>
+    }]
+    return $r
+}
+
 proc _ns_stats.cache {} {
     set col         [ns_queryget col 1]
     set reverseSort [ns_queryget reversesort 1]
@@ -220,11 +279,15 @@ proc _ns_stats.cache {} {
 
     if {$statDetails ne ""} {
         set max  [ns_queryget max 50]
-        set body "<h3>$max most frequently used entries from cache '$statDetails'</h3>"
-
+        set body ""
         set stats [ns_cache_stats -contents $statDetails]
+        set sorted [lsort -decreasing -integer -index 2 $stats]
+        set h [ _ns_stats.cache.histogram $statDetails $sorted]
+        append body $h
+
+        append body "<h3>$max most frequently used entries from cache '$statDetails'</h3>"
         append body "<table class='data' width='70%'><tr><th>Key</th><th>Size</th><th>Hits</th><th>Expire</th></tr>\n"
-        foreach row [lrange [lsort -decreasing -integer -index 2 $stats] 0 $max] {
+        foreach row [lrange $sorted 0 $max] {
             lassign $row key hits size expire
             if {$expire == 0} {
                 set expire -1
