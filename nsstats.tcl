@@ -218,6 +218,9 @@ proc _ns_stats.adp {} {
 
 proc _ns_stats.cache.histogram {cacheName sorted} {
     set nrEntries [llength $sorted]
+    if {$nrEntries < 1} {
+        return ""
+    }
     set nrBuckets [expr {$nrEntries > 50 ? 50 : $nrEntries}]
     set bucketSize [expr {$nrEntries/$nrBuckets}]
     set r ""
@@ -233,7 +236,7 @@ proc _ns_stats.cache.histogram {cacheName sorted} {
         set avgHits [expr {$sumHits*1.0/$bucketSize}]
         lappend reuses $avgHits
         #lappend labels '[expr {$b+1}]'
-        lappend labels '[format %.2f [expr {($b+1.0)*$bucketSize/$nrEntries}]]'
+        lappend labels '[format %.2f [expr {(($b+1)*100.0)*$bucketSize/$nrEntries}]]'
         #append r "$b: from [expr {$b*$bucketSize}] to [expr {($b+1)*$bucketSize - 1}] sumHits $sumHits avgHits $avgHits\n"
     }
     #append r </pre>\n
@@ -252,8 +255,8 @@ Highcharts.chart('histogram', {
   chart:    { type: 'column' },
   title:    { text: 'Cache-entry reuse in $cacheName' },
   subtitle: { text: '(Entries: $nrEntries, bucket size: $bucketSize)' },
-  yAxis:    { title: { text: 'Hits' }, type: 'logarithmic' },
-  xAxis:    { title: { text: 'Percentage'}, categories: [$categories] },
+  yAxis:    { min: 1, title: { text: 'Hits' }, type: 'logarithmic', minorTickInterval: 0.1 },
+  xAxis:    { title: { text: 'Percent'}, categories: [$categories] },
   legend:   {enabled: false},
   tooltip:  {
     headerFormat: '<span style="font-size:10px">{point.key}</span><table>',
