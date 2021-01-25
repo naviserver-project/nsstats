@@ -221,6 +221,8 @@ proc _ns_stats.cache.histogram {cacheName sorted} {
     if {$nrEntries < 1} {
         return ""
     }
+    set stats [ns_cache_stats $cacheName]
+    set utilization [format %.2f [expr {[dict get $stats size]*100.0/[dict get $stats maxsize]}]]
     set nrBuckets [expr {$nrEntries > 50 ? 50 : $nrEntries}]
     set bucketSize [expr {$nrEntries/$nrBuckets}]
     set r ""
@@ -236,7 +238,7 @@ proc _ns_stats.cache.histogram {cacheName sorted} {
         set avgHits [expr {$sumHits*1.0/$bucketSize}]
         lappend reuses $avgHits
         #lappend labels '[expr {$b+1}]'
-        lappend labels '[format %.2f [expr {(($b+1)*100.0)*$bucketSize/$nrEntries}]]'
+        lappend labels '[format %.2f [expr {(($b+1)*100.0)*$bucketSize*($utilization/100)/$nrEntries}]]'
         #append r "$b: from [expr {$b*$bucketSize}] to [expr {($b+1)*$bucketSize - 1}] sumHits $sumHits avgHits $avgHits\n"
     }
     #append r </pre>\n
@@ -247,6 +249,7 @@ proc _ns_stats.cache.histogram {cacheName sorted} {
     }
     set data [join $reuses ,]
     set categories [join $labels ,]
+    set maxSize [_ns_stats.hr [dict get $stats maxsize]]B
     # margin: 0 auto
     append r [subst -nocommands {
         <div id="histogram" style="min-width: 310px; height: 400px; width: 70%; "></div>
@@ -254,7 +257,7 @@ proc _ns_stats.cache.histogram {cacheName sorted} {
 Highcharts.chart('histogram', {
   chart:    { type: 'column' },
   title:    { text: 'Cache-entry reuse in $cacheName' },
-  subtitle: { text: '(Entries: $nrEntries, bucket size: $bucketSize)' },
+  subtitle: { text: '(Entries: $nrEntries, bucket size: $bucketSize, utilization: $utilization%, cache size: $maxSize)' },
   yAxis:    { min: 1, title: { text: 'Hits' }, type: 'logarithmic', minorTickInterval: 0.1 },
   xAxis:    { title: { text: 'Percent'}, categories: [$categories] },
   legend:   {enabled: false},
@@ -311,7 +314,6 @@ proc _ns_stats.cache {} {
     } else {
 
         set numericSort 1
-
         if {$col == 1} {
             set numericSort 0
         }
