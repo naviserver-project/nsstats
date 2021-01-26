@@ -229,11 +229,16 @@ proc _ns_stats.cache.histogram {cacheName sorted} {
     #append r "<pre>nrEntries $nrEntries bucketSize $bucketSize\n"
     set reuses {}
     set labels {}
+    set reused 0
     for {set b 0} {$b < $nrBuckets} {incr b} {
         set subset [lrange $sorted [expr {$b*$bucketSize}] [expr {($b+1)*$bucketSize - 1}]]
         set sumHits 0
         foreach e $subset {
-            incr sumHits [lindex $e 2]
+            set hits [lindex $e 2]
+            incr sumHits $hits
+            if {$hits > 1} {
+                incr reused
+            }
         }
         set avgHits [expr {$sumHits*1.0/$bucketSize}]
         lappend reuses $avgHits
@@ -250,6 +255,7 @@ proc _ns_stats.cache.histogram {cacheName sorted} {
     set data [join $reuses ,]
     set categories [join $labels ,]
     set maxSize [_ns_stats.hr [dict get $stats maxsize]]B
+    set sufficient [_ns_stats.hr [expr {[dict get $stats size] * 1.1 * $reused / $nrEntries }] %.0f]B
     # margin: 0 auto
     append r [subst -nocommands {
         <div id="histogram" style="min-width: 310px; height: 400px; width: 70%; "></div>
@@ -257,7 +263,7 @@ proc _ns_stats.cache.histogram {cacheName sorted} {
 Highcharts.chart('histogram', {
   chart:    { type: 'column' },
   title:    { text: 'Cache-entry reuse in $cacheName' },
-  subtitle: { text: '(Entries: $nrEntries, bucket size: $bucketSize, utilization: $utilization%, cache size: $maxSize)' },
+  subtitle: { text: '(Entries: $nrEntries, reused: $reused, bucket size: $bucketSize, utilization: $utilization%, cache size: $maxSize, sufficient: $sufficient)' },
   yAxis:    { min: 1, title: { text: 'Hits' }, type: 'logarithmic', minorTickInterval: 0.1 },
   xAxis:    { title: { text: 'Percent'}, categories: [$categories] },
   legend:   {enabled: false},
