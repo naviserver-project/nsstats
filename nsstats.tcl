@@ -1218,24 +1218,26 @@ proc _ns_stats.process {} {
                 # based on collected data (when configured max threads
                 # are running).
                 #
-                set avgTotalTime [expr {($stats(filtertime) + $stats(runtime) + $stats(tracetime)) /$stats(requests)}]
-                set maxReqs [expr {[dict get $rawthreads max]/$avgTotalTime}]
-                append item "<tr><td class='subtitle'>Request Handling:</td>" \
-                    "<td class='colvalue'>" \
-                    "requests " [_ns_stats.hr $stats(requests) %.1f], \
-                    " queued " [_ns_stats.hr $stats(queued) %1.f] \
-                    " ([format %.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%)," \
-                    " spooled " [_ns_stats.hr $stats(spools) %1.f] \
-                    " ([format %.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)," \
-                    " dropped " [_ns_stats.hr $stats(dropped) %1.f] \
-                    " possible-max-reqs " [_ns_stats.hr $maxReqs %1.1f]rps \
-                    "</td></tr>\n"
-                append item "<tr><td class='subtitle'>Request Timing:</td>" \
-                    "<td class='colvalue'>avg queue time [_ns_stats.hr [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
-                    " avg filter time [_ns_stats.hr [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
-                    " avg run time [_ns_stats.hr [expr {$stats(runtime)*1.0/$stats(requests)}]]s" \
-                    " avg trace time [_ns_stats.hr [expr {$stats(tracetime)*1.0/$stats(requests)}]]s" \
-                    "</td></tr>\n"
+                set avgTotalTime [expr {($stats(filtertime) + $stats(runtime) + $stats(tracetime)) / $stats(requests)}]
+                if {$avgTotalTime > 0} {
+                    set maxReqs [expr {[dict get $rawthreads max]/$avgTotalTime}]
+                    append item "<tr><td class='subtitle'>Request Handling:</td>" \
+                        "<td class='colvalue'>" \
+                        "requests " [_ns_stats.hr $stats(requests) %.1f], \
+                        " queued " [_ns_stats.hr $stats(queued) %1.f] \
+                        " ([format %.2f [expr {$stats(queued)*100.0/$stats(requests)}]]%)," \
+                        " spooled " [_ns_stats.hr $stats(spools) %1.f] \
+                        " ([format %.2f [expr {$stats(spools)*100.0/$stats(requests)}]]%)," \
+                        " dropped " [_ns_stats.hr $stats(dropped) %1.f] \
+                        " possible-max-reqs " [_ns_stats.hr $maxReqs %1.1f]rps \
+                        "</td></tr>\n"
+                    append item "<tr><td class='subtitle'>Request Timing:</td>" \
+                        "<td class='colvalue'>avg queue time [_ns_stats.hr [expr {$stats(queuetime)*1.0/$stats(requests)}]]s," \
+                        " avg filter time [_ns_stats.hr [expr {$stats(filtertime)*1.0/$stats(requests)}]]s," \
+                        " avg run time [_ns_stats.hr [expr {$stats(runtime)*1.0/$stats(requests)}]]s" \
+                        " avg trace time [_ns_stats.hr [expr {$stats(tracetime)*1.0/$stats(requests)}]]s" \
+                        "</td></tr>\n"
+                }
             }
             append item \
                 "<tr><td class='subtitle'>Active Requests:</td><td class='colvalue'>$reqs</td></tr>\n"
