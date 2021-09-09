@@ -1311,11 +1311,16 @@ proc _ns_stats.process {} {
 proc _ns_stats.mapped {} {
     set col         [ns_queryget col 0]
     set reverseSort [ns_queryget reversesort 1]
-
     set pool        [ns_queryget pool [ns_conn pool]]
     set server      [ns_queryget server [ns_conn server]]
+    set cmd         [ns_queryget cmd ""]
+    if {$cmd ne ""} {
+        eval $cmd
+        ns_returnredirect [ns_conn url]?@page=[ns_queryget @page]&pool=$pool&server=$server&col=$col&reverseSort=$reverseSort
+    }
+
     set numericSort 0
-    set colTitles   [list Method URL Filter Inheritance]
+    set colTitles   [list Method URL Filter Inheritance unmap]
 
     set results ""
     foreach entry [ns_server -server $server -pool $pool map] {
@@ -1331,10 +1336,15 @@ proc _ns_stats.mapped {} {
 
     set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
     set htmlRows [lmap row $rows {
-        list [lindex $row 0] \
-            [ns_quotehtml [lindex $row 1]] \
-            [ns_quotehtml [lindex $row 2]] \
-            [ns_quotehtml [lindex $row 3]]
+        lassign $row method url filter inherit
+        set inheritArg [expr {$inherit eq "noinherit" ? "-noinherit" : ""}]
+        set cmd [list ns_server -pool $pool unmap {*}$inheritArg [list $method $url$filter]]
+        set href [ns_conn url]?[ns_conn query]&cmd=[ns_urlencode $cmd]
+        list $method  \
+            [ns_quotehtml $url] \
+            [ns_quotehtml $filter] \
+            [ns_quotehtml $inherit] \
+            "<a class='button' href='[ns_quotehtml $href]'>unmap</a>"
     }]
 
     set poolName $pool
