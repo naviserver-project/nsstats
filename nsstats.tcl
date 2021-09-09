@@ -1315,8 +1315,10 @@ proc _ns_stats.mapped {} {
     set server      [ns_queryget server [ns_conn server]]
     set cmd         [ns_queryget cmd ""]
     if {$cmd ne ""} {
-        eval $cmd
+        #ns_log notice "CMD <ns_server -server $server -pool $pool {*}$cmd>"
+        ns_server -server $server -pool $pool {*}$cmd
         ns_returnredirect [ns_conn url]?@page=[ns_queryget @page]&pool=$pool&server=$server&col=$col&reverseSort=$reverseSort
+        return
     }
 
     set numericSort 0
@@ -1338,7 +1340,7 @@ proc _ns_stats.mapped {} {
     set htmlRows [lmap row $rows {
         lassign $row method url filter inherit
         set inheritArg [expr {$inherit eq "noinherit" ? "-noinherit" : ""}]
-        set cmd [list ns_server -pool $pool unmap {*}$inheritArg [list $method $url$filter]]
+        set cmd [list unmap {*}$inheritArg [list $method $url[expr {$filter ne "*" ? $filter : ""}]]]
         set href [ns_conn url]?[ns_conn query]&cmd=[ns_urlencode $cmd]
         list $method  \
             [ns_quotehtml $url] \
