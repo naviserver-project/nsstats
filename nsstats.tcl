@@ -1355,7 +1355,7 @@ proc _ns_stats.mapped {} {
     if {$serverName eq ""} {set serverName default}
 
     append html \
-        [_ns_stats.header Mapped] \
+        [_ns_stats.header [list Process "?@page=process"] Mapped] \
         "<h3>Mapped URLs of Server $serverName pool $poolName</h3>" \
         [_ns_stats.results $col $colTitles ?@page=mapped&pool=$pool&server=$server $htmlRows $reverseSort] \
         "<p>Back to <a href='?@page=process'>process</a> page</p>" \
