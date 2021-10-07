@@ -30,7 +30,7 @@
 #
 # nsstats.tcl --
 #
-#   Simple Web-based interface for NaviServer runtime statistics.
+#   Simple web-based interface for NaviServer runtime statistics.
 #   The whole application is implemented as a single file.
 #
 #   To use it, set enabled to 1 and place this file somewhere under
@@ -332,6 +332,7 @@ proc _ns_stats.cache {} {
         set totalRequests [_ns_stats.totalRequests]
 
         array set t {saved ""}
+        set totalSaved 0
         foreach cache [ns_cache_names] {
             array set t {commit 0 rollback 0}
             array set t [ns_cache_stats $cache]
@@ -347,6 +348,7 @@ proc _ns_stats.cache {} {
                                  [expr {$t(hits) > 0 ? $t(saved)*1.0/$t(hits) : 0}] \
                                  [expr {$totalRequests > 0 ? $t(saved)/$totalRequests : 0}] \
                                 ]
+            set totalSaved [expr {$totalSaved + $t(saved)}]
         }
 
         set colTitles   {
@@ -377,6 +379,8 @@ proc _ns_stats.cache {} {
 
         append html \
             [_ns_stats.header Cache] \
+            "<h3>ns_cache operations saved since the start of the server [_ns_stats.hr $totalSaved]s on [_ns_stats.hr $totalRequests] requests " \
+            "([_ns_stats.hr [expr {$totalSaved/$totalRequests}]]s per request on average)</h3>" \n \
             [_ns_stats.results $col $colTitles ?@page=cache $table $reverseSort {
                 left right right right right right right right right right right right right right right right right right
             }] \
@@ -390,6 +394,10 @@ proc _ns_stats.totalRequests {} {
         foreach pool [ns_server -server $s pools] {
             incr totalRequests [dict get [ns_server -server $s -pool $pool stats] requests]
         }
+    }
+    if {$totalRequests == 0} {
+        # avoid division by 0
+        incr totalRequests
     }
     return $totalRequests
 }
@@ -505,8 +513,8 @@ proc _ns_stats.locks {} {
     set p_totalRequests  [_ns_stats.hr $totalRequests]
 
     set line "Total locks: $p_sumLocks, total requests $p_totalRequests,\
-        locks per req $p_locksPerReq, avg lock time $p_avgLock,\
-        lock time per req $p_lockTimePerReq, max req per sec $p_maxPages <br>(except: [join $non_per_req_locks {, }])"
+        locks per request $p_locksPerReq, avg lock time $p_avgLock,\
+        lock time request req $p_lockTimePerReq, max requests per sec $p_maxPages <br>(except: [join $non_per_req_locks {, }])"
     append html \
         [_ns_stats.header "Locks"] \
         "<h3>$line</h3>" \
@@ -1139,7 +1147,7 @@ proc _ns_stats.process {} {
                     DB-Pools             "<table>[join [_ns_stats.process.dbpools]]</table>" \
                     Callbacks            "<table>[join [_ns_stats.process.callbacks]]</table>" \
                     "Socket Callbacks"    [join [ns_info sockcallbacks] <br>] \
-                    "Running Scheduled Procs (repated )" [join [_ns_stats.process.running_scheds] <br>] \
+                    "Running Scheduled Procs (repeated)" [join [_ns_stats.process.running_scheds] <br>] \
                     "Running Jobs"        [join [_ns_stats.process.running_jobs] <br>] \
                    ]
 
@@ -1327,7 +1335,7 @@ proc _ns_stats.mapped {} {
     set results ""
     foreach entry [ns_server -server $server -pool $pool map] {
         #
-        # Currently, the url walker appends to a string without caring
+        # Currently, the URL walker appends to a string without caring
         # for proper list elements. Fix up the columns here.
         #
         if {[llength $entry] > 4} {
