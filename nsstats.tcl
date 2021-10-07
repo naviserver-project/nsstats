@@ -379,7 +379,7 @@ proc _ns_stats.cache {} {
 
         append html \
             [_ns_stats.header Cache] \
-            "<h3>ns_cache operations saved since the start of the server [_ns_stats.hr $totalSaved]s on [_ns_stats.hr $totalRequests] requests " \
+            "<h3>ns_cache operations saved since the start of the server [_ns_stats.fmtSeconds $totalSaved] on [_ns_stats.hr $totalRequests] requests " \
             "([_ns_stats.hr [expr {$totalSaved/$totalRequests}]]s per request on average)</h3>" \n \
             [_ns_stats.results $col $colTitles ?@page=cache $table $reverseSort {
                 left right right right right right right right right right right right right right right right right right
@@ -1731,11 +1731,14 @@ proc _ns_stats.fmtSeconds {seconds} {
     if {$seconds == 0} {
         return 0s
     }
+    set ms [expr {($seconds - int($seconds))*1000}]
+    set seconds [expr {int($seconds)}]
     if {$seconds < 1} {
-        return [format %.2f [expr {$seconds * 1000}]]ms
+        return [format %.2f $ms]ms
     }
     if {$seconds < 60} {
-        return "[format %.2f ${seconds}]s"
+        set subseconds [expr {$ms > 0 ? " [format %.2f $ms]ms" : ""}]
+        return ${seconds}s$subseconds
     }
 
     if {$seconds < 3600} {
