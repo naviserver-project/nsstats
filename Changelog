@@ -1,0 +1,1057 @@
+commit 3105cbb87910b1237a0b1030377e4255b1977ba2
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-10-07
+
+    improve handling of fractional seconds in fmtSeconds
+
+M	nsstats.tcl
+
+commit 295205bd41d4971d0d768451fa90bcfdb8e63ec5
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-10-07
+
+    added summary line with total savings to cache statistics
+
+M	nsstats.tcl
+
+commit 9f7f2f2a884f3e5de7c7731e1ed06d10fd70b8c5
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-09-13
+
+    improve breadcrums for "mapped" server URLs
+
+M	nsstats.tcl
+
+commit b0f2b6634ac2438fd55255d9b2da82dad0fe5ab6
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-09-09
+
+    make unmapping more conservative, just in case, some non-admin manages to get access to nsstats
+
+M	nsstats.tcl
+
+commit 6bbfb9375bfe4cad5a931c8c325c767a5cb78e51
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-09-09
+
+    provide a quick means to unmap URLs from a non-standard connection pool
+
+M	nsstats.tcl
+
+commit 626c4bd4d1963e07c47c84c60b8cce39af0ede2c
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-06-29
+
+    improve robustness, when nsstats is the first call after server start
+
+M	nsstats.tcl
+
+commit e6b38bd765e7ba304e24762e99d5f24cfb9f91f0
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-02-16
+
+    escape cache keys on cache detail pages
+
+M	nsstats.tcl
+
+commit 1b6bfb107a499a53c2297a844a4193c2b5f41192
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-01-26
+
+    Added calculation what would be currently sufficient without performance loss
+
+M	nsstats.tcl
+
+commit 5225531d675d9941a1c0dcf050f54bdf1beb41a2
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-01-25
+
+    provide also size information and utilization on the per-cache view
+
+M	nsstats.tcl
+
+commit 9fb0e62d963fb87692f1bfffa74114178f9b950f
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-01-25
+
+    beautify cache-reuse chart
+
+M	nsstats.tcl
+
+commit 7ec7201c5fbf7d0e2207b7dad843c7c0d2821ae9
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-01-25
+
+    use logarithmic scale
+
+M	nsstats.tcl
+
+commit 7d3e55d5c8fc5cc37358ec8436a55f946a7515f6
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-01-25
+
+    Added chart for cache entry reuse (eases cache size determination)
+
+M	nsstats.tcl
+
+commit 1687a1694f0082517aacb176e7f02d9c06f881cc
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2021-01-10
+
+    improved spelling
+
+M	README
+M	nsstats.tcl
+
+commit b1f56e7d6fa42cf010b09118cda8493e5d66c480
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-12-17
+
+    more XSS protection for potentially user supplied strings
+
+M	nsstats.tcl
+
+commit d5bee5299c9437f711bea523639dd42a7b08e187
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-12-17
+
+    added calculated maximum number of reqs/pool
+    protect against XSS in mapped url listing
+
+M	nsstats.tcl
+
+commit dd42fe45a66bbed0e0b2a662641c0ee76d2e8d74
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-11-19
+
+    add "maxconnections" to the per-pool statistics, since it determines the queue length
+
+M	nsstats.tcl
+
+commit 2052038eaf9238e54036e2585ac00b139cbd7269
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-11-12
+
+    improve help messages, reduce verbosity
+
+M	nsstats.tcl
+
+commit 37a4c7215e8388ec759b566f1ecedac880f6aa76
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-07-11
+
+    improve nsproxy output in "process" page (include seconds, don't trunc everything to 0 digits after the dot)
+
+M	nsstats.tcl
+
+commit 198d4bc9a2813a83f9332a84367403248466039c
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-06-26
+
+    fix typo
+
+M	nsstats.tcl
+
+commit 65e5812c1c26b364586fc7803c2780098ca3d2ef
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-06-26
+
+    handle potential division by 0
+
+M	nsstats.tcl
+
+commit a02fe76b17ce79557dc5ddcecedf095f2c352332
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-06-26
+
+    make write percent sortable
+
+M	nsstats.tcl
+
+commit 99f7c5c172074048b8bfa0138f5d737a483ce20e
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-06-26
+
+    added write-percentage in lock statistics
+
+M	nsstats.tcl
+
+commit b5fc7188c360fb8c0e9c3d957f75a876ac456b03
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-06-22
+
+    add dropped statistics
+
+M	nsstats.tcl
+
+commit bbdc3e1e0310e719cbf64dd0b2c2f1c3d7565d35
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-06-09
+
+    prefer "locks" over "mutex locks", since statistics contains mutex and rwlocks
+
+M	nsstats.tcl
+
+commit ee11359f0e131e6393775361104d1bb9cc06f866
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-06-09
+
+    add read/write statistics for locks
+
+M	nsstats.tcl
+
+commit a4b02b1b73d7e6880e18ee7de16953980ef1e2cd
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-05-21
+
+    added estimated size of array into calculation
+
+M	nsstats.tcl
+
+commit 37d5cab57a0ee452eee06d546573592c17e7b5fe
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-05-21
+
+    added nsv usage statistics
+
+M	README
+M	nsstats.tcl
+
+commit d9314b8aa4f040eaa73871a98d71855bd9df13a0
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-04-13
+
+    more pretty formatting
+
+M	nsstats.tcl
+
+commit ab369c0cf4054ab07e7f6477f4a655109d97b4c9
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-04-13
+
+    improve column formatting
+
+M	nsstats.tcl
+
+commit 21935840dd642e5a1cd1469e868e463c51e31f8d
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-04-11
+
+    add web-interface for toggling between raw and human centric values
+
+M	nsstats.tcl
+
+commit c14d3fff7b0266aef6f1be4b9e2c8e4f2f10ca19
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-01-24
+
+    use _ns_stats.hr also for durations, right-align duration in "sched procs" page
+
+M	nsstats.tcl
+
+commit 9be25ce66761e73fb00aa09d245a60ad562a824c
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-01-24
+
+    Accept fractional seconds as input of _ns_stats.fmtTime
+
+M	nsstats.tcl
+
+commit 2eab36d401fe53ed9268ad04bc1fd7032662ae53
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2020-01-23
+
+    support sub-second granularity of timestamps in [ns_info scheduled]
+
+M	nsstats.tcl
+
+commit e6c9f85a8c2bae9d54d56e6e35854479b9fb3f0d
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2019-06-25
+
+    remove leftover line
+
+M	nsstats.tcl
+
+commit 0c1e9dd4de6dedcd36efeee98998bf1eb0f4312f
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2019-06-25
+
+    provide easy link from mecurial hash to version details on Bitbucket
+
+M	nsstats.tcl
+
+commit c7876b85e7ddd86a5c118c2cc38fc549d010509b
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2019-04-08
+
+    include "ns_driver info" in the reported values (contains e.g. the configured IP addresses)
+
+M	nsstats.tcl
+
+commit bca801b33bafdac342a177e45e91737064f47d04
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2019-03-14
+
+    include number of started thread per pools in reported statistics
+
+M	nsstats.tcl
+
+commit 3276d0c7221cd41329d3be69f7ae7bb7247d78d0
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2019-02-21
+
+    remove spurious parens
+
+M	nsstats.tcl
+
+commit 36bf6b93d58cf9ca22ca47ffd4334863af051b5d
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2019-01-26
+
+    add [ns_driver names] instead of hard-coded driver names
+    
+    add spooler threads (like writer threads)
+
+M	nsstats.tcl
+
+commit a984f114a2986ba6a7d40733bfa03c25cb92c1e4
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-12-07
+
+    add nowarap to first column of configparams
+
+M	nsstats.tcl
+
+commit de369c7074c48c278c9567589e4eac656c802cb4
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-12-07
+
+    whitespace changes
+
+M	nsstats.tcl
+
+commit 6889198d23c2d0165d265834b2f4b16c2d99836a
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-11-15
+
+    add running jobs to the "process" page, which shows now jobs from all categories
+
+M	nsstats.tcl
+
+commit 81616a3579c6c9e0d59c5701a0e911b1b30c13b2
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-11-14
+
+    add running scheduled procedures to the "process" page, keeping information about most currently active jobs
+
+M	nsstats.tcl
+
+commit 311c27b73e2eafe452edb93ef0a5988cc4094c40
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-11-03
+
+    bump version number to 1.7
+
+M	README
+
+commit 25dbbeab889644428e99ca19e8e1300756fd6002
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-11-03
+
+    make labeling more consistent
+
+M	nsstats.tcl
+
+commit 5f1b67bcd1f305dc7cc681cd22ef06375a84d909
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-09-01
+
+    - keep rawparam when set in menus etc.
+    - add "ns_connchan list" to per-server info
+
+M	nsstats.tcl
+
+commit 02f1a0a106b09651a85346580acf8b80c9bdb6b0
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-08-15
+
+    keep query parameter "raw" once it is set
+
+M	README
+M	nsstats.tcl
+
+commit 4d908ec772dde9dac7ffda77a3d9c963ff8dcadb
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-07-09
+
+    added saved/hit to cache statistics
+
+M	nsstats.tcl
+
+commit 0eb3e06ccf7f343ed2c03899740d573b372ff022
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-07-09
+
+    improved cache stats: added hits/req, saved/req; dropped saved/KB
+    fixed sort order utilization
+
+M	nsstats.tcl
+
+commit b00e4339f33b1a4f3d49fa1e55d6658833802d1a
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-07-07
+
+    fix typo
+
+M	nsstats.tcl
+
+commit c4a2858215872e97387adbb9467085dab93e385e
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-07-07
+
+    prettify more time values
+
+M	nsstats.tcl
+
+commit 2e0bccb031d487cbf525ed77f898a8f1e95a42fe
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-07-07
+
+    add ns_eval_q to non-pre-request locks
+    add "s" indicated (for seconds) to pretty time values
+
+M	nsstats.tcl
+
+commit 2ef9819233dcb7334c4d762c08276187c4be23ce
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-06-28
+
+    prettify column values in nsv locks display
+
+M	nsstats.tcl
+
+commit 12693b58a53da055fa1a1a666e14b93c79d8550e
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-06-28
+
+    add configuration via config file
+    make background locks configurable
+    bump version mumber to 1.7
+
+M	README
+M	nsstats.tcl
+
+commit 22e61663c3ddfbbff0795b1a12050e53df858504
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-06-26
+
+    warn for single mutex wait times large than 10ms, red to >100ms
+
+M	nsstats.tcl
+
+commit c582fd6e597f1a0fa17c104967a9608146d21d9a
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-06-25
+
+    improve styling (less jumpy layout)
+
+M	nsstats.tcl
+
+commit a9392d348dd87aabfb781239b4356575cd5a8bd9
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-06-23
+
+    reduce verbosity
+
+M	nsstats.tcl
+
+commit faa551bfdc8f798cd3bc0d597f00c4c80f60cb38
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-06-23
+
+    improve handling of expiration time in statistics
+
+M	nsstats.tcl
+
+commit 482e8b41f6b0569a293fe3fcff24e54b88105f67
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-06-23
+
+    support per-query max number of cache entries
+
+M	nsstats.tcl
+
+commit abc87bc56cabceb2b1150c1a2ef4bfea78709d10
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-06-21
+
+    prettify timing infos
+
+M	nsstats.tcl
+
+commit 2e4fedf0288e9795d9de6877aaa992744bd6c573
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-06-20
+
+    improve syling
+
+M	nsstats.tcl
+
+commit 9b180bee6a7152d465d677f127c60008c01bf07a
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-06-06
+
+    mutex stats: make it easier to check for min potential requests per second by removing non-per-req locks from the column
+
+M	nsstats.tcl
+
+commit e2d8f99234207db620948b1365a63096e5f60802
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-06-05
+
+    shift more styling to CSS
+
+M	nsstats.tcl
+
+commit 5eb222ee1f1994a8b2ecc93732c2b2b3e1a35842
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-06-03
+
+    add cache statistics to cache browser
+
+M	nsstats.tcl
+
+commit cf050a6088cfeee2a9d1676bb70bb67fc4fedb37
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-05-31
+
+    improve html rendering for config parameter page
+
+M	nsstats.tcl
+
+commit e74aadb95e39f6b3272fbc9fb9415f473069d860
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-05-10
+
+    take uout jobThreadPool as well
+
+M	nsstats.tcl
+
+commit 6a941886575e976d834b633f99c3acf1661249bf
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-05-10
+
+    remove ns_sched from lock times because these lock times are not relevant for scalability
+
+M	nsstats.tcl
+
+commit bfca7bb06c965bcbb6e3a056cba2bd8aede6d94c
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-05-10
+
+    use pretty format more intense
+
+M	nsstats.tcl
+
+commit 98cc383d1aebdc05ac2a1ffa795c3945ccba51e4
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-05-10
+
+    adding summative statistics to locks page
+
+M	nsstats.tcl
+
+commit aee64da451367551ee47b8a2c96e09d65ca710aa
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-05-07
+
+    mutex lock statistics: adding potential requests oer second
+
+M	nsstats.tcl
+
+commit c1dbf103b3595bfa36b106652601cc8493b01177
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-05-07
+
+    adding new fields to "locks" page: "Locks/Req" "Pot. Locks/sec"
+
+M	nsstats.tcl
+
+commit fef892861ffd0a0520c3261a984497befadda06c
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-04-12
+
+    cosmetical changes
+
+M	nsstats.tcl
+
+commit 6f4e5ff7ffd1bfd02a1be9fe9b0f92f01b97bb7d
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-04-08
+
+    fix string comparison
+
+M	nsstats.tcl
+
+commit 134ac6e90acd2287ac566dcfb26d3a9abff1c0bb
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-04-08
+
+    improve HTML
+
+M	nsstats.tcl
+
+commit 709d12287ee0e5b9afdd2f51a1af6bf5d846ffdf
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-04-08
+
+    modernize code
+
+M	nsstats.tcl
+
+commit c8ab32d1bdf6f03570118b31b1b87d35f6042a3d
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-04-05
+
+    do not try to send data on a closed connection
+
+M	nsstats.tcl
+
+commit c60f9c5937397fece412e52a4a5145970ceceb40
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2018-03-23
+
+    fix typos
+
+M	nsstats.tcl
+
+commit e2f26df3e9ca212ad3b6f2385aa0f6514735991f
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-12-10
+
+    bug fix: return proxy stats form all proxy pools
+
+M	nsstats.tcl
+
+commit c37e06605c7c923e239662aebe44073e5787a355
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-12-02
+
+    output optionally raw values
+
+M	nsstats.tcl
+
+commit 91873353adc94f1272ecf574bf809371e02f1e15
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-12-01
+
+    format values in human readable form, bump version to 1.6
+
+M	README
+M	nsstats.tcl
+
+commit 3f19b506b7a9c519ecfb113fbd26ccf406ca62cd
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-10-20
+
+    add nsproxy configure values and statistics
+
+M	nsstats.tcl
+
+commit 7c450714003ebc5b1a0f30b2deb881082b134718
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-10-14
+
+    include expire date of certificate in "process" page
+
+M	LICENSE
+M	nsstats.tcl
+
+commit 90fff71b497786c61c2ca2867e12ab7f8fdb1193
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2017-07-28
+
+    added "commit" and "rollback" to cache statistics
+
+M	nsstats.tcl
+
+commit d93c7da735f35a4e1d1fede3450222720280f57d
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2016-12-30
+
+    - improve "driver threads" section
+
+M	nsstats.tcl
+
+commit b70ee316ee82e43ff5d6d5b0fe5783c01ff0592f
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2016-12-06
+
+    - fix column entries for URLs containing spaces (Ns_UrlSpecificWalk does not produce proper lists currently)
+
+M	nsstats.tcl
+
+commit 020b925b9889b790dbb662a44e7e9852cb0601d9
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2016-12-02
+
+    - added Page for showing urls mapped to connection threads pools
+    - added information about drivers (threads, stats)
+    - requires NaviServer 4.99.15 or newer
+
+M	README
+M	nsstats.tcl
+
+commit 87857552b7d3f9382a5d41eacb86c6fc13b1e05a
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2016-11-04
+
+    - adding value for trace tracetimes
+    - bump version number to 1.4 to express dependency on new features (4.99.14)
+
+M	README
+M	nsstats.tcl
+
+commit 4bc8c72422f0c85e0a2d8b64dddf74fe378b7b5b
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2016-03-26
+
+    - added Page for showing/toggling log levels
+    - more HTML cleanup (quoting, prefer CSS)
+
+M	README
+M	nsstats.tcl
+
+commit 64a73edafceb0a74eb9c96767352fdc0cdc98778
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2015-10-18
+
+    - add db-pool statistics, when available
+    - improve formatting
+
+M	nsstats.tcl
+
+commit 3a9ce0172ea604e9e3860ee67a12618d5c447114
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2014-12-05
+
+    - added log statistics to process overview
+
+M	README
+M	nsstats.tcl
+
+commit e6d64d037f7093db4f5477abb116de42c1369d57
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-06-13
+
+    - added saved/KB to cache statistics
+
+M	nsstats.tcl
+
+commit 9ad5dd6f285d2924653c234ba91a821be7568deb
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-06-13
+
+    - added avg size per cache entry to cache statistics
+
+M	nsstats.tcl
+
+commit b3673a926306dfd80493e8e10e5243511ade83dc
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-05-25
+
+    Added tag naviserver-4.99.5 for changeset 48a544a4f9c0
+
+A	.hgtags
+
+commit 12bf1a028aca6f6e34a2503ded5dd90a28702de5
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-05-25
+
+    - updated README file
+
+M	README
+
+commit 774bb9b49ac60ed5dceb500d822f6f746fbc8c80
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-05-25
+
+    - comment additional configuration fields
+
+M	nsstats.tcl
+
+commit 36031bae8db500b32bd0a0081cfc6561ad842863
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-05-17
+
+    - remove javascript for tooltips
+
+M	nsstats.tcl
+
+commit e8613fac60c56d3cd0601330cb8d6e3398c1d97d
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-05-14
+
+    - add tool tip infrastructure and tooltips for some configuration parameters
+
+M	nsstats.tcl
+
+commit 799c25e163072fa7514c6a968711c20e06578195
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-05-12
+
+    - added menu for configuration parameters
+
+M	nsstats.tcl
+
+commit 6e42741fa50096b89eedaf041779e25fcc1b91ae
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-03-21
+
+    - further beautification
+
+M	nsstats.tcl
+
+commit 56457d963127b9a920f8afa9628a0572422ec607
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-03-21
+
+    - beautify per-pool tables
+
+M	nsstats.tcl
+
+commit cc93161b3dc13e593e6c7d8ab9b3a333f03568be
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-03-21
+
+    - use sub-tables for displaying values of connection pools
+
+M	nsstats.tcl
+
+commit 1eeb0b12b8d8438fe69d36d82cdfa59d24234d5e
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-03-21
+
+    - page: added avg queue time, avg filter time, avg runtime to per pool statistics
+
+M	nsstats.tcl
+
+commit 0f039e2bb5218d387ef1cb77ffa59129f99b46b5
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-03-21
+
+    - added pool specific actual running requests
+
+M	nsstats.tcl
+
+commit ee0453806a8f67f0044896259a1e0a5a547573be
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-03-21
+
+    - add per-pool information to "process" view
+
+M	nsstats.tcl
+
+commit 467a41ec1c1ff19c3b1555f855468a09fe996e09
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-03-14
+
+    - use ns_driversection to make locating of driver parameter more robust
+    - add percentage stats
+    - add day to formatted time in fmtSeconds
+
+M	nsstats.tcl
+
+commit 1b926882ea10f4d66b0721827715906662041efa
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-02-20
+
+    - added "active writer jobs" and "connection pools" to server info
+
+M	nsstats.tcl
+
+commit a866d8d8de97726035f511e33da192d0e9e22d8d
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-02-18
+
+    - add writer thread and access log to "process" statistics
+
+M	nsstats.tcl
+
+commit d7ab45591dc8e3be1f952030af811bce7f063780
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-02-01
+
+    * added quotes for HTML attributes
+    * return separate sections in process-view for every (virtual) server
+
+M	nsstats.tcl
+
+commit 730c00901094bd9f9697902869fcae95d22f1b1c
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-02-01
+
+    Report page directory and tcllib for every server.
+
+M	nsstats.tcl
+
+commit ade27ce381272be343ea9c302bfeeebb303f3601
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-01-14
+
+    fix color
+
+M	nsstats.tcl
+
+commit 08025863adc8f4d784a26504f19e25048b25d3a0
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-01-14
+
+    added total lock time and avg lock time to mutex lock statistics (4.99.5)
+
+M	nsstats.tcl
+
+commit fe4e822410049507cc4e3b9b8d19b5fb57a288d1
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2013-01-14
+
+    Returning values from multiple servers (4.99.5); making output more compact
+
+M	nsstats.tcl
+
+commit d8ba5cbfc51aa7275078fd1a3c8be7d9bb4b383e
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2012-11-17
+
+    - make representation for threads more compact
+    - provide per thread information from OS in case naviserver and the OS allow this (currently just Linux)
+
+M	nsstats.tcl
+
+commit d680200b35f09407877b554617813ac783971e52
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2012-11-02
+
+    added config menu entry to view the current config file
+
+M	nsstats.tcl
+
+commit 7a88e0793bb90bb7dc35f6f4d504ae893604eb50
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2012-11-02
+
+    add more detailed version info, add number of entries in the waiting queue
+
+M	nsstats.tcl
+
+commit b5702cc5a4b8dedccdba979a8c52e0c5010c0068
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2012-10-31
+
+    fix results when nsstats is called as first request on the server
+
+M	nsstats.tcl
+
+commit ad5c111b7c91af84cecab2cb0aabbd62159452bd
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2012-10-28
+
+    provide proper fix for tcl8.4 compatibility
+
+M	nsstats.tcl
+
+commit bb6de79280ef3c4742a77b87a4d44ba2ae43fb0a
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2012-10-27
+
+    provide minimal backwards compatibility for tcl 8.4
+
+M	nsstats.tcl
+
+commit 109b91f9b02619ccd9c1e50b1e80e08d72154ed1
+Author: ext:(%20%22Jeff%20Rogers%22) <dvrsn@diphi.com>
+Date:   2012-10-24
+
+    Add translations of thread ids to thread names
+
+M	nsstats.tcl
+
+commit 73ea31d540f6a0174aec13e2c6ca7ecc22dcf6e1
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2012-06-15
+
+    add lock statistics
+
+M	nsstats.tcl
+
+commit 91ae4f6fd41f6bbda45991581045ad8f19c75e74
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2012-06-15
+
+    Added page for nsv locks
+
+M	nsstats.tcl
+
+commit 88019739903c757faf80307cac4dee9ae46971b8
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2012-03-23
+
+    Fix orthography
+
+M	nsstats.tcl
+
+commit a69b537145bbbd9ca1586b414fd7abe2ce9f2309
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2012-03-12
+
+    fix statistics output for lock statistics, column TotalWait and MaxWait
+
+M	nsstats.tcl
+
+commit 48cc89203224e17e3ea636fa03aa4401a0d379e3
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2012-01-03
+
+    Added "saved" to cache statistics (seconds saved by this cache since start time)
+    Made lock warnings more colorful
+
+M	nsstats.tcl
+
+commit f283ac6a2c39b8cf47f20ba5ba8869ba37af3bca
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2011-10-01
+
+    added "Total Wait" and "Max Wait" to locks statistics, provide more warnings
+
+M	nsstats.tcl
+
+commit 67a41eea7dd331ff4d5d0e14fdb8740861722a7d
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2010-05-04
+
+    - Fix typo
+    - Remove obsolete warning about mutex metering (mutex metering is always
+       turned on).
+
+M	nsstats.tcl
+
+commit f4e2a96f427f9911f9d64fe6a334e3f77bab2e08
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2010-04-27
+
+    Added more nscache statistics: Utilization, Reuse, Expired, Pruned
+    made cache statistics right aligend to improve readability
+
+M	nsstats.tcl
+
+commit 91c2be3a991d40e0d31be636d3ad864ccafbe4a2
+Author: Vlad Seryakov <vseryakov@gmail.com>
+Date:   2009-03-10
+
+    initial import
+
+A	LICENSE
+A	Makefile
+A	README
+A	nsstats.tcl
