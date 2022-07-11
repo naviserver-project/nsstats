@@ -126,6 +126,47 @@ proc _ns_stats.header {args} {
         td.colsection h3 {margin-top:2px;margin-bottom:2px;}
         td.colsection h4 {margin-top:2px;;margin-bottom:2px;}
         td.colvalue {background-color: #ffffff;}
+        td.defaulted {color: #aaa;}
+        td.unread {color: red;}
+        td.notneeded {color: orange;}
+
+        .tooltip {
+            position: relative;
+            /*display: inline-block;*/
+            /*border-bottom: 1px dotted black;*/ /* If you want dots under the hoverable text */
+        }
+
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 200px;
+            background-color: #999;
+            color: #fff;
+            text-align: center;
+            padding: 5px 0;
+            margin-left: 15px;
+            margin-top: -5px;
+            border-radius: 6px;
+            position: absolute;
+            z-index: 1;
+        }
+        .tooltip.unread .tooltiptext { background-color: #900;}
+        .tooltip.unread .tooltiptext::after {border-color: transparent #900 transparent transparent;}
+        .tooltip.defaulted .tooltiptext { background-color: #aaa;}
+        .tooltip.defaulted .tooltiptext::after { border-color: transparent #aaa transparent transparent;}
+        .tooltip.notneeded .tooltiptext { background-color: orange;}
+        .tooltip.notneeded .tooltiptext::after { border-color: transparent orange transparent transparent;}
+
+        .tooltip:hover .tooltiptext {visibility: visible;}
+        .tooltip .tooltiptext::after {
+            content: " ";
+            position: absolute;
+            top: 50%;
+            right: 100%; /* To the left of the tooltip */
+            margin-top: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: transparent #999 transparent transparent;
+        }
 
         table.navbar {border: 1px; padding: 2px; border-spacing: 0px; width: 100%;}
         table.navbar td {padding: 5px; background: #666699; color: #ffffff; font-size: 10px;}
@@ -730,19 +771,73 @@ proc _ns_stats.configparams {} {
         # We want to have e.g. "aaa/pools" before "aaa/pool/foo",
         # therefore we map "/" to "" to put it in the collating sequence
         # after plain chars
-        set name [string map {/ ~} [ns_set name $section]]
+        set sectionName [ns_set name $section]
+        set name [string map {/ ~} $sectionName]
 
-        array unset keys
+        try {
+            set defaults [ns_configsection -filter defaults $sectionName]
+            set defaulted [ns_configsection -filter defaulted $sectionName]
+            set unread [ns_configsection -filter unread $sectionName]
+        } on error {errorMsg} {
+            set defaults {}
+            set defaulted {}
+            set unread {}
+        }
+
+        set keys {}
         for { set i 0 } { $i < [ns_set size $section] } { incr i } {
-            lappend keys([string tolower [ns_set key $section $i]]) [ns_set value $section $i]
+            set key [string tolower [ns_set key $section $i]]
+            set value [ns_set value $section $i]
+            if {$defaults ne ""} {
+                set isUnread [expr {[ns_set ifind $unread $key] == -1 ? "false" : "true"}]
+                set isDefaulted [expr {[ns_set ifind $defaulted $key] == -1 ? "false" : "true"}]
+                set default [ns_set iget $defaults $key]
+            } else {
+                set isDefaulted 0
+                set isUnread 0
+                set default ""
+            }
+            dict lappend keys $key [list value $value \
+                                        default $default \
+                                        defaulted $isDefaulted \
+                                        unread $isUnread \
+                                       ]
         }
 
         set line ""
-        foreach section_key [lsort [array names keys]] {
+        foreach section_key [lsort [dict keys $keys]] {
             set tip [_ns_stats.tooltip $name $section_key]
             set tipclass [expr {$tip ne "" ? "tip" : ""}]
+            set valueDicts [dict get $keys $section_key]
+            set values ""
+            set class "colvalue"
+            set tooltip_text ""
+            foreach valueDict [dict get $keys $section_key] {
+                set value [dict get $valueDict value]
+                set default [dict get $valueDict default]
+                set flags ""
+                if {[dict get $valueDict defaulted]} {
+                    lappend class defaulted tooltip
+                    set tooltip_text {<span class="tooltiptext">Value is default</span>}
+                }
+                if {[dict get $valueDict unread]} {
+                    lappend class unread tooltip
+                    set tooltip_text {<span class="tooltiptext">Value was not read during startup</span>}
+                }
+                if {$default ne "" && ![dict get $valueDict defaulted]} {
+                    append section_key " " "($default)"
+                    if {$default eq $value} {
+                        lappend class notneeded tooltip
+                        set tooltip_text {<span class="tooltiptext">Value is set to default (not needed)</span>}
+                    }
+                }
+                if {$flags ne ""} {
+                    append value " " $flags
+                }
+                lappend values $value
+            }
             lappend line "<tr><td title='$tip' class='coltitle $tipclass'>$section_key:</td>\n\
-        <td class='colvalue'>[join $keys($section_key) <br>]</td></tr>"
+        <td class='$class'>[join $values <br>]$tooltip_text</td></tr>"
         }
         set table($name) [join $line \n]
     }
