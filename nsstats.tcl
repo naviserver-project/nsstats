@@ -698,62 +698,104 @@ proc _ns_stats.nsvsize {} {
 
 
 proc _ns_stats.log {} {
-    set log ""
+    set content ""
+    set colorcodemap [list \
+                     [binary decode hex 1b5b306d] "" \
+                     [binary decode hex 1b5b313b33316d] "" \
+                     [binary decode hex 1b5b313b33396d] "" \
+                     [binary decode hex 1b5b303b33396d] "" \
+                    ]
+    set filter [ns_queryget filter ""]
 
-    catch {
-        set f [open [ns_info log]]
-        seek $f 0 end
-        set n [expr {[tell $f] -4000}]
-
-        if {$n < 0} {
-            set n 4000
+    if {$filter ne ""} {
+        set access_content ""
+        foreach s [ns_info servers] {
+            try {
+                set lines [exec fgrep $filter [ns_config ns/server/$s/module/nslog file]]
+                append access_content $lines \n
+            } on error {errorMsg} {
+            }
         }
-
-        seek $f $n
-        gets $f
-        set log [ns_quotehtml [read $f]]
-        close $f
+        try {
+            set system_content [exec fgrep $filter [ns_info log]]
+        } on error {errorMsg} {
+            set system_content ""
+        }
+        set content ""
+        if {$access_content ne ""} {
+            append content [subst {
+                <h4>Access log:</h4>
+                <font size=2><pre>[ns_quotehtml $access_content]</pre></font>
+            }]
+        }
+        if {$system_content ne ""} {
+            append content [subst {
+                <h4>System log:</h4>
+                <font size=2><pre>[ns_quotehtml [string map $colorcodemap $system_content]]</pre></font>
+            }]
+        }
+    } else {
+        try {
+            set f [open [ns_info log]]
+            seek $f 0 end
+            set n [expr {[tell $f] -10000}]
+            if {$n < 0} {
+                set n 10000
+            }
+            seek $f $n
+            # read the first partial line
+            gets $f
+            set system_content [string map $colorcodemap [read $f]]
+        } finally {
+            if {[info exists f]} {
+                close $f
+            }
+        }
+        set content "<font size=2><pre>[ns_quotehtml $system_content]</pre></font>"
     }
 
     append html \
         [_ns_stats.header Log] \
-        "<font size=2><pre>$log</pre></font>" \
+        "<form action='./nsstats.tcl?@page=log'>Filter: " \
+        "<input type='hidden' name='@page' value='log'>" \
+        "<input name='filter' value='$filter' size='40'></form>" \
+        $content \
         [_ns_stats.footer]
 
     return $html
 }
 
 
-set ::tips(module~nslog\$,checkforproxy) "Log peer address provided by X-Forwarded-For. (boolean, false)"
-set ::tips(ns~db~pool~,checkinterval) "Check in this interval if handles are not stale. (60m)"
-set ::tips(ns~db~pool~,maxidle) "Close handles which are idle for at least this interval. (60m)"
-set ::tips(ns~db~pool~,maxopen) "Close handles which open longer than this interval. (60m)"
-set ::tips(ns~parameters\$,asynclogwriter) "Write logfiles (error.log and access.log) asynchronously via writer threads (boolean, false)"
-set ::tips(ns~parameters\$,jobsperthread) "Default number of ns_jobs per thread (similar to connsperthread) (integer, 0)"
-set ::tips(ns~parameters\$,jobtimeout) "Default timeout for ns_job (5m)"
-set ::tips(ns~parameters\$,logexpanded) "Double-spaced error.log (boolean, false)"
-set ::tips(ns~parameters\$,logmaxbackup) "The number of old error.log files to keep around if log rolling is enabled.(integer, 10)"
-set ::tips(ns~parameters\$,logroll) "If true, the log file will be rolled when the server receives a SIGHUP signal (boolean, true)"
-set ::tips(ns~parameters\$,logusec) "If true, error.log entries will have timestamps with microsecond resolution(boolean, true)"
-set ::tips(ns~parameters\$,schedmaxelapsed) "Write warning, when a scheduled proc takes more than this number of seconds (integer, 2)"
-set ::tips(ns~parameters\$,schedsperthread) "Default number of scheduled procs per thread (similar to connsperthread) (integer, 0)"
-set ::tips(ns~server~\[^~\]+\$,compressenable) "Compress dynamic content per default. (boolean, false)"
-set ::tips(ns~server~\[^~\]+\$,compresslevel) "Compression level, when compress is enabled. (integer 1-9, 4)"
-set ::tips(ns~server~\[^~\]+\$,compressminsize) "Compress dynamic content above this size. (integer, 512)"
-set ::tips(ns~server~\[^~\]+\$,connsperthread) "Number of requests per connection thread before it terminates. (integer, 10000)"
-set ::tips(ns~server~\[^~\]+\$,hackcontenttype) "Force charset into content-type header for dynamic responses. (boolean, true)"
-set ::tips(ns~server~\[^~\]+\$,highwatermark) "When request queue is full above this percentage, create potentially connection threads in parallel. (integer, 80)"
-set ::tips(ns~server~\[^~\]+\$,lowwatermark) "When request queue is full above this percentage, create an additional connection threads. (integer, 10)"
-set ::tips(ns~server~\[^~\]+\$,noticedetail) "Notice server details (version number) in HTML return notices. (boolean, true)"
+set ::tips(module~nslog\$,checkforproxy) "Log peer address provided by X-Forwarded-For. (boolean)"
+set ::tips(ns~db~pool~,checkinterval) "Check in this interval if handles are not stale. (time interval)"
+set ::tips(ns~db~pool~,maxidle) "Close handles which are idle for at least this interval. (time interval)"
+set ::tips(ns~db~pool~,maxopen) "Close handles which open longer than this interval. (time interval)"
+set ::tips(ns~parameters\$,asynclogwriter) "Write logfiles (error.log and access.log) asynchronously via writer threads (boolean)"
+set ::tips(ns~parameters\$,jobsperthread) "Default number of ns_jobs per thread (similar to connsperthread) (integer)"
+set ::tips(ns~parameters\$,jobtimeout) "Default timeout for ns_job (time interval)"
+set ::tips(ns~parameters\$,logexpanded) "Double-spaced error.log (boolean)"
+set ::tips(ns~parameters\$,logmaxbackup) "The number of old error.log files to keep around if log rolling is enabled.(integer)"
+set ::tips(ns~parameters\$,logroll) "If true, the log file will be rolled when the server receives a SIGHUP signal (boolean)"
+set ::tips(ns~parameters\$,logusec) "If true, error.log entries will have timestamps with microsecond resolution (boolean)"
+set ::tips(ns~parameters\$,schedlogminduration) "Write warning, when a scheduled proc takes more than this time interval (time interval)"
+set ::tips(ns~parameters\$,schedsperthread) "Default number of scheduled procs per thread (similar to connsperthread) (integer)"
+set ::tips(ns~server~\[^~\]+\$,compressenable) "Compress dynamic content per default. (boolean)"
+set ::tips(ns~server~\[^~\]+\$,compresslevel) "Compression level, when compress is enabled. (integer 1-9)"
+set ::tips(ns~server~\[^~\]+\$,compressminsize) "Compress dynamic content above this size. (integer)"
+set ::tips(ns~server~\[^~\]+\$,connsperthread) "Number of requests per connection thread before it terminates. (integer)"
+set ::tips(ns~server~\[^~\]+\$,hackcontenttype) "Force charset into content-type header for dynamic responses. (boolean)"
+set ::tips(ns~server~\[^~\]+\$,highwatermark) "When request queue is full above this percentage, create potentially connection threads in parallel. (integer)"
+set ::tips(ns~server~\[^~\]+\$,lowwatermark) "When request queue is full above this percentage, create an additional connection threads. (integer)"
+set ::tips(ns~server~\[^~\]+\$,noticedetail) "Notice server details (version number) in HTML return notices. (boolean)"
 set ::tips(~fastpath\$,directoryadp) "Name of directory ADP"
 set ::tips(~fastpath\$,directoryproc) "Name of directory proc"
 set ::tips(~module~,deferaccept) "TCP Performance option; use TCP_FASTOPEN or TCP_DEFER_ACCEPT or SO_ACCEPTFILTER. (boolean, false)"
-set ::tips(~module~,keepwait) "Timeout in seconds for keep-alive. (integer, 5)"
-set ::tips(~module~,closewait) "Timeout in seconds for close on socket to drain potential garbage if no keep alive is performed. (integer, 2)"
-set ::tips(~module~,nodelay) "TCP Performance option; use TCP_NODELAY (OS-default on Linux). (boolean, false)"
-set ::tips(~module~,writersize) "Use writer threads for replies above this size. (1MB)"
-set ::tips(~module~,writerstreaming) "Use writer threads for streaming HTML output (e.g. ns_write ...). (boolean, false)"
-set ::tips(~module~,writerthreads) "Number of writer threads. (integer, 0)"
+set ::tips(~module~,keepwait) "Timeout for keep-alive. (time interval)"
+set ::tips(~module~,closewait) "Timeout for close on socket to drain potential garbage if no keep alive is performed. (time interval)"
+set ::tips(~module~,nodelay) "TCP Performance option; use TCP_NODELAY (OS-default on Linux). (boolean)"
+set ::tips(~module~,writersize) "Use writer threads for replies above this size. (memory units)"
+set ::tips(~module~,writerstreaming) "Use writer threads for streaming HTML output (e.g. ns_write ...). (boolean)"
+set ::tips(~module~,writerthreads) "Number of writer threads. (integer)"
 set ::tips(~tcl\$,errorlogheaders) "Connection headers to be logged in case of error (list)"
 
 
@@ -789,9 +831,9 @@ proc _ns_stats.configparams {} {
             set key [string tolower [ns_set key $section $i]]
             set value [ns_set value $section $i]
             if {$defaults ne ""} {
-                set isUnread [expr {[ns_set ifind $unread $key] == -1 ? "false" : "true"}]
-                set isDefaulted [expr {[ns_set ifind $defaulted $key] == -1 ? "false" : "true"}]
                 set default [ns_set iget $defaults $key]
+                set isUnread [expr {[ns_set ifind $unread $key] == -1 ? "false" : "true"}]
+                set isDefaulted [expr {[ns_set ifind $defaulted $key] > -1 ? "true" : "false"}]
             } else {
                 set isDefaulted 0
                 set isUnread 0
