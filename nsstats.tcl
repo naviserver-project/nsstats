@@ -718,9 +718,24 @@ proc _ns_stats.log {} {
             }
         }
         try {
-            set system_content [exec fgrep $filter [ns_info log]]
+            set system_content [string map $colorcodemap [exec fgrep -A30 -- $filter [ns_info log]]]
+            set currentLine ""
+            foreach l [split $system_content \n] {
+                if {[string range $l 0 0] eq ":"} {
+                    append currentLine \n$l
+                } else {
+                    lappend lines $currentLine
+                    set currentLine [expr {$l eq "--" ? "" : $l}]
+                }
+            }
+            lappend lines $currentLine
+            set system_content [join [lmap l $lines {
+                if {[string match *$filter* $l]} {
+                    set l
+                }
+            }] \n]
         } on error {errorMsg} {
-            set system_content ""
+            set system_content "error log filter caught: '$errorMsg'"
         }
         set content ""
         if {$access_content ne ""} {
@@ -732,7 +747,7 @@ proc _ns_stats.log {} {
         if {$system_content ne ""} {
             append content [subst {
                 <h4>System log:</h4>
-                <font size=2><pre>[ns_quotehtml [string map $colorcodemap $system_content]]</pre></font>
+                <font size=2><pre>[ns_quotehtml $system_content]</pre></font>
             }]
         }
     } else {
