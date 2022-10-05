@@ -700,10 +700,11 @@ proc _ns_stats.nsvsize {} {
 proc _ns_stats.log {} {
     set content ""
     set colorcodemap [list \
-                     [binary decode hex 1b5b306d] "" \
-                     [binary decode hex 1b5b313b33316d] "" \
-                     [binary decode hex 1b5b313b33396d] "" \
-                     [binary decode hex 1b5b303b33396d] "" \
+                          [binary decode hex 1b5b303b33326d] "" \
+                          [binary decode hex 1b5b303b33396d] "" \
+                          [binary decode hex 1b5b306d] "" \
+                          [binary decode hex 1b5b313b33316d] "" \
+                          [binary decode hex 1b5b313b33396d] "" \
                     ]
     set filter [ns_queryget filter ""]
 
