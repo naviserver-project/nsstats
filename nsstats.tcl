@@ -719,6 +719,10 @@ proc _ns_stats.log {} {
         }
         try {
             set system_content [string map $colorcodemap [exec fgrep -A30 -- $filter [ns_info log]]]
+        } on error {errorMsg} {
+            set system_content ""
+        }
+        try {
             set currentLine ""
             set lines {}
             foreach l [split $system_content \n] {
@@ -731,9 +735,8 @@ proc _ns_stats.log {} {
             }
             lappend lines $currentLine
             set system_content [join [lmap l $lines {
-                if {[string match *$filter* $l]} {
-                    set l
-                }
+                if {![string match *$filter* $l]} continue
+                set l
             }] \n]
         } on error {errorMsg} {
             set system_content "error log filter caught: '$errorMsg'"
