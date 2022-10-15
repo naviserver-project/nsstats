@@ -1288,8 +1288,9 @@ proc _ns_stats.process {} {
     if {[regexp {([0-9a-f]+)[ +]} $tag . hash]} {
         set tag "<a href='https://bitbucket.org/naviserver/naviserver/commits/?search=$hash'>$tag</a>"
     }
+    set tcl_version_info "$::tcl_platform(machine), $::tcl_platform(os) $::tcl_platform(osVersion)"
     set values [list \
-                    Host                 "[ns_info hostname] ([ns_info address])" \
+                    Host                 "[ns_info hostname] ([ns_info address], Tcl $::tcl_patchLevel, $tcl_version_info)" \
                     "Boot Time"           [clock format [ns_info boottime] -format %c] \
                     Uptime                [_ns_stats.fmtSeconds [ns_info uptime]] \
                     Process              "[ns_info pid] [ns_info nsd]" \
