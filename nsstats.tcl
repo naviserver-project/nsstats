@@ -1288,9 +1288,16 @@ proc _ns_stats.process {} {
     if {[regexp {([0-9a-f]+)[ +]} $tag . hash]} {
         set tag "<a href='https://bitbucket.org/naviserver/naviserver/commits/?search=$hash'>$tag</a>"
     }
-    set tcl_version_info "$::tcl_platform(machine), $::tcl_platform(os) $::tcl_platform(osVersion)"
+    set version_info "$::tcl_platform(machine), $::tcl_platform(os) $::tcl_platform(osVersion)"
+    try {
+        set connect_info [ns_conn details]
+        if {$connect_info ne ""} {
+            append version_info ", connected via [ns_conn details]"
+        }
+        append version_info " from client [ns_conn peeraddr]"
+    }
     set values [list \
-                    Host                 "[ns_info hostname] ([ns_info address], Tcl $::tcl_patchLevel, $tcl_version_info)" \
+                    Host                 "[ns_info hostname] ([ns_info address], Tcl $::tcl_patchLevel, $version_info)" \
                     "Boot Time"           [clock format [ns_info boottime] -format %c] \
                     Uptime                [_ns_stats.fmtSeconds [ns_info uptime]] \
                     Process              "[ns_info pid] [ns_info nsd]" \
