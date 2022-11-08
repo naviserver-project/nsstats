@@ -298,13 +298,14 @@ proc _ns_stats.cache.histogram {cacheName sorted} {
     set maxSize [_ns_stats.hr [dict get $stats maxsize]]B
     set sufficient [_ns_stats.hr [expr {[dict get $stats size] * 1.1 * $reused / $nrEntries }] %.0f]B
     # margin: 0 auto
+    set config "[ns_cache_configure $cacheName]"
     append r [subst -nocommands {
         <div id="histogram" style="min-width: 310px; height: 400px; width: 70%; "></div>
 <script>
 Highcharts.chart('histogram', {
   chart:    { type: 'column' },
   title:    { text: 'Cache-entry reuse in $cacheName' },
-  subtitle: { text: '(Entries: $nrEntries, reused: $reused, bucket size: $bucketSize, utilization: $utilization%, cache size: $maxSize, sufficient: $sufficient)' },
+  subtitle: { text: '$config<br>(Entries: $nrEntries, reused: $reused, bucket size: $bucketSize, utilization: $utilization%, cache size: $maxSize, sufficient: $sufficient)' },
   yAxis:    { min: 1, title: { text: 'Hits' }, type: 'logarithmic', minorTickInterval: 0.1 },
   xAxis:    { title: { text: 'Percent'}, categories: [$categories] },
   legend:   {enabled: false},
@@ -336,10 +337,10 @@ proc _ns_stats.cache {} {
         set stats [ns_cache_stats -contents $statDetails]
         set sorted [lsort -decreasing -integer -index 2 $stats]
         set h [ _ns_stats.cache.histogram $statDetails $sorted]
-        append body $h
-
-        append body "<h3>$max most frequently used entries from cache '$statDetails'</h3>"
-        append body "<table class='data' width='70%'><tr><th>Key</th><th>Size</th><th>Hits</th><th>Expire</th></tr>\n"
+        append body \
+            $h \
+            "<h3>$max most frequently used entries from cache '$statDetails'</h3>\n" \
+            "<table class='data' width='70%'><tr><th>Key</th><th>Size</th><th>Hits</th><th>Expire</th></tr>\n"
         foreach row [lrange $sorted 0 $max] {
             lassign $row key hits size expire
             if {$expire == 0} {
