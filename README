@@ -1,5 +1,5 @@
-Statistics Module for NaviServer 4.99.17
-Release 1.9
+Statistics Module for NaviServer 4.99.24
+Release 1.10
 vlad@crystalballinc.com
 neumann@wu-wien.ac.at
 
@@ -34,10 +34,14 @@ Changes since 1.0
   - added page for showing/toggling log levels
   - added page for showing URLs mapped to connection threads pools
   - added information about drivers (threads, stats)
-  - format values in human readable form
+  - format values in human-readable form
   - display of running writers, connchan jobs, nsproxy jobs
   - db pool statistics
   - nsv size statistics
+  - cache reuse charts
+  - quick log file analysis (e.g. search error.log and access.log for request IDs in one step)
+  - HTTP client log statistics
+
 
 /*--------------------------------------------------------------------*/
 

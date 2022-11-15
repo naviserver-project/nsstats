@@ -102,14 +102,12 @@ proc _ns_stats.header {args} {
         <head>
         <title>$title</title>
         <style type='text/css'>
-
         /* tooltip styling. by default the element to be styled is .tooltip  */
         .tip {
             cursor: help;
             text-decoration:underline;
             color: #777777;
         }
-
         body    { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; color: #000000; background-color: #ffffff; }
         td,th   { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; padding: 4px;}
         pre     { font-family: courier new, courier; font-size: 10pt; }
@@ -184,7 +182,7 @@ proc _ns_stats.header {args} {
         $::extraHeadEntries
         </head>
 
-        <table class='navbar'>
+        <table class='navbar table table-responsive w-100 d-block d-md-table'>
         <tr>
         <td valign='middle'><b>$nav</b></td>
         <td valign='middle' align='right'>Raw: <a class='current' href='$rawUrl'>$rawLabel</a>
@@ -216,6 +214,7 @@ proc _ns_stats.index {} {
         "<li> <a href='?@page=process$::rawparam'>Process</a></li>" \n\
         "<li> <a href='?@page=sched$::rawparam'>Scheduled Procedures</a></li>" \n\
         "<li> <a href='?@page=threads$::rawparam'>Threads</a></li>" \n\
+        "<li> <a href='?@page=httpclientlog$::rawparam'>HTTP Client Log</a></li>" \n\
         "</ul>\n" \
         [_ns_stats.footer]
     return $html
@@ -301,26 +300,26 @@ proc _ns_stats.cache.histogram {cacheName sorted} {
     set config "[ns_cache_configure $cacheName]"
     append r [subst -nocommands {
         <div id="histogram" style="min-width: 310px; height: 400px; width: 70%; "></div>
-<script>
-Highcharts.chart('histogram', {
-  chart:    { type: 'column' },
-  title:    { text: 'Cache-entry reuse in $cacheName' },
-  subtitle: { text: '$config<br>(Entries: $nrEntries, reused: $reused, bucket size: $bucketSize, utilization: $utilization%, cache size: $maxSize, sufficient: $sufficient)' },
-  yAxis:    { min: 1, title: { text: 'Hits' }, type: 'logarithmic', minorTickInterval: 0.1 },
-  xAxis:    { title: { text: 'Percent'}, categories: [$categories] },
-  legend:   {enabled: false},
-  tooltip:  {
-    headerFormat: '<span style="font-size:10px">{point.key}</span><table>',
-    pointFormat: '<tr><td style="color:{series.color};padding:0">{series.name}: </td>' +
-      '<td style="padding:0"><b>{point.y:.1f} hits</b></td></tr>',
-    footerFormat: '</table>',
-    shared: true,
-    useHTML: true
-  },
-  plotOptions: { column: { pointPadding: 0, borderWidth: 0, groupPadding: 0, shadow: false } },
-  series: [{ name: 'Reuse', data: [$data] }]
-});
-</script>
+        <script>
+        Highcharts.chart('histogram', {
+            chart:    { type: 'column' },
+            title:    { text: 'Cache-entry reuse in $cacheName' },
+            subtitle: { text: '$config<br>(Entries: $nrEntries, reused: $reused, bucket size: $bucketSize, utilization: $utilization%, cache size: $maxSize, sufficient: $sufficient)' },
+            yAxis:    { min: 1, title: { text: 'Hits' }, type: 'logarithmic', minorTickInterval: 0.1 },
+            xAxis:    { title: { text: 'Percent'}, categories: [$categories] },
+            legend:   {enabled: false},
+            tooltip:  {
+                headerFormat: '<span style="font-size:10px">{point.key}</span><table>',
+                pointFormat: '<tr><td style="color:{series.color};padding:0">{series.name}: </td>' +
+                '<td style="padding:0"><b>{point.y:.1f} hits</b></td></tr>',
+                footerFormat: '</table>',
+                shared: true,
+                useHTML: true
+            },
+            plotOptions: { column: { pointPadding: 0, borderWidth: 0, groupPadding: 0, shadow: false } },
+            series: [{ name: 'Reuse', data: [$data] }]
+        });
+        </script>
     }]
     return $r
 }
@@ -706,7 +705,7 @@ proc _ns_stats.log {} {
                           [binary decode hex 1b5b306d] "" \
                           [binary decode hex 1b5b313b33316d] "" \
                           [binary decode hex 1b5b313b33396d] "" \
-                    ]
+                         ]
     set filter [ns_queryget filter ""]
 
     if {$filter ne ""} {
@@ -1599,6 +1598,225 @@ proc _ns_stats.sched {} {
     append html \
         [_ns_stats.header "Scheduled Procedures"] \
         [_ns_stats.results $col $colTitles ?@page=sched $rows $reverseSort $align] \
+        [_ns_stats.footer]
+    return $html
+}
+
+proc _ns_stats.httpclientlog.chart {path} {
+    ns_log notice "nsstats: process http client log $path"
+
+    set F [open $path]; set logcontent [read $F]; close $F
+    set count 0
+    set hostInfos {}
+
+    foreach line [split $logcontent \n] {
+        if {[string length $line] < 15} {
+            break
+        }
+        incr count
+        #if {$count>10} break
+        set fields [split $line]
+        lassign $fields ts tz id status method url elapsed sent received cause
+        set ts0 [string range $ts 1 end]
+        set tz [string range $tz 0 end-1]
+        #
+        # Convert time to UTC format for JavaScript:
+        # 13/Nov/2022:00:19:49 +0100
+        #
+        # The timestgamp "ts" in JavaScript (result of Data.parse())
+        # is the time since January 1, 1970 in milliseconds
+        #
+        set ts [clock scan $ts0 -gmt 1 -format {%d/%b/%Y:%H:%M:%S}]
+        #
+        # Get pool from ID: examples: -conn:live:default:85:10717683-, -sched:1:2:54-
+        #
+        #set pool default
+        #if {![regexp {^[-]conn:[^:]+:([^:]+):} $id . pool]} {
+        #    if {[regexp {^[-]sched:} $id]} {
+        #        set pool sched
+        #    }
+        #}
+        set host none
+        regexp {https?://([^/]+)/} $url . host
+        dict lappend responsetime $host $ts $elapsed
+        dict incr requestcount0 [list $host $ts]
+        if {[dict exists $hostInfos $host]} {
+            set hostInfo [dict get $hostInfos $host]
+        } else {
+            set hostInfo {}
+        }
+        dict incr hostInfo sent $sent
+        dict incr hostInfo received $received
+        dict incr hostInfo count
+        dict incr hostInfo $status
+        if {[dict exists $hostInfo elapsed]} {
+            dict set hostInfo elapsed [expr {[dict get $hostInfo elapsed] + $elapsed}]
+        } else {
+            dict set hostInfo elapsed $elapsed
+        }
+        dict set hostInfos $host $hostInfo
+        dict set statusCodes $status 1
+    }
+    set responsetimeSeries {}
+    foreach key [dict keys $responsetime] {
+        set values [join [lmap {ts value} [dict get $responsetime $key] {
+            subst -nocommands {[${ts}000, $value]}
+        }] ",\n"]
+        lappend responsetimeSeries [subst -nocommands {
+            {
+                name: '$key',
+                data:[$values]
+            }
+        }]
+    }
+    set requestcount {}
+    foreach key [dict keys $requestcount0] {
+        lassign $key host ts
+        dict lappend requestcount $host $ts [dict get $requestcount0 $key]
+    }
+    set requestcountSeries {}
+    foreach key [dict keys $requestcount] {
+        set values [join [lmap {ts value} [dict get $requestcount $key] {
+            subst -nocommands {[${ts}000, $value]}
+        }] ",\n"]
+        lappend requestcountSeries [subst -nocommands {
+            {
+                name: '$key',
+                data:[$values]
+            }
+        }]
+    }
+
+    set responsetimeSeries [join $responsetimeSeries ,]
+    set requestcountSeries [join $requestcountSeries ,]
+    set JS [subst -nocommands {
+        Highcharts.chart('responsetime', {
+            chart: {
+                type: 'lollipop'
+            },
+            title: {
+                text: 'HTTP Client Log - Response Time Overview'
+            },
+            xAxis: {
+                type: 'datetime',
+            },
+            yAxis: {
+                title: {text: 'Seconds'}
+            },
+            series: [$responsetimeSeries]
+        });
+        Highcharts.chart('requestcount', {
+            chart: {
+                type: 'lollipop'
+            },
+            title: {
+                text: 'HTTP Client Log - Requests per Second'
+            },
+            subtitle: {
+                text: "Total number of requests: $count"
+            },
+            xAxis: {
+                type: 'datetime',
+            },
+            yAxis: {
+                title: {text: 'Count'}
+            },
+            series: [$requestcountSeries]
+        });
+    }]
+    set codes [lsort [dict keys $statusCodes]]
+    foreach host [dict keys $hostInfos] {
+        foreach code $codes {
+            if {![dict exists $hostInfos $host $code]} {
+                dict set hostInfos $host $code 0
+            }
+        }
+    }
+    set data [subst {
+        <table class="table table-striped fs-3 bg-white"><tr>
+        <th class="fs-6">Host</th>
+        <th class="fs-6 text-end">Requests</th>
+        <th class="fs-6 text-end">Avg Time</th>
+        <th class="fs-6 text-end">Sent</th>
+        <th class="fs-6 text-end">Received</th>
+        [join [lmap code $codes {set _ "<th class='fs-6 text-end'>$code</th>"}]]
+        </tr>
+    }]
+    foreach host [lsort [dict keys $hostInfos]] {
+        set avg [expr {[dict get $hostInfos $host elapsed]/[dict get $hostInfos $host count]}]
+        append data [subst {<tr>
+            <td class="fs-6">$host</td>
+            <td class="fs-6 text-end">[dict get $hostInfos $host count]</td>
+            <td class="fs-6 text-end">[_ns_stats.hr $avg]s</td>
+            <td class="fs-6 text-end">[_ns_stats.hr [dict get $hostInfos $host sent]]b</td>
+            <td class="fs-6 text-end">[_ns_stats.hr [dict get $hostInfos $host received]]b</td>
+            [join [lmap code $codes {set _ "<td class='fs-6 text-end'>[dict get $hostInfos $host $code]</td>"}]]
+            </tr>
+        }]
+    }
+    set logfiles [_ns_stats.httpclientlog.logfiles]
+    set options [join [lmap logfile $logfiles {
+        set selected [expr {$logfile eq $path ? "selected" : ""}]
+        set tail [file tail $logfile]
+        set _ "<option value='$tail' $selected>$tail</option>"
+    }] \n]
+
+    return [subst {
+        <div id='responsetime'></div>
+        <div id='requestcount'></div>
+        <script>$JS</script>
+        <div class="container">
+        <h3>Summative Statistics</h3>
+        $data
+        </table>
+        <h4>Show other logfile</h4>
+        <form action="nsstats.tcl" class="row g-1">
+        <div class="col"><select class="form-select" name="logfile">$options</select></div>
+        <div class="col"><button type="submit" class="btn btn-outline-secondary">Show</button></div>
+        <input type="hidden" name="@page" value="httpclientlog">
+        </form>
+        <p>
+        </div>
+    }]
+}
+
+proc _ns_stats.httpclientlog.logfiles {} {
+    return [lsort [concat {*}[lmap s [ns_info servers] {
+        set logfile [ns_config ns/server/$s/httpclient logfile]
+        if {$logfile eq ""} {
+            continue
+        }
+        lmap file [glob $logfile*] {
+            if {[file size $file] < 10} continue
+            #ns_log notice "file size <$file> [file size $file]"
+            set file
+        }
+    }]]]
+}
+
+proc _ns_stats.httpclientlog {} {
+    set ::extraHeadEntries {
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+        <script src="https://code.highcharts.com/highcharts.js"></script>
+        <script src="https://code.highcharts.com/modules/exporting.js"></script>
+        <script src="https://code.highcharts.com/modules/export-data.js"></script>
+        <script src="https://code.highcharts.com/highcharts-more.js"></script>
+        <script src="https://code.highcharts.com/modules/dumbbell.js"></script>
+        <script src="https://code.highcharts.com/modules/lollipop.js"></script>
+    }
+
+    set logfiles [_ns_stats.httpclientlog.logfiles]
+    if {[llength $logfiles] == 0} {
+        set HTML "<p>No HTTP client logfiles configured</p>"
+    } else {
+        set firstEntry [lindex $logfiles 0]
+        set fn [ns_queryget logfile [file tail $firstEntry]]
+        set dir [file join {*}[lrange [file split $firstEntry] 0 end-1]]
+        set HTML [_ns_stats.httpclientlog.chart $dir/$fn]
+    }
+    append html \
+        [_ns_stats.header "HTTP Client Log"] \
+        $HTML \
         [_ns_stats.footer]
     return $html
 }
