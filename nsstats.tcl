@@ -1605,6 +1605,16 @@ proc _ns_stats.sched {} {
 proc _ns_stats.httpclientlog.chart {path} {
     ns_log notice "nsstats: process http client log $path"
 
+    set logfiles [_ns_stats.httpclientlog.logfiles]
+    if {[file size $path] < 10} {
+        if {[llength $logfiles] > 0} {
+            set path [lindex $logfiles 0]
+            set logfiles [concat $path {*}[lreverse [lrange $logfiles 1 end]]]
+        } else {
+            rethrn "<p>No client log entries found in [ns_quotehtml $path]</p>"
+        }
+    }
+
     set F [open $path]; set logcontent [read $F]; close $F
     set count 0
     set hostInfos {}
@@ -1754,7 +1764,6 @@ proc _ns_stats.httpclientlog.chart {path} {
             </tr>
         }]
     }
-    set logfiles [_ns_stats.httpclientlog.logfiles]
     set options [join [lmap logfile $logfiles {
         set selected [expr {$logfile eq $path ? "selected" : ""}]
         set tail [file tail $logfile]
@@ -1805,14 +1814,11 @@ proc _ns_stats.httpclientlog {} {
         <script src="https://code.highcharts.com/modules/lollipop.js"></script>
     }
 
-    set logfiles [_ns_stats.httpclientlog.logfiles]
-    if {[llength $logfiles] == 0} {
+    set logfile [ns_config ns/server/[ns_info server]/httpclient logfile ""]
+    if {$logfile eq ""} {
         set HTML "<p>No HTTP client logfiles configured</p>"
     } else {
-        set firstEntry [lindex $logfiles 0]
-        set fn [ns_queryget logfile [file tail $firstEntry]]
-        set dir [file join {*}[lrange [file split $firstEntry] 0 end-1]]
-        set HTML [_ns_stats.httpclientlog.chart $dir/$fn]
+        set HTML [_ns_stats.httpclientlog.chart $logfile]
     }
     append html \
         [_ns_stats.header "HTTP Client Log"] \
