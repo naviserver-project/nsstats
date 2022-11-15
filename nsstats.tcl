@@ -1748,8 +1748,8 @@ proc _ns_stats.httpclientlog.chart {path} {
             <td class="fs-6">$host</td>
             <td class="fs-6 text-end">[dict get $hostInfos $host count]</td>
             <td class="fs-6 text-end">[_ns_stats.hr $avg]s</td>
-            <td class="fs-6 text-end">[_ns_stats.hr [dict get $hostInfos $host sent]]b</td>
-            <td class="fs-6 text-end">[_ns_stats.hr [dict get $hostInfos $host received]]b</td>
+            <td class="fs-6 text-end">[_ns_stats.hr [dict get $hostInfos $host sent]]B</td>
+            <td class="fs-6 text-end">[_ns_stats.hr [dict get $hostInfos $host received]]B</td>
             [join [lmap code $codes {set _ "<td class='fs-6 text-end'>[dict get $hostInfos $host $code]</td>"}]]
             </tr>
         }]
