@@ -1295,6 +1295,8 @@ proc _ns_stats.process {} {
             append version_info ", connected via [ns_conn details]"
         }
         append version_info " from client [ns_conn peeraddr]"
+    } on error {errorMsg} {
+        ns_log notice "This version of NaviServer doesn't support ns_conn details: $errorMsg"
     }
     set values [list \
                     Host                 "[ns_info hostname] ([ns_info address], Tcl $::tcl_patchLevel, $version_info)" \
