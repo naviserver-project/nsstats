@@ -696,6 +696,14 @@ proc _ns_stats.nsvsize {} {
     return $html
 }
 
+proc _ns_stats.log.prepare_content {type content} {
+    set content [ns_quotehtml $content]
+    switch $type {
+       access { regsub -all { ([-][^\]\n\" ]+[-]) } $content { <a href='nsstats.tcl?@page=log\&filter=\1'>\1</a> } content}
+       system { regsub -all {\[([-][^\]\n\" ]+[-])\]} $content {[<a href='nsstats.tcl?@page=log\&filter=\1'>\1</a>]} content}
+    }
+    return $content
+}
 
 proc _ns_stats.log {} {
     set content ""
@@ -718,7 +726,7 @@ proc _ns_stats.log {} {
             }
         }
         try {
-            set system_content [string map $colorcodemap [exec fgrep -A30 -- $filter [ns_info log]]]
+            set system_content [string map $colorcodemap [exec fgrep -A35 -- $filter [ns_info log]]]
         } on error {errorMsg} {
             set system_content ""
         }
@@ -745,13 +753,13 @@ proc _ns_stats.log {} {
         if {$access_content ne ""} {
             append content [subst {
                 <h4>Access log:</h4>
-                <font size=2><pre>[ns_quotehtml $access_content]</pre></font>
+                <font size=2><pre>[_ns_stats.log.prepare_content access $access_content]</pre></font>
             }]
         }
         if {$system_content ne ""} {
             append content [subst {
                 <h4>System log:</h4>
-                <font size=2><pre>[ns_quotehtml $system_content]</pre></font>
+                <font size=2><pre>[_ns_stats.log.prepare_content system $system_content]</pre></font>
             }]
         }
     } else {
@@ -771,12 +779,12 @@ proc _ns_stats.log {} {
                 close $f
             }
         }
-        set content "<font size=2><pre>[ns_quotehtml $system_content]</pre></font>"
+        set content "<font size=2><pre>[_ns_stats.log.prepare_content system $system_content]</pre></font>"
     }
 
     append html \
         [_ns_stats.header Log] \
-        "<form action='./nsstats.tcl?@page=log'>Filter: " \
+        "<form method='post' action='./nsstats.tcl'>Filter: " \
         "<input type='hidden' name='@page' value='log'>" \
         "<input name='filter' value='$filter' size='40'></form>" \
         $content \
@@ -1613,7 +1621,7 @@ proc _ns_stats.httpclientlog.chart {path} {
             set path [lindex $logfiles 0]
             set logfiles [concat $path {*}[lreverse [lrange $logfiles 1 end]]]
         } else {
-            rethrn "<p>No client log entries found in [ns_quotehtml $path]</p>"
+            return "<p>No client log entries found in [ns_quotehtml $path]</p>"
         }
     }
 
@@ -1794,7 +1802,7 @@ proc _ns_stats.httpclientlog.chart {path} {
 proc _ns_stats.httpclientlog.logfiles {} {
     return [lsort [concat {*}[lmap s [ns_info servers] {
         set logfile [ns_config ns/server/$s/httpclient logfile]
-        if {$logfile eq ""} {
+        if {$logfile eq "" || ![file exists $logfile]} {
             continue
         }
         lmap file [glob $logfile*] {
@@ -1816,10 +1824,16 @@ proc _ns_stats.httpclientlog {} {
         <script src="https://code.highcharts.com/modules/lollipop.js"></script>
     }
 
-    set logfile [ns_config ns/server/[ns_info server]/httpclient logfile ""]
-    if {$logfile eq ""} {
+    set configured_logfile [ns_config ns/server/[ns_info server]/httpclient logfile ""]
+    if {$configured_logfile eq ""} {
         set HTML "<p>No HTTP client logfiles configured</p>"
     } else {
+        set selected_logfile [ns_queryget logfile ""]
+        if {$selected_logfile eq ""} {
+            set logfile $configured_logfile
+        } else {
+            set logfile [file join {*}[lreplace [file split $configured_logfile] end end $selected_logfile]]
+        }
         set HTML [_ns_stats.httpclientlog.chart $logfile]
     }
     append html \

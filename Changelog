@@ -437,7 +437,7 @@ Date:   2018-06-28
 
     add configuration via config file
     make background locks configurable
-    bump version mumber to 1.7
+    bump version number to 1.7
 
 M	README
 M	nsstats.tcl
