@@ -1352,6 +1352,16 @@ proc _ns_stats.process {} {
         catch {set serverdir [ns_server -server $s serverdir]}
 
         #
+        # Collect summative information
+        #
+        set total_server_requests 0
+        foreach pool [lsort [ns_server -server $s pools]] {
+            set rawstats [ns_server -server $s -pool $pool stats]
+            dict set pool_info $s $pool rawstats $rawstats
+            incr total_server_requests [dict get $rawstats requests]
+        }
+
+        #
         # Per connection pool information
         #
         set poolItems ""
@@ -1360,7 +1370,9 @@ proc _ns_stats.process {} {
             # Provide a nicer name for the pool.
             #
             set poolLabel "default"
-            if {$pool ne {}} {set poolLabel $pool}
+            if {$pool ne {}} {
+                set poolLabel $pool
+            }
 
             #
             # Pool and server specific pool path. The empty pool name
@@ -1371,12 +1383,18 @@ proc _ns_stats.process {} {
             #
             # Collect statistics
             #
-            set rawstats [ns_server -server $s -pool $pool stats]
+            #ns_log notice "try to get [list dict get $pool_info $s $pool rawstats]"
+            set rawstats [dict get $pool_info $s $pool rawstats]
             set rawthreads [list {*}[ns_server -server $s -pool $pool threads] \
                                 waiting [ns_server -server $s -pool $pool waiting] \
                                 started [dict get $rawstats connthreads] \
                                 maxconnections [ns_config $config_path maxconnections] \
                                ]
+            if {$total_server_requests > 0} {
+                set poolPercentage <br>[format %.2f%% [expr {100.0*[dict get $rawstats requests]/$total_server_requests}]]
+            } else {
+                set poolPercentage ""
+            }
 
             set rawreqs [ns_server -server $s -pool $pool all]
             set reqs {}
@@ -1430,7 +1448,7 @@ proc _ns_stats.process {} {
                     "<tr><td class='subtitle'>Mapped:</td>" \
                     "<td class='colvalue'><a href='?@page=mapped&pool=$pool&server=$s'>$nrMapped</a></td></tr>\n"
             }
-            lappend poolItems "Pool '$poolLabel'" "<table>$item</table>"
+            lappend poolItems "Pool '$poolLabel' $poolPercentage" "<table>$item</table>"
         }
 
         set proxyItems ""
