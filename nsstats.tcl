@@ -1658,6 +1658,14 @@ proc _ns_stats.httpclientlog.chart {path} {
         set ts0 [string range $ts 1 end]
         set tz [string range $tz 0 end-1]
         #
+        # Provide robustness when invalid URLs (containing unescaped
+        # spaces) were used.
+        #
+        if {[llength $fields] > 10} {
+            lassign [lrange $fields end-3 end] elapsed sent received cause
+            set url [lrange $fields 5 end-4]
+        }
+        #
         # Convert time to UTC format for JavaScript:
         # 13/Nov/2022:00:19:49 +0100
         #
