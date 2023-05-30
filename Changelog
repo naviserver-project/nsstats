@@ -1,3 +1,147 @@
+commit 4b1c3eb4c83c8226dce628400fc7626a891f8b88
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2023-03-06
+
+    Improved robustness with invalid URLs (containing unescaped spaces)
+
+M	nsstats.tcl
+
+commit 5ec85bbc2561153ed83de9b8baf7e3eae32f2f1d
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2023-01-25
+
+    added percentage of request distribution over connection pools
+
+M	nsstats.tcl
+
+commit 188020a879fd91e00afe60dbfae474e2c5deaca2
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2023-01-23
+
+    improve log reporting
+
+    - clean log file from ascii colors
+    - support selection of log-files for HTTP client logs
+
+M	README
+M	nsstats.tcl
+
+commit 7c8e69db4e83458f10bb8212b4111a60023d6693
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-11-28
+
+    Complete error handler when used with earlier versions of NaviServer
+
+    Many thanks to Brian Fenton for the patch.
+
+M	nsstats.tcl
+
+commit ae97c0ed1dd1e9b8ba6b6e5fadb8e7a963b0ba6a
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-11-15
+
+    improved order of available log files in pulldown menu
+
+M	nsstats.tcl
+
+commit 10a2a3fb1008862559c8afe86bb8972c614fc7e6
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-11-15
+
+    typographic change ("B" is used usually for bytes)
+
+M	nsstats.tcl
+
+commit 7f8e25b6f7b9b1449e5fd400bab47d473688a43e
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-11-15
+
+    Added HTTP client log statistics
+
+    - when HTTP client log isfunctionality is configured, provide
+      a) charts for performance (using highcharts via CDN)
+      b) charts on request frequency (using highcharts via CDN)
+      c) summary table
+
+    - improved compatibility with Bootstrap 5 (currently just on HTTP client log page)
+
+M	README
+M	nsstats.tcl
+
+commit 4afe979a959007aaf575183184860fdedda4c92c
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-11-08
+
+    added cache configuration to output when looking at a single cache
+
+M	nsstats.tcl
+
+commit 668722038302989aeeef0af97dfb10aeaaaa606e
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-10-15
+
+    added also information about the connected client to the process page
+
+M	nsstats.tcl
+
+commit a21a640a401801ea0a9aed1e0e1c71ffdb1f9728
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-10-15
+
+    include version info on process page
+
+M	nsstats.tcl
+
+commit d88b0a994794099fb64a7e9bc2a6b96922514b67
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-10-06
+
+    reduce whitespace, improve robustness
+
+M	nsstats.tcl
+
+commit cbe76ffa2fcffdc2807949e23443534f992c193e
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-10-05
+
+    ensure proper handling of search pattern for grep (when it starts with a "-")
+
+M	nsstats.tcl
+
+commit c47c865d659ab9300de051d394273857ce1531a1
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-10-05
+
+    Added handling of continuation lines in system log
+
+M	nsstats.tcl
+
+commit 7b0cf6c3c93fe43db815a039241acd239f663869
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-10-05
+
+    added one more color code for stripping
+
+M	nsstats.tcl
+
+commit a3eacea9e1e1f0b87e1dd78336d8bc4cba0d9d56
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-10-05
+
+    added filter option of "log" page
+
+    The filter can be used to grep for (ID) strings in both the system and access logs.
+
+M	nsstats.tcl
+
+commit 93d252d28269e108534ffdf757e24c2eaec6129a
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2022-07-11
+
+    Added default and usage information to "Config Parameters" page
+
+M	nsstats.tcl
+
 commit 3105cbb87910b1237a0b1030377e4255b1977ba2
 Author: Gustaf Neumann <neumann@wu-wien.ac.at>
 Date:   2021-10-07
@@ -310,7 +454,7 @@ Author: Gustaf Neumann <neumann@wu-wien.ac.at>
 Date:   2019-01-26
 
     add [ns_driver names] instead of hard-coded driver names
-    
+
     add spooler threads (like writer threads)
 
 M	nsstats.tcl
