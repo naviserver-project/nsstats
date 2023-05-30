@@ -1471,10 +1471,16 @@ proc _ns_stats.process {} {
                     }
                     set resultstats [_ns_stats.pretty {requests {runtime s} {avgruntime s}} $rawstats %.2f]
                     set active [join [lmap l [ns_proxy active $pool] {ns_quotehtml $l}] <br>]
+                    try {
+                        set pidsrow "<tr><td class='subtitle'>Pids:</td><td class='colvalue'>[ns_proxy pids $pool]</td></tr>"
+                    } on error {errorMsg} {
+                        set pidsrow ""
+                    }
                     set item ""
                     append item \
                         "<tr><td class='subtitle'>Params:</td><td class='colvalue'>$configValues</td></tr>" \
                         "<tr><td class='subtitle'>Stats:</td><td class='colvalue'>$resultstats</td></tr>" \
+                        $pidsrow \
                         "<tr><td class='subtitle'>Active:</td><td class='colvalue'>$active</td></tr>"
                     lappend proxyItems "nsproxy '$pool'" "<table>$item</table>"
                 }
