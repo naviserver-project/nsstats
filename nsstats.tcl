@@ -723,10 +723,11 @@ proc _ns_stats.log {} {
                 set lines [exec fgrep -- $filter [ns_config ns/server/$s/module/nslog file]]
                 append access_content $lines \n
             } on error {errorMsg} {
+                # just return no content lines when fgrep fails
             }
         }
         try {
-            set system_content [string map $colorcodemap [exec fgrep -A35 -- $filter [ns_info log]]]
+            set system_content [string map $colorcodemap [exec fgrep -A100 -- $filter [ns_info log]]]
         } on error {errorMsg} {
             set system_content ""
         }
