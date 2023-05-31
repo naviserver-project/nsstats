@@ -1248,6 +1248,41 @@ proc _ns_stats.process.running_jobs {} {
     return $results
 }
 
+proc _ns_stats.memsizes {pid} {
+  #
+  # return a dict of memory sizes of pid in number of 1K blocks
+  #
+  lassign {0 0 0} uss rss vsize
+  if {[file readable /proc/$pid/statm]} {
+    #
+    # result in pages, typically 4K
+    #
+    set F [open /proc/$pid/statm]; set c [read $F]; close $F
+    lassign $c vsize rss shared
+    set uss   [format %.2f [expr {($rss-$shared) * 4}]]
+    set rss   [format %.2f [expr {$rss           * 4}]]
+    set vsize [format %.2f [expr {$vsize         * 4}]]
+  }
+  if {$rss == 0} {
+    set sizes [exec -ignorestderr /bin/ps -o vsize,rss $pid]
+    set vsize [lindex $sizes end-1]
+    set rss   [lindex $sizes end]
+  }
+  return [list rss $rss vsize $vsize uss $uss]
+}
+
+proc _ns_stats.pretty_meminfo {pid} {
+    try {
+        set m [_ns_stats.memsizes $pid]
+        append pretty_meminfo "(" \
+            "vm [_ns_stats.hr [dict get $m vsize]]B " \
+            "rss [_ns_stats.hr [dict get $m rss]]B)"
+    } on error {errorMsg} {
+        set pretty_meminfo ""
+    }
+    return $pretty_meminfo
+}
+
 
 proc _ns_stats.process {} {
     if {[info commands ns_driver] ne ""} {
@@ -1307,11 +1342,55 @@ proc _ns_stats.process {} {
     } on error {errorMsg} {
         ns_log notice "This version of NaviServer doesn't support ns_conn details: $errorMsg"
     }
+
+    set proxyItems ""
+    if {[info commands ns_proxy] ne ""} {
+        #
+        # Use catch for the time being to handle forward
+        # compatibility (when no ns_proxy stats are available)
+        #
+        if {[catch {
+            foreach pool [lsort [ns_proxy pools]] {
+                #
+                # Get configure values and statistics
+                #
+                set configValues [ns_proxy configure $pool]
+                set rawstats [ns_proxy stats $pool]
+                set requests [dict get $rawstats requests]
+                if {$requests > 0} {
+                    set avgruntime [expr {[dict get $rawstats runtime] / $requests}]
+                    lappend rawstats avgruntime $avgruntime
+                }
+                set resultstats [_ns_stats.pretty {requests {runtime s} {avgruntime s}} $rawstats %.2f]
+                set active [join [lmap l [ns_proxy active $pool] {ns_quotehtml $l}] <br>]
+                try {
+                    set pidinfos {}
+                    foreach pid [ns_proxy pids $pool] {
+                        append pidinfos "$pid [_ns_stats.pretty_meminfo $pid] "
+                    }
+                    set pidsrow "<tr><td class='subtitle'>Pids:</td><td class='colvalue'>$pidinfos</td></tr>"
+                } on error {errorMsg} {
+                    set pidsrow ""
+                }
+                set item ""
+                append item \
+                    "<tr><td class='subtitle'>Params:</td><td class='colvalue'>$configValues</td></tr>" \
+                    "<tr><td class='subtitle'>Stats:</td><td class='colvalue'>$resultstats</td></tr>" \
+                    $pidsrow \
+                    "<tr><td class='subtitle'>Active:</td><td class='colvalue'>$active</td></tr>"
+                lappend proxyItems "nsproxy '$pool'" "<table>$item</table>"
+            }
+
+        } errorMsg]} {
+            lappend proxyItems "nsproxy '$pool'" "<table>$errorMsg</table>"
+        }
+    }
+
     set values [list \
                     Host                 "[ns_info hostname] ([ns_info address], Tcl $::tcl_patchLevel, $version_info)" \
                     "Boot Time"           [clock format [ns_info boottime] -format %c] \
                     Uptime                [_ns_stats.fmtSeconds [ns_info uptime]] \
-                    Process              "[ns_info pid] [ns_info nsd]" \
+                    Process              "[ns_info pid] [ns_info nsd] [_ns_stats.pretty_meminfo [ns_info pid]]" \
                     Home                  [ns_info home] \
                     Configuration         [ns_info config] \
                     "Error Log"           [ns_info log] \
@@ -1322,6 +1401,7 @@ proc _ns_stats.process {} {
                     {*}${driverInfo} \
                     DB-Pools             "<table>[join [_ns_stats.process.dbpools]]</table>" \
                     Callbacks            "<table>[join [_ns_stats.process.callbacks]]</table>" \
+                    {*}$proxyItems \
                     "Socket Callbacks"    [join [ns_info sockcallbacks] <br>] \
                     "Running Scheduled Procs (repeated)" [join [_ns_stats.process.running_scheds] <br>] \
                     "Running Jobs"        [join [_ns_stats.process.running_jobs] <br>] \
@@ -1452,44 +1532,6 @@ proc _ns_stats.process {} {
             lappend poolItems "Pool '$poolLabel' $poolPercentage" "<table>$item</table>"
         }
 
-        set proxyItems ""
-        if {[info commands ns_proxy] ne ""} {
-            #
-            # Use catch for the time being to handle forward
-            # compatibility (when no ns_proxy stats are available)
-            #
-            if {[catch {
-                foreach pool [lsort [ns_proxy pools]] {
-                    #
-                    # Get configure values and statistics
-                    #
-                    set configValues [ns_proxy configure $pool]
-                    set rawstats [ns_proxy stats $pool]
-                    set requests [dict get $rawstats requests]
-                    if {$requests > 0} {
-                        set avgruntime [expr {[dict get $rawstats runtime] / $requests}]
-                        lappend rawstats avgruntime $avgruntime
-                    }
-                    set resultstats [_ns_stats.pretty {requests {runtime s} {avgruntime s}} $rawstats %.2f]
-                    set active [join [lmap l [ns_proxy active $pool] {ns_quotehtml $l}] <br>]
-                    try {
-                        set pidsrow "<tr><td class='subtitle'>Pids:</td><td class='colvalue'>[ns_proxy pids $pool]</td></tr>"
-                    } on error {errorMsg} {
-                        set pidsrow ""
-                    }
-                    set item ""
-                    append item \
-                        "<tr><td class='subtitle'>Params:</td><td class='colvalue'>$configValues</td></tr>" \
-                        "<tr><td class='subtitle'>Stats:</td><td class='colvalue'>$resultstats</td></tr>" \
-                        $pidsrow \
-                        "<tr><td class='subtitle'>Active:</td><td class='colvalue'>$active</td></tr>"
-                    lappend proxyItems "nsproxy '$pool'" "<table>$item</table>"
-                }
-
-            } errorMsg]} {
-                #lappend proxyItems "nsproxy '$pool'" "<table>$errorMsg</table>"
-            }
-        }
 
         set values [list \
                         "Address"            [join $addresses <br>] \
@@ -1501,7 +1543,6 @@ proc _ns_stats.process {} {
                         "Spooler Threads"    $spoolerThreads \
                         "Connection Pools"   [ns_server -server $s pools] \
                         {*}$poolItems \
-                        {*}$proxyItems \
                         "Active Writer Jobs" [join [lmap l [ns_writer list -server $s] {ns_quotehtml $l}] <br>] \
                         "Active Connchan Jobs" [join [lmap l [ns_connchan list -server $s] {ns_quotehtml $l}] <br>] \
                        ]
