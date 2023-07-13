@@ -19,7 +19,7 @@ Author: Gustaf Neumann <neumann@wu-wien.ac.at>
 Date:   2023-01-23
 
     improve log reporting
-
+    
     - clean log file from ascii colors
     - support selection of log-files for HTTP client logs
 
@@ -31,7 +31,7 @@ Author: Gustaf Neumann <neumann@wu-wien.ac.at>
 Date:   2022-11-28
 
     Complete error handler when used with earlier versions of NaviServer
-
+    
     Many thanks to Brian Fenton for the patch.
 
 M	nsstats.tcl
@@ -57,12 +57,12 @@ Author: Gustaf Neumann <neumann@wu-wien.ac.at>
 Date:   2022-11-15
 
     Added HTTP client log statistics
-
+    
     - when HTTP client log isfunctionality is configured, provide
       a) charts for performance (using highcharts via CDN)
       b) charts on request frequency (using highcharts via CDN)
       c) summary table
-
+    
     - improved compatibility with Bootstrap 5 (currently just on HTTP client log page)
 
 M	README
@@ -129,7 +129,7 @@ Author: Gustaf Neumann <neumann@wu-wien.ac.at>
 Date:   2022-10-05
 
     added filter option of "log" page
-
+    
     The filter can be used to grep for (ID) strings in both the system and access logs.
 
 M	nsstats.tcl
@@ -454,7 +454,7 @@ Author: Gustaf Neumann <neumann@wu-wien.ac.at>
 Date:   2019-01-26
 
     add [ns_driver names] instead of hard-coded driver names
-
+    
     add spooler threads (like writer threads)
 
 M	nsstats.tcl
