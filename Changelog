@@ -1,3 +1,27 @@
+commit 1c7de718f727aaffb7024a62f82f5ab123a7b03e
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2023-05-31
+
+    include memory statistics of nsd and proxies
+
+M	nsstats.tcl
+
+commit 66d5bebd9a1f9961496a31b27cbcf19bf89eedcf
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2023-05-30
+
+    increase context
+
+M	nsstats.tcl
+
+commit 0798cf322f8ef16524bd3a6391fb290382e1c64d
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2023-05-30
+
+    added nsproxy pids (as supported by newer versions of NaviServer)
+
+M	nsstats.tcl
+
 commit 4b1c3eb4c83c8226dce628400fc7626a891f8b88
 Author: Gustaf Neumann <neumann@wu-wien.ac.at>
 Date:   2023-03-06
