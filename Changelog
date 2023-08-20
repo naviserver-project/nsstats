@@ -662,7 +662,7 @@ commit 2e4fedf0288e9795d9de6877aaa992744bd6c573
 Author: Gustaf Neumann <neumann@wu-wien.ac.at>
 Date:   2018-06-20
 
-    improve syling
+    improve styling
 
 M	nsstats.tcl
 

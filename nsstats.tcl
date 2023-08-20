@@ -46,6 +46,9 @@ set user     [ns_config ns/module/nsstats user ""]
 set password [ns_config ns/module/nsstats password ""]
 set enabled  [ns_config ns/module/nsstats enabled 1]
 
+set ::templateFile nsstats.adp
+
+
 if { ![nsv_exists _ns_stats threads_0] } {
     nsv_set _ns_stats thread_0      "OK"
     nsv_set _ns_stats thread_-1     "ERROR"
@@ -71,11 +74,35 @@ if { ![nsv_exists _ns_stats threads_0] } {
     nsv_set _ns_stats sched_running 32
 }
 
+set ::navLinks {
+    background        "Background"
+    background.jobs   "Jobs"
+    background.sched  "Scheduled Procedures"
+    config            "Configuration"
+    config.file       "Config File"
+    config.params     "Config Parameters"
+    locks             "Locks"
+    locks.mutex       "Mutex and RW-Locks"
+    locks.nsv         "Nsv Locks"
+    log               "Logging"
+    log.httpclient    "HTTP Client Log"
+    log.levels        "Log Levels"
+    log.logfile       "Log File"
+    mem               "Memory"
+    mem.adp           "ADP"
+    mem.cache         "Cache"
+    mem.nsvsize       "Shared Variables"
+    mem.tcl           "Tcl Memory"
+    process           "Process"
+    threads           "Threads"
+}
+
 proc _ns_stats.header {args} {
 
     if {[llength $args] == 1} {
-        set title "NaviServer Stats: [ns_info hostname] - [lindex $args 0]"
-        set nav "<a href='?@page=index$::rawparam'>Main Menu</a> &gt; <span class='current'>[lindex $args 0]</span>"
+        set ::title "NaviServer Stats: [ns_info hostname] - [lindex $args 0]"
+        set ::nav "<a href='?@page=index$::rawparam'>Main Menu</a> &gt; <span class='current'>[lindex $args 0]</span>"
+        set ::current_page [lindex $args 0]
     } elseif {[llength $args] == 2} {
         set node [lindex $args 0]
         if {[llength $node] > 1} {
@@ -84,143 +111,166 @@ proc _ns_stats.header {args} {
         } else {
             set menu_entry $node
         }
-        set title "NaviServer Stats: [ns_info hostname] - $node - [lindex $args 1]"
-        set nav "<a href='?@page=index$::rawparam'>Main Menu</a> &gt; $menu_entry &gt; <span class='current'>[lindex $args 1]</span>"
+        set ::current_page [lindex $args 1]
+        set ::title "NaviServer Stats: [ns_info hostname] - $node - [lindex $args 1]"
+        set ::nav "<a href='?@page=index$::rawparam'>Main Menu</a> &gt; $menu_entry &gt; <span class='current'>[lindex $args 1]</span>"
     } else {
-        set title "NaviServer Stats: [ns_info hostname]"
-        set nav "<span class='current'>Main Menu</span>"
+        set ::title "NaviServer Stats: [ns_info hostname]"
+        set ::nav "<span class='current'>Main Menu</span>"
     }
-    set rawLabel [expr {$::raw ? "true" : "false"}]
+    set ::rawLabel [expr {$::raw ? "true" : "false"}]
     set s [ns_getform]
     ns_set update $s raw [expr {!$::raw}]
-    set rawUrl [ns_conn url]?[join [lmap {k v} [ns_set array $s] {set _ [ns_urlencode $k]=[ns_urlencode $v]}] &]
+    set ::rawUrl [ns_conn url]?[join [lmap {k v} [ns_set array $s] {set _ [ns_urlencode $k]=[ns_urlencode $v]}] &]
     if {![info exists ::extraHeadEntries]} {
         set ::extraHeadEntries ""
     }
-    return [subst {<!DOCTYPE html>
-        <html>
-        <head>
-        <title>$title</title>
-        <style type='text/css'>
-        /* tooltip styling. by default the element to be styled is .tooltip  */
-        .tip {
-            cursor: help;
-            text-decoration:underline;
-            color: #777777;
-        }
-        body    { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; color: #000000; background-color: #ffffff; }
-        td,th   { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; padding: 4px;}
-        pre     { font-family: courier new, courier; font-size: 10pt; }
-        form    { font-family: verdana,helvetica,arial,sans-serif; font-size: 10pt; }
-        i       { font-style: italic; }
-        b       { font-style: bold; }
-        hl      { font-family: verdana,arial,helvetica,sans-serif; font-style: bold; font-size: 12pt; }
-        small   { font-size: smaller; }
+    return ""
+}
+set ::fallbackTemplate {
+<!DOCTYPE html>
+<html>
+<head>
+<title><%= $::title %></title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style type='text/css'>
+/* tooltip styling. by default the element to be styled is .tooltip  */
+.tip {
+   cursor: help;
+   text-decoration:underline;
+   color: #777777;
+}
+body { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; color: #000000; background-color: #ffffff;}
+td,th   { font-family: verdana,arial,helvetica,sans-serif; font-size: 8pt; padding: 4px;}
+pre     { font-family: courier new, courier; font-size: 10pt; }
+form    { font-family: verdana,helvetica,arial,sans-serif; font-size: 10pt; }
+i       { font-style: italic; }
+b       { font-style: bold; }
+hl      { font-family: verdana,arial,helvetica,sans-serif; font-style: bold; font-size: 12pt; }
+small   { font-size: smaller; }
 
-        table {background-color: #cccccc; padding:0px; border-spacing: 1px;}
-        td td.subtitle {text-align: right; white-space: nowrap; font-style: italic; font-size: 7pt; background-color: #f5f5f5;}
-        td.coltitle {text-align: right; background-color: #eaeaea;}
-        td.colsection {font-size: 12pt; font-style: bold;}
-        td.colsection h3 {margin-top:2px;margin-bottom:2px;}
-        td.colsection h4 {margin-top:2px;;margin-bottom:2px;}
-        td.colvalue {background-color: #ffffff;}
-        td.defaulted {color: #aaa;}
-        td.unread {color: red;}
-        td.notneeded {color: orange;}
+table {background-color: #cccccc; padding:0px; border-spacing: 1px;}
+td td.subtitle {
+   text-align: right; white-space: nowrap; font-style: italic; font-size: 7pt; background-color: #f5f5f5;
+}
+td.coltitle {text-align: right; background-color: #eaeaea;}
+td.colsection {font-size: 12pt; font-style: bold;}
+td.colsection h3 {margin-top:2px;margin-bottom:2px;}
+td.colsection h4 {margin-top:2px;;margin-bottom:2px;}
+td.colvalue {background-color: #ffffff;}
+td.defaulted {color: #aaa;}
+td.unread {color: red;}
+td.notneeded {color: orange;}
 
-        .tooltip {
-            position: relative;
-            /*display: inline-block;*/
-            /*border-bottom: 1px dotted black;*/ /* If you want dots under the hoverable text */
-        }
+.tooltip {
+  position: relative;
+  /*display: inline-block;*/
+  /*border-bottom: 1px dotted black;*/ /* If you want dots under the hoverable text */
+}
 
-        .tooltip .tooltiptext {
-            visibility: hidden;
-            width: 200px;
-            background-color: #999;
-            color: #fff;
-            text-align: center;
-            padding: 5px 0;
-            margin-left: 15px;
-            margin-top: -5px;
-            border-radius: 6px;
-            position: absolute;
-            z-index: 1;
-        }
-        .tooltip.unread .tooltiptext { background-color: #900;}
-        .tooltip.unread .tooltiptext::after {border-color: transparent #900 transparent transparent;}
-        .tooltip.defaulted .tooltiptext { background-color: #aaa;}
-        .tooltip.defaulted .tooltiptext::after { border-color: transparent #aaa transparent transparent;}
-        .tooltip.notneeded .tooltiptext { background-color: orange;}
-        .tooltip.notneeded .tooltiptext::after { border-color: transparent orange transparent transparent;}
+.tooltip .tooltiptext {
+   visibility: hidden;
+   width: 200px;
+   background-color: #999;
+   color: #fff;
+   text-align: center;
+   padding: 5px 0;
+   margin-left: 15px;
+   margin-top: -5px;
+   border-radius: 6px;
+   position: absolute;
+   z-index: 1;
+}
+.tooltip.unread .tooltiptext { background-color: #900;}
+.tooltip.unread .tooltiptext::after {border-color: transparent #900 transparent transparent;}
+.tooltip.defaulted .tooltiptext { background-color: #aaa;}
+.tooltip.defaulted .tooltiptext::after { border-color: transparent #aaa transparent transparent;}
+.tooltip.notneeded .tooltiptext { background-color: orange;}
+.tooltip.notneeded .tooltiptext::after { border-color: transparent orange transparent transparent;}
 
-        .tooltip:hover .tooltiptext {visibility: visible;}
-        .tooltip .tooltiptext::after {
-            content: " ";
-            position: absolute;
-            top: 50%;
-            right: 100%; /* To the left of the tooltip */
-            margin-top: -5px;
-            border-width: 5px;
-            border-style: solid;
-            border-color: transparent #999 transparent transparent;
-        }
+.tooltip:hover .tooltiptext {visibility: visible;}
+.tooltip .tooltiptext::after {
+   content: " ";
+   position: absolute;
+   top: 50%;
+   right: 100%; /* To the left of the tooltip */
+   margin-top: -5px;
+   border-width: 5px;
+   border-style: solid;
+   border-color: transparent #999 transparent transparent;
+}
 
-        table.navbar {border: 1px; padding: 2px; border-spacing: 0px; width: 100%;}
-        table.navbar td {padding: 5px; background: #666699; color: #ffffff; font-size: 10px;}
-        table.navbar td .current {color: #ffcc00;}
-        table.navbar td a {color: #ffffff; text-decoration: none;}
+table.navbar {border: 1px; padding: 2px; border-spacing: 0px; width: 100%;}
+table.navbar td {padding: 5px; background: #666699; color: #ffffff; font-size: 10px;}
+table.navbar td .current {color: #ffcc00;}
+table.navbar td a {color: #ffffff; text-decoration: none;}
 
-        table.data {padding: 0px; border-spacing: 1px}
-        table.data td.coltitle {width: 100px; text-align: right; background-color: #eaeaea;}
-        table.data td td.subtitle {text-align: right; white-space: nowrap; font-style: italic; font-size: 7pt; background-color: #f5f5f5;}
-        table.data th {background-color: #999999; color: #ffffff; font-weight: normal; text-align: left;}
-        table.data td {background-color: #ffffff; padding: 4px;}
-        table.data td table {background-color: #ffffff; border-spacing: 0px;}
-        table.data td table td {padding: 2px;}
-        </style>
-        $::extraHeadEntries
-        </head>
+table.data {padding: 0px; border-spacing: 1px}
+table.data td.coltitle {width: 110px; text-align: right; background-color: #eaeaea;}
+table.data td td.subtitle {text-align: right; white-space: nowrap; font-style: italic; font-size: 7pt; background-color: #f5f5f5;}
+table.data th {background-color: #999999; color: #ffffff; font-weight: normal; text-align: left;}
+table.data td {background-color: #ffffff; padding: 4px;}
+table.data td table {background-color: #ffffff; border-spacing: 0px;}
+table.data td table td {padding: 2px;}
 
-        <table class='navbar table table-responsive w-100 d-block d-md-table'>
-        <tr>
-        <td valign='middle'><b>$nav</b></td>
-        <td valign='middle' align='right'>Raw: <a class='current' href='$rawUrl'>$rawLabel</a>
-        &middot; <b>[_ns_stats.fmtTime [ns_time]]</b></td>
-        </tr>
-        </table>
-        <br>}]
+table.requestprocs td.Arg { white-space: pre; font-size: 6pt; }
+div.methodfilter .w3-check { width: 12px; height: 12px; top: 2px; }
+div.methodfilter label { margin-right: 6px; }
+</style>
+<%= $::extraHeadEntries %>
+</head>
+
+<body>
+  <table class='navbar table table-responsive w-100 d-block d-md-table'>
+    <tr>
+      <td valign='middle'><b><%= $::nav %></b></td>
+      <td valign='middle' align='right'>Raw: <a class='current' href='<%= $::rawUrl %>'><%= $::rawLabel %></a>
+       &middot; <b><%= [_ns_stats.fmtTime [ns_time]] %></b></td>
+    </tr>
+  </table>
+  <br>
+
+<%= $html %>
+<%= $::footer %>
 }
 
 proc _ns_stats.footer {} {
-    return "</body></html>"
+    set ::footer "</body></html>"
 }
 
 proc _ns_stats.index {} {
+    set linkLines ""
+    set level 0
+    foreach {name label} $::navLinks {
+        if {[string match *.* $name]} {
+            if {$level == 0} {
+                lappend linkLines "<ul>"
+                incr level
+            }
+        } else {
+            if {$level > 0} {
+                lappend linkLines </ul>
+                incr level -1
+            }
+        }
+        if {[info procs _ns_stats.$name] ne ""} {
+            lappend linkLines  "<li> <a href='?@page=$name$::rawparam'>$label</a></li>"
+        } else {
+            lappend linkLines  "<li> <strong>$label</strong></li>"
+        }
+    }
+
     append html \
         [_ns_stats.header] \
-        "<ul>" \
-        "<li> <a href='?@page=adp$::rawparam'>ADP</a></li>" \n\
-        "<li> <a href='?@page=cache$::rawparam'>Cache</a></li>" \n\
-        "<li> <a href='?@page=configfile$::rawparam'>Config File</a></li>" \n\
-        "<li> <a href='?@page=configparams$::rawparam'>Config Parameters</a></li>" \n\
-        "<li> <a href='?@page=jobs$::rawparam'>Jobs</a></li>" \n\
-        "<li> <a href='?@page=log$::rawparam'>Log</a></li>" \n\
-        "<li> <a href='?@page=loglevel$::rawparam'>Log Levels</a></li>" \n\
-        "<li> <a href='?@page=mempools$::rawparam'>Memory</a></li>" \n\
-        "<li> <a href='?@page=locks$::rawparam'>Locks</a></li>" \n\
-        "<li> <a href='?@page=nsvlocks$::rawparam'>Nsv Locks</a></li>" \n\
-        "<li> <a href='?@page=nsvsize$::rawparam'>Nsv Size</a></li>" \n\
-        "<li> <a href='?@page=process$::rawparam'>Process</a></li>" \n\
-        "<li> <a href='?@page=sched$::rawparam'>Scheduled Procedures</a></li>" \n\
-        "<li> <a href='?@page=threads$::rawparam'>Threads</a></li>" \n\
-        "<li> <a href='?@page=httpclientlog$::rawparam'>HTTP Client Log</a></li>" \n\
-        "</ul>\n" \
+        <ul> \n \
+        [join $linkLines \n] \n \
+        </ul> \n \
         [_ns_stats.footer]
+
     return $html
 }
 
-proc _ns_stats.adp {} {
+proc _ns_stats.mem.adp {} {
     set col         [ns_queryget col 1]
     set reverseSort [ns_queryget reversesort 1]
 
@@ -250,13 +300,13 @@ proc _ns_stats.adp {} {
 
     append html \
         [_ns_stats.header ADP] \
-        [_ns_stats.results $col $colTitles ?@page=adp $rows $reverseSort] \
+        [_ns_stats.results mem $col $colTitles ?@page=mem.adp $rows $reverseSort] \
         [_ns_stats.footer]
 
     return $html
 }
 
-proc _ns_stats.cache.histogram {cacheName sorted} {
+proc _ns_stats.mem.cache.histogram {cacheName sorted} {
     set nrEntries [llength $sorted]
     if {$nrEntries < 1} {
         return ""
@@ -324,21 +374,21 @@ proc _ns_stats.cache.histogram {cacheName sorted} {
     return $r
 }
 
-proc _ns_stats.cache {} {
+proc _ns_stats.mem.cache {} {
     set col         [ns_queryget col 1]
     set reverseSort [ns_queryget reversesort 1]
     set statDetails [ns_queryget statDetails ""]
-    set currentUrl  "./[lindex [ns_conn urlv] end]?@page=cache&col=$col&reverseSort=$reverseSort"
+    set currentUrl  "./[lindex [ns_conn urlv] end]?@page=mem.cache&col=$col&reverseSort=$reverseSort"
 
     if {$statDetails ne ""} {
         set max  [ns_queryget max 50]
         set body ""
         set stats [ns_cache_stats -contents $statDetails]
         set sorted [lsort -decreasing -integer -index 2 $stats]
-        set h [ _ns_stats.cache.histogram $statDetails $sorted]
+        set h [ _ns_stats.mem.cache.histogram $statDetails $sorted]
         append body \
             $h \
-            "<h3>$max most frequently used entries from cache '$statDetails'</h3>\n" \
+            "<h4>$max most frequently used entries from cache '$statDetails'</h4>\n" \
             "<table class='data' width='70%'><tr><th>Key</th><th>Size</th><th>Hits</th><th>Expire</th></tr>\n"
         foreach row [lrange $sorted 0 $max] {
             lassign $row key hits size expire
@@ -420,9 +470,9 @@ proc _ns_stats.cache {} {
 
         append html \
             [_ns_stats.header Cache] \
-            "<h3>ns_cache operations saved since the start of the server [_ns_stats.fmtSeconds $totalSaved] on [_ns_stats.hr $totalRequests] requests " \
-            "([_ns_stats.hr [expr {$totalSaved/$totalRequests}]]s per request on average)</h3>" \n \
-            [_ns_stats.results $col $colTitles ?@page=cache $table $reverseSort {
+            "<h4>ns_cache operations saved since the start of the server [_ns_stats.fmtSeconds $totalSaved] on [_ns_stats.hr $totalRequests] requests " \
+            "([_ns_stats.hr [expr {$totalSaved/$totalRequests}]]s per request on average)</h4>" \n \
+            [_ns_stats.results cache $col $colTitles ?@page=mem.cache $table $reverseSort {
                 left right right right right right right right right right right right right right right right right right
             }] \
             [_ns_stats.footer]
@@ -443,7 +493,7 @@ proc _ns_stats.totalRequests {} {
     return $totalRequests
 }
 
-proc _ns_stats.locks {} {
+proc _ns_stats.locks.mutex {} {
     set col         [ns_queryget col 1]
     set reverseSort [ns_queryget reversesort 1]
 
@@ -558,8 +608,8 @@ proc _ns_stats.locks {} {
         lock time request req $p_lockTimePerReq, max requests per sec $p_maxPages <br>(except: [join $non_per_req_locks {, }])"
     append html \
         [_ns_stats.header "Locks"] \
-        "<h3>$line</h3>" \
-        [_ns_stats.results $col $colTitles ?@page=locks $rows $reverseSort {
+        "<h4>$line</h4>" \
+        [_ns_stats.results locks $col $colTitles ?@page=locks.mutex $rows $reverseSort {
             left right right right right right right right right right right right right right right
         }] \
         [_ns_stats.footer]
@@ -567,7 +617,7 @@ proc _ns_stats.locks {} {
     return $html
 }
 
-proc _ns_stats.nsvlocks {} {
+proc _ns_stats.locks.nsv {} {
     set col         [ns_queryget col 2]
     set reverseSort [ns_queryget reversesort 1]
     set all         [ns_queryget all 0]
@@ -630,20 +680,20 @@ proc _ns_stats.nsvlocks {} {
 
     append html \
         [_ns_stats.header "Nsv Locks"] \
-        [_ns_stats.results $col $colTitles ?@page=nsvlocks \
+        [_ns_stats.results nsv-locks $col $colTitles ?@page=locks.nsv \
              $table \
              $reverseSort \
              {left right right right right right right right}]
 
     if {[info exists truncated]} {
-        append html "<a href='?@page=nsvlocks&col=$col&reversesort=$reverseSort&all=1'>...</a><br>"
+        append html "<a href='?@page=locks.nsv&col=$col&reversesort=$reverseSort&all=1'>...</a><br>"
     }
     append html [_ns_stats.footer]
 
     return $html
 }
 
-proc _ns_stats.nsvsize {} {
+proc _ns_stats.mem.nsvsize {} {
     set col         [ns_queryget col 3]
     set reverseSort [ns_queryget reversesort 1]
     set all         [ns_queryget all 0]
@@ -687,7 +737,7 @@ proc _ns_stats.nsvsize {} {
     append html \
         [_ns_stats.header "Nsv Size"] \
         "<p>Nsv arrays: $nrArrays, elements: [_ns_stats.hr $totalElements], total bytes: [_ns_stats.hr $totalBytes]B</p>" \
-        [_ns_stats.results $col $colTitles ?@page=nsvsize \
+        [_ns_stats.results nsv-size $col $colTitles ?@page=nsv.size \
              $table \
              $reverseSort \
              {left right right right}]
@@ -699,13 +749,13 @@ proc _ns_stats.nsvsize {} {
 proc _ns_stats.log.prepare_content {type content} {
     set content [ns_quotehtml $content]
     switch $type {
-       access { regsub -all { ([-][^\]\n\" ]+[-]) } $content { <a href='nsstats.tcl?@page=log\&filter=\1'>\1</a> } content}
-       system { regsub -all {\[([-][^\]\n\" ]+[-])\]} $content {[<a href='nsstats.tcl?@page=log\&filter=\1'>\1</a>]} content}
+       access { regsub -all { ([-][^\]\n\" ]+[-]) } $content { <a href='nsstats.tcl?@page=log.logfile\&filter=\1'>\1</a> } content}
+       system { regsub -all {\[([-][^\]\n\" ]+[-])\]} $content {[<a href='nsstats.tcl?@page=log.logfile\&filter=\1'>\1</a>]} content}
     }
     return $content
 }
 
-proc _ns_stats.log {} {
+proc _ns_stats.log.logfile {} {
     set content ""
     set colorcodemap [list \
                           [binary decode hex 1b5b303b33326d] "" \
@@ -836,7 +886,7 @@ proc _ns_stats.tooltip {section field} {
     return ""
 }
 
-proc _ns_stats.configparams {} {
+proc _ns_stats.config.params {} {
     set out [list]
     foreach section [lsort [ns_configsections]] {
         # We want to have e.g. "aaa/pools" before "aaa/pool/foo",
@@ -935,7 +985,7 @@ proc _ns_stats.configparams {} {
         }
     }
     if {[array size table] > 0} {
-        append sectionhtml "\n<tr><td colspan='2' class='colsection'><h3>Extra Parameters</h3></td></tr>\n\n"
+        append sectionhtml "\n<tr><td colspan='2' class='colsection'><h4>Extra Parameters</h4></td></tr>\n\n"
         foreach section [lsort [array names table]] {
             set name [string map {~ /} $section]
             lappend toc "<a href='#ref-$name'>$name</a>"
@@ -945,7 +995,7 @@ proc _ns_stats.configparams {} {
     }
     append html \
         [_ns_stats.header "Config Parameters"] \
-        "<h3>The following values are defined in the configuration database:</h3>" \
+        "<h4>The following values are defined in the configuration database:</h4>" \
         "<table><tr><td valign='top' style='background:#eeeeee; white-space:nowrap;'>" \
         "<ul style='list-style-type: none; margin: 0; padding: 0;'><li>[join $toc </li><li>]</li></ul>" \
         </td><td> \
@@ -955,7 +1005,7 @@ proc _ns_stats.configparams {} {
     return $html
 }
 
-proc _ns_stats.configfile {} {
+proc _ns_stats.config.file {} {
     set config ""
     set configFile [ns_info config]
     if {$configFile ne ""} {
@@ -989,7 +1039,7 @@ if {[info commands ::dict] ne ""} {
 }
 
 
-proc _ns_stats.mempools {} {
+proc _ns_stats.mem.tcl {} {
     set talloc 0
     set trequest 0
     set tused 0
@@ -1168,14 +1218,24 @@ proc _ns_stats.process.callbacks {} {
     return $lines
 }
 
+proc _ns_stats.redirect {url} {
+    ns_returnredirect $url
+    if {[info commands ad_script_abort] ne ""} {
+        #
+        # Avoid automatic triggering of ADP interpretation when
+        # running under OpenACS.
+        #
+        ad_script_abort
+    }
+}
 
 
-proc _ns_stats.loglevel {} {
+proc _ns_stats.log.levels {} {
     set toggle [ns_queryget toggle ""]
     if {$toggle ne ""} {
         set old [ns_logctl severity $toggle]
         ns_logctl severity $toggle [expr {! $old}]
-        ns_returnredirect [ns_conn url]?@page=[ns_queryget @page]
+        _ns_stats.redirect [ns_conn url]?@page=[ns_queryget @page]
         return
     }
     set values {}
@@ -1186,7 +1246,7 @@ proc _ns_stats.loglevel {} {
     }
     append html \
         [_ns_stats.header "Log Levels"] \
-        "<p>The following table shows the current loglevels:<p>\n" \
+        "<p>The following table shows the current log levels:<p>\n" \
         [_ns_stats.process.table $values] \
         [_ns_stats.footer]
     return $html
@@ -1532,15 +1592,20 @@ proc _ns_stats.process {} {
             lappend poolItems "Pool '$poolLabel' $poolPercentage" "<table>$item</table>"
         }
 
+        set requestHandlers [ns_trim -delimiter | [subst {
+            |<a href='?@page=requestprocs&server=$s'>
+            |   [llength [ns_server -server $s requestprocs]]
+            |</a>}]]
 
         set values [list \
-                        "Address"            [join $addresses <br>] \
+                        "Address"            [join [lsort -unique $addresses] <br>] \
                         "Server Directory"   $serverdir \
                         "Page Directory"     [ns_server -server $s pagedir] \
                         "Tcl Library"        [ns_server -server $s tcllib] \
                         "Access Log"         [ns_config ns/server/$s/module/nslog file] \
                         "Writer Threads"     $writerThreads \
                         "Spooler Threads"    $spoolerThreads \
+                        "Request Handlers"   $requestHandlers \
                         "Connection Pools"   [ns_server -server $s pools] \
                         {*}$poolItems \
                         "Active Writer Jobs" [join [lmap l [ns_writer list -server $s] {ns_quotehtml $l}] <br>] \
@@ -1557,46 +1622,51 @@ proc _ns_stats.process {} {
     return $html
 }
 
+proc _ns_stats.mapped.table {entries ctxIdx col numericSort reverseSort op} {
+    set rows [_ns_stats.sortResults $entries [expr {$col - 1}] $numericSort $reverseSort]
+    set htmlRows [lmap row $rows {
+        lassign $row method url filter inherit
+        set inheritArg [expr {$inherit eq "noinherit" ? "-noinherit" : ""}]
+        set list [lmap cell $row { ns_quotehtml $cell }]
+        set cmd [list $op {*}$inheritArg [list $method $url[expr {$filter ne "*" ? $filter : ""}]]]
+        if {$ctxIdx ne "" && [lindex $row $ctxIdx] ne ""} {
+            set cmd [list [lindex $cmd 0] [linsert [lindex $cmd 1] end [lindex $row $ctxIdx]]]
+            #ns_log notice "CMD $cmd"
+        }
+        set href [ns_conn url]?[ns_conn query]&cmd=[ns_urlencode $cmd]
+        lappend list "<a class='button' title='Delete this entry' href='[ns_quotehtml $href]'>$op</a>"
+    }]
+    return $htmlRows
+}
+
 proc _ns_stats.mapped {} {
     set col         [ns_queryget col 0]
     set reverseSort [ns_queryget reversesort 1]
     set pool        [ns_queryget pool [ns_conn pool]]
     set server      [ns_queryget server [ns_conn server]]
+    set queryContext @page=[ns_queryget @page]&server=$server&pool=$pool
+
     set cmd         [ns_queryget cmd ""]
-    if {$cmd ne ""} {
+    if {[lindex $cmd 0] eq "unmap"} {
         #ns_log notice "CMD <ns_server -server $server -pool $pool {*}$cmd>"
         ns_server -server $server -pool $pool {*}$cmd
-        ns_returnredirect [ns_conn url]?@page=[ns_queryget @page]&pool=$pool&server=$server&col=$col&reverseSort=$reverseSort
+        _ns_stats.redirect [ns_conn url]?$queryContext&col=$col&reverseSort=$reverseSort
         return
     }
 
-    set numericSort 0
-    set colTitles   [list Method URL Filter Inheritance unmap]
-
-    set results ""
-    foreach entry [ns_server -server $server -pool $pool map] {
-        #
-        # Currently, the URL walker appends to a string without caring
-        # for proper list elements. Fix up the columns here.
-        #
-        if {[llength $entry] > 4} {
-            set entry [list [lindex $entry 0] [lrange $entry 1 end-2] [lindex $entry end-1] [lindex $entry end]]
+    set colTitles [list Method URL Filter Inheritance Context unmap]
+    set mappings [lmap entry [ns_server -server $server -pool $pool map] {
+        #ns_log notice "len entry [llength $entry]  llen colTitles [llength $colTitles]"
+        if {[llength $entry] == 4} {
+            lappend entry ""
         }
-        lappend results $entry
-    }
-
-    set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
-    set htmlRows [lmap row $rows {
-        lassign $row method url filter inherit
-        set inheritArg [expr {$inherit eq "noinherit" ? "-noinherit" : ""}]
-        set cmd [list unmap {*}$inheritArg [list $method $url[expr {$filter ne "*" ? $filter : ""}]]]
-        set href [ns_conn url]?[ns_conn query]&cmd=[ns_urlencode $cmd]
-        list $method  \
-            [ns_quotehtml $url] \
-            [ns_quotehtml $filter] \
-            [ns_quotehtml $inherit] \
-            "<a class='button' href='[ns_quotehtml $href]'>unmap</a>"
+        set entry
     }]
+
+
+    set htmlRows [_ns_stats.mapped.table \
+                      $mappings \
+                      4 $col 0 $reverseSort unmap]
 
     set poolName $pool
     if {$poolName eq ""} {set poolName default}
@@ -1605,8 +1675,86 @@ proc _ns_stats.mapped {} {
 
     append html \
         [_ns_stats.header [list Process "?@page=process"] Mapped] \
-        "<h3>Mapped URLs of Server $serverName pool $poolName</h3>" \
-        [_ns_stats.results $col $colTitles ?@page=mapped&pool=$pool&server=$server $htmlRows $reverseSort] \
+        "<h4>Server $serverName: Connection Pool mapping for pool <em>$poolName</em></h4>" \
+        [_ns_stats.results process $col $colTitles ?$queryContext $htmlRows $reverseSort] \
+        "<p>Back to <a href='?@page=process'>process</a> page</p>" \
+        [_ns_stats.footer]
+    return $html
+}
+
+proc _ns_stats.checkboxFilter {name boxes hidden} {
+    set checkboxes [lmap box $boxes {
+        lassign $box value label checked
+        ns_trim -delimiter | [subst {
+            | <input class="w3-check" name="$name" type="checkbox" value="$value" $checked>
+            | <label >$label</label>
+        }]
+    }]
+    set hiddenfields [lmap {key value} $hidden {
+        subst { <input type="hidden" name="$key" value="$value">}
+    }]
+    return [ns_trim -delimiter | [subst {
+        |<div class="$name">
+        | Registered Methods:
+        | <form class="w3-container" action="[ns_conn url]">
+        |[join $checkboxes \n]
+        |[join $hiddenfields \n]
+        | <button type="submit" class="">Filter</button>
+        | </form>
+        |</div>}]]
+}
+
+proc _ns_stats.requestprocs {} {
+    set col          [ns_queryget col 0]
+    set reverseSort  [ns_queryget reversesort 1]
+    set server       [ns_queryget server [ns_conn server]]
+    set methodFilter [ns_querygetall methodfilter GET]
+    set cmd          [ns_queryget cmd ""]
+    set filterVars   [lmap selectedFilter $methodFilter {string cat methodfilter=$selectedFilter}]
+    set queryContext @page=[ns_queryget @page]&server=$server&[join $filterVars &]
+
+    if {[lindex $cmd 0] eq "unregister"} {
+        # ns_unregister_op has no "server" argument, but should have one
+        #ns_log notice "CMD args 0 <[lindex $cmd 0]> 1 <[lindex $cmd 1]> 2 <[lindex $cmd 2]>"
+        ns_unregister_op {*}[lindex $cmd 1]
+        _ns_stats.redirect [ns_conn url]?$queryContext&reverseSort=$reverseSort&col=$col
+        return
+    }
+
+    set registeredHandlers [ns_server -server $server requestprocs]
+    set registeredMethods [lsort -unique [lmap entry $registeredHandlers {lindex $entry 0}]]
+    set filteredHandlers [lmap entry $registeredHandlers {
+        if {[lindex $entry 0] ni $methodFilter} continue
+        set entry
+    }]
+    set filterCheckboxes [lmap m $registeredMethods {
+        list $m $m [expr {$m in $methodFilter ? "checked" : ""}]
+    }]
+
+    set numericSort 0
+    set colTitles   [list Method URL Filter Inheritance Proc Arg unregister]
+
+    set htmlRows [_ns_stats.mapped.table \
+                      [lmap entry $filteredHandlers {
+                          set reminder [lassign $entry method url filter inherit proc]
+                          list $method $url $filter $inherit $proc $reminder
+                      }] \
+                      "" $col 0 $reverseSort unregister]
+
+    set serverName $server
+    if {$serverName eq ""} {set serverName default}
+
+    set hidden {@page requestprocs}
+    foreach var {server col reverseSort} {
+        lappend hidden $var [set $var]
+    }
+    # [expr {$name in $inputPools ? "checked" : ""}]
+
+    append html \
+        [_ns_stats.header [list Process "?@page=process"] "Request Handlers"] \
+        "<h4>Registered Request Handlers of Server <em>$serverName</em></h4>" \
+        [_ns_stats.checkboxFilter methodfilter $filterCheckboxes $hidden] \
+        [_ns_stats.results requestprocs $col $colTitles ?$queryContext $htmlRows $reverseSort] \
         "<p>Back to <a href='?@page=process'>process</a> page</p>" \
         [_ns_stats.footer]
     return $html
@@ -1614,7 +1762,8 @@ proc _ns_stats.mapped {} {
 
 
 
-proc _ns_stats.sched {} {
+
+proc _ns_stats.background.sched {} {
     set col             [ns_queryget col 1]
     set reverseSort     [ns_queryget reversesort 1]
 
@@ -1673,15 +1822,15 @@ proc _ns_stats.sched {} {
 
     append html \
         [_ns_stats.header "Scheduled Procedures"] \
-        [_ns_stats.results $col $colTitles ?@page=sched $rows $reverseSort $align] \
+        [_ns_stats.results sched $col $colTitles ?@page=background.sched $rows $reverseSort $align] \
         [_ns_stats.footer]
     return $html
 }
 
-proc _ns_stats.httpclientlog.chart {path} {
+proc _ns_stats.log.httpclient.chart {path} {
     ns_log notice "nsstats: process http client log $path"
 
-    set logfiles [_ns_stats.httpclientlog.logfiles]
+    set logfiles [_ns_stats.log.httpclient.logfiles]
     if {[file size $path] < 10} {
         if {[llength $logfiles] > 0} {
             set path [lindex $logfiles 0]
@@ -1859,21 +2008,21 @@ proc _ns_stats.httpclientlog.chart {path} {
         <div id='requestcount'></div>
         <script>$JS</script>
         <div class="container">
-        <h3>Summative Statistics</h3>
+        <h4>Summative Statistics</h4>
         $data
         </table>
         <h4>Show other logfile</h4>
         <form action="nsstats.tcl" class="row g-1">
         <div class="col"><select class="form-select" name="logfile">$options</select></div>
         <div class="col"><button type="submit" class="btn btn-outline-secondary">Show</button></div>
-        <input type="hidden" name="@page" value="httpclientlog">
+        <input type="hidden" name="@page" value="log.httpclient">
         </form>
         <p>
         </div>
     }]
 }
 
-proc _ns_stats.httpclientlog.logfiles {} {
+proc _ns_stats.log.httpclient.logfiles {} {
     return [lsort [concat {*}[lmap s [ns_info servers] {
         set logfile [ns_config ns/server/$s/httpclient logfile]
         if {$logfile eq "" || ![file exists $logfile]} {
@@ -1887,7 +2036,7 @@ proc _ns_stats.httpclientlog.logfiles {} {
     }]]]
 }
 
-proc _ns_stats.httpclientlog {} {
+proc _ns_stats.log.httpclient {} {
     set ::extraHeadEntries {
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
         <script src="https://code.highcharts.com/highcharts.js"></script>
@@ -1908,7 +2057,7 @@ proc _ns_stats.httpclientlog {} {
         } else {
             set logfile [file join {*}[lreplace [file split $configured_logfile] end end $selected_logfile]]
         }
-        set HTML [_ns_stats.httpclientlog.chart $logfile]
+        set HTML [_ns_stats.log.httpclient.chart $logfile]
     }
     append html \
         [_ns_stats.header "HTTP Client Log"] \
@@ -1993,12 +2142,12 @@ proc _ns_stats.threads {} {
 
     append html \
         [_ns_stats.header Threads] \
-        [_ns_stats.results $col $colTitles ?@page=threads $rows $reverseSort $align] \
+        [_ns_stats.results threads $col $colTitles ?@page=threads $rows $reverseSort $align] \
         [_ns_stats.footer]
     return $html
 }
 
-proc _ns_stats.jobs {} {
+proc _ns_stats.background.jobs {} {
     set queue       [ns_queryget queue]
     set col         [ns_queryget col 1]
     set reverseSort [ns_queryget reversesort 1]
@@ -2016,7 +2165,7 @@ proc _ns_stats.jobs {} {
 
         foreach ql [ns_job queuelist] {
             array set qa $ql
-            set name "<a href='?@page=jobs&queue=$qa(name)'>$qa(name)</a>"
+            set name "<a href='?@page=background.jobs&queue=$qa(name)'>$qa(name)</a>"
             lappend results [list $name $qa(desc) $qa(maxthreads) $qa(numrunning) $qa(req)]
         }
 
@@ -2044,12 +2193,13 @@ proc _ns_stats.jobs {} {
 
     append html \
         [_ns_stats.header Jobs] \
-        [_ns_stats.results $col $colTitles ?@page=jobs&queue=$queue $rows $reverseSort] \
+        [_ns_stats.results jobs $col $colTitles ?@page=background.jobs&queue=$queue $rows $reverseSort] \
         [_ns_stats.footer]
     return $html
 }
 
 proc _ns_stats.results {
+                        name
                         {selectedColNum ""}
                         {colTitles ""}
                         {colUrl ""}
@@ -2071,9 +2221,10 @@ proc _ns_stats.results {
         }
     }
 
-    set html "\
-        <table>
-        <tr>"
+    set html [ns_trim -delimiter | [subst {
+        |<table class="$name">
+        |<tr>
+    }]]
 
     set i 1
 
@@ -2115,7 +2266,7 @@ proc _ns_stats.results {
         set i 1
         append html "<tr>"
 
-        foreach column $row {
+        foreach column $row title $colTitles {
             set colAlign "left"
 
             if {[llength $colAlignment]} {
@@ -2125,7 +2276,7 @@ proc _ns_stats.results {
                     set colAlign $align
                 }
             }
-            append html "<td bgcolor='$colColor($i)' valign=top align=$colAlign>$column</td>"
+            append html "<td class='$title' bgcolor='$colColor($i)' valign=top align=$colAlign>$column</td>"
             incr i
         }
 
@@ -2245,33 +2396,29 @@ proc _ns_stats.fmtTime {time} {
     if {$time < 0} {
         return "never"
     }
-    return [clock format [expr {int($time)}] -format "%H:%M:%S %m/%d/%Y"]
+    return [clock format [expr {int($time)}] -format "%H:%M:%S %d-%m-%Y"]
 }
 
 proc _ns_stats.sortResults {results field numeric {reverse 0}} {
-    global _sortListTmp
-
-    set _sortListTmp(field)     $field
-    set _sortListTmp(numeric)   $numeric
-    set _sortListTmp(reverse)   $reverse
+    set ::_sortListTmp(field)     $field
+    set ::_sortListTmp(numeric)   $numeric
+    set ::_sortListTmp(reverse)   $reverse
 
     return [lsort -command _ns_stats.cmpField $results]
 }
 
 proc _ns_stats.cmpField {v1 v2} {
-    global _sortListTmp
+    set v1 [lindex $v1 $::_sortListTmp(field)]
+    set v2 [lindex $v2 $::_sortListTmp(field)]
 
-    set v1  [lindex $v1 $_sortListTmp(field)]
-    set v2  [lindex $v2 $_sortListTmp(field)]
-
-    if {$_sortListTmp(numeric)} {
-        if {$_sortListTmp(reverse)} {
+    if {$::_sortListTmp(numeric)} {
+        if {$::_sortListTmp(reverse)} {
             set cmp [_ns_stats.cmpNumeric $v2 $v1]
         } else {
             set cmp [_ns_stats.cmpNumeric $v1 $v2]
         }
     } else {
-        if {$_sortListTmp(reverse)} {
+        if {$::_sortListTmp(reverse)} {
             set cmp [string compare $v2 $v1]
         } else {
             set cmp [string compare $v1 $v2]
@@ -2373,7 +2520,7 @@ if {$::raw eq "1"} {
 }
 
 if { [info commands _ns_stats.$page] eq "" } {
-    set page index
+    set page process
 }
 
 # Check user access if configured
@@ -2386,7 +2533,21 @@ if { ($enabled == 0 && [ns_conn peeraddr] ni {"127.0.0.1" "::1"}) ||
     ns_set update [ns_conn outputheaders] "Expires" "now"
     set html [_ns_stats.$page]
     if {$html ne ""} {
-        ns_return 200 text/html $html
+        if {[info exists ::ad_conn(file)]} {
+            set path $::ad_conn(file)
+        } else {
+            set path [ns_url2file [ns_conn url]]
+        }
+        set fn [file join {*}[lrange [file split $path] 0 end-1]]/$::templateFile
+        #ns_log notice "final script <$fn> path <$path>"
+        if {[file exists $fn]} {
+            ns_return 200 text/html [ns_adp_parse -file $fn]
+        } else {
+            ns_return 200 text/html [ns_adp_parse -string $::fallbackTemplate]
+        }
+        if {[info exists ::ad_conn(file)]} {
+            ad_script_abort
+        }
     } else {
         # We assume, that when _ns_stats returns empty, the page
         # returned/redicted itself.
