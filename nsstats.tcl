@@ -836,7 +836,7 @@ proc _ns_stats.log.logfile {} {
     append html \
         [_ns_stats.header Log] \
         "<form method='post' action='./nsstats.tcl'>Filter: " \
-        "<input type='hidden' name='@page' value='log'>" \
+        "<input type='hidden' name='@page' value='log.logfile'>" \
         "<input name='filter' value='$filter' size='40'></form>" \
         $content \
         [_ns_stats.footer]
@@ -1593,8 +1593,11 @@ proc _ns_stats.process {} {
         }
 
         set requestHandlers [ns_trim -delimiter | [subst {
-            |<a href='?@page=requestprocs&server=$s'>
-            |   [llength [ns_server -server $s requestprocs]]
+            |Request Handlers:&nbsp;
+            |<a href='?@page=requestprocs&server=$s'>[llength [ns_server -server $s requestprocs]]</a>,
+            |URL mappings:
+            |<a href='?@page=url2file&server=$s'>
+            |   [llength [ns_server -server $s url2file]]
             |</a>}]]
 
         set values [list \
@@ -1605,7 +1608,7 @@ proc _ns_stats.process {} {
                         "Access Log"         [ns_config ns/server/$s/module/nslog file] \
                         "Writer Threads"     $writerThreads \
                         "Spooler Threads"    $spoolerThreads \
-                        "Request Handlers"   $requestHandlers \
+                        "Handlers"           $requestHandlers \
                         "Connection Pools"   [ns_server -server $s pools] \
                         {*}$poolItems \
                         "Active Writer Jobs" [join [lmap l [ns_writer list -server $s] {ns_quotehtml $l}] <br>] \
@@ -1638,6 +1641,24 @@ proc _ns_stats.mapped.table {entries ctxIdx col numericSort reverseSort op} {
     }]
     return $htmlRows
 }
+proc _ns_stats.mapped.table-nomethod {entries ctxIdx col numericSort reverseSort op} {
+    set rows [_ns_stats.sortResults $entries [expr {$col - 1}] $numericSort $reverseSort]
+    set htmlRows [lmap row $rows {
+        lassign $row url filter inherit
+        set inheritArg [expr {$inherit eq "noinherit" ? "-noinherit" : ""}]
+        set list [lmap cell $row { ns_quotehtml $cell }]
+        set cmd [list $op {*}$inheritArg [list $url[expr {$filter ne "*" ? $filter : ""}]]]
+        if {$ctxIdx ne "" && [lindex $row $ctxIdx] ne ""} {
+            set cmd [list [lindex $cmd 0] [linsert [lindex $cmd 1] end [lindex $row $ctxIdx]]]
+            #ns_log notice "CMD $cmd"
+        }
+        set href [ns_conn url]?[ns_conn query]&cmd=[ns_urlencode $cmd]
+        lappend list "<a class='button' title='Delete this entry' href='[ns_quotehtml $href]'>$op</a>"
+    }]
+    return $htmlRows
+}
+
+
 
 proc _ns_stats.mapped {} {
     set col         [ns_queryget col 0]
@@ -1714,9 +1735,8 @@ proc _ns_stats.requestprocs {} {
     set queryContext @page=[ns_queryget @page]&server=$server&[join $filterVars &]
 
     if {[lindex $cmd 0] eq "unregister"} {
-        # ns_unregister_op has no "server" argument, but should have one
-        #ns_log notice "CMD args 0 <[lindex $cmd 0]> 1 <[lindex $cmd 1]> 2 <[lindex $cmd 2]>"
-        ns_unregister_op {*}[lindex $cmd 1]
+        #ns_log notice "CMD ns_unregister_op -server $server {*}[lindex $cmd 1]"
+        ns_unregister_op -server $server {*}[lindex $cmd 1]
         _ns_stats.redirect [ns_conn url]?$queryContext&reverseSort=$reverseSort&col=$col
         return
     }
@@ -1748,7 +1768,6 @@ proc _ns_stats.requestprocs {} {
     foreach var {server col reverseSort} {
         lappend hidden $var [set $var]
     }
-    # [expr {$name in $inputPools ? "checked" : ""}]
 
     append html \
         [_ns_stats.header [list Process "?@page=process"] "Request Handlers"] \
@@ -1760,7 +1779,44 @@ proc _ns_stats.requestprocs {} {
     return $html
 }
 
+proc _ns_stats.url2file {} {
+    set col          [ns_queryget col 0]
+    set reverseSort  [ns_queryget reversesort 1]
+    set server       [ns_queryget server [ns_conn server]]
+    set cmd          [ns_queryget cmd ""]
+    set queryContext @page=[ns_queryget @page]&server=$server
 
+    if {[lindex $cmd 0] eq "unregister"} {
+        #ns_log notice "CMD ns_unregister_url2file -server $server {*}[lindex $cmd 1]"
+        ns_unregister_url2file -server $server {*}[lindex $cmd 1]
+        _ns_stats.redirect [ns_conn url]?$queryContext&reverseSort=$reverseSort&col=$col
+        return
+    }
+
+    set registeredHandlers [ns_server -server $server url2file]
+    set registeredMethods [lsort -unique [lmap entry $registeredHandlers {lindex $entry 0}]]
+
+    set numericSort 0
+    set colTitles   [list URL Filter Inheritance Proc Arg unregister]
+
+    set htmlRows [_ns_stats.mapped.table-nomethod \
+                      [lmap entry $registeredHandlers {
+                          set reminder [lassign $entry method url filter inherit proc]
+                          list $url $filter $inherit $proc $reminder
+                      }] \
+                      "" $col 0 $reverseSort unregister]
+
+    set serverName $server
+    if {$serverName eq ""} {set serverName default}
+
+    append html \
+        [_ns_stats.header [list Process "?@page=process"] "Request-to-File Mappings"] \
+        "<h4>Registered Url2File Mapping of Server <em>$serverName</em></h4>" \
+        [_ns_stats.results requestprocs $col $colTitles ?$queryContext $htmlRows $reverseSort] \
+        "<p>Back to <a href='?@page=process'>process</a> page</p>" \
+        [_ns_stats.footer]
+    return $html
+}
 
 
 proc _ns_stats.background.sched {} {
