@@ -1358,18 +1358,27 @@ proc _ns_stats.process {} {
             lappend driverInfo $entry
             set module [dict get $entry module]
             if {[dict get $entry type] eq "nsssl"} {
-                set server [dict get $entry server]
-                if {$server ne ""} {
-                    set certfile [ns_config ns/server/$server/module/$module certificate]
+                #
+                # Use ns_certclt when available. This cmd includes as
+                # well the certificates of mass virtual hosting. No
+                # external programs are necessary.
+                #
+                if {[info commands ns_certctl] ne ""} {
+                    lappend certInfo [join [ns_certctl list] <br>]
                 } else {
-                    set certfile [ns_config ns/module/$module certificate]
-                }
-                if {![info exists processed($certfile)]} {
-                    set notAfter [exec openssl x509 -enddate -noout -in $certfile]
-                    regexp {notAfter=(.*)$} $notAfter . date
-                    set days [expr {([clock scan $date] - [clock seconds])/(60*60*24.0)}]
-                    lappend certInfo "Certificate $certfile will expire in [format %.1f $days] days"
-                    set processed($certfile) 1
+                    set server [dict get $entry server]
+                    if {$server ne ""} {
+                        set certfile [ns_config ns/server/$server/module/$module certificate]
+                    } else {
+                        set certfile [ns_config ns/module/$module certificate]
+                    }
+                    if {![info exists processed($certfile)]} {
+                        set notAfter [exec openssl x509 -enddate -noout -in $certfile]
+                        regexp {notAfter=(.*)$} $notAfter . date
+                        set days [expr {([clock scan $date] - [clock seconds])/(60*60*24.0)}]
+                        lappend certInfo "Certificate $certfile will expire in [format %.1f $days] days"
+                        set processed($certfile) 1
+                    }
                 }
             }
         }
@@ -1381,7 +1390,7 @@ proc _ns_stats.process {} {
             lappend driverInfo [_ns_stats.pretty {received spooled partial} $tuple %.0f]
         }
         if {[llength $certInfo] > 0} {
-            lappend driverInfo {} {*}$certInfo
+            lappend driverInfo {} [join $certInfo <br>\n]
         }
         set driverInfo [list "Driver Info" [join $driverInfo <br>]]
 
