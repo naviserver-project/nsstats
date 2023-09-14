@@ -1,3 +1,52 @@
+commit 42503bf8dd029999ca34b5a26c24c05a2d218a1f
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2023-09-01
+
+    Added url2file mappings.
+    
+    - filename resolvers registered via "ns_register_url2file"
+      are now listed under "handlers" on the process page and
+      can be viewed / deleted like for the request handlers.
+    
+    - the new version makes use of the new "-server" argument for
+      "ns_unregister_op" such that unregistering works now for all servers.
+    
+    - fixed a small bug in the new templating code: when filtering
+      the system log-file, the context was lost (returned to default page)
+
+M	nsstats.tcl
+
+commit 7b8cfe7d3876f781c6d0c843d2eeefa1f0d6f57f
+Author: Gustaf Neumann <neumann@wu-wien.ac.at>
+Date:   2023-08-20
+
+    nstats: introduce templating to improve style-ability
+    
+    So far, nsstats.tcl was a singe-file package, which is convenient for
+    quick installations. However, the UI made a dusty and outdated
+    impression, not providing any kind of stylability.  The new version
+    comes with a template "nsstats.adp" which works for plain NaviServer
+    instances and OpenACS.
+    
+    In order to keep the simplicity of earlier versions, a default
+    template is provided in the nsstats.tcl file, which is used, when no
+    file "nsstats.adp" is found. So, the single-file copy is still
+    possible, but not recommended.
+    
+    The provided "nsstats.adp" file uses the CSS classes from
+    https://www.w3schools.com/w3css/
+    
+    Furthermore, the new version provides a graphical UI for "ns_server
+    -server SERVER requestprocs", which is linked from the "Process" page
+    for every server.
+    
+    bumped version number to 1.12
+
+M	Makefile
+M	README
+A	nsstats.adp
+M	nsstats.tcl
+
 commit 1c7de718f727aaffb7024a62f82f5ab123a7b03e
 Author: Gustaf Neumann <neumann@wu-wien.ac.at>
 Date:   2023-05-31
