@@ -1351,6 +1351,7 @@ proc _ns_stats.process {} {
         # command "openssl" is on the search path)
         #
         set certInfo {}
+        set certificateLabel ""
         set driverInfo {}
 
         foreach entry [ns_driver info] {
@@ -1365,6 +1366,7 @@ proc _ns_stats.process {} {
                 #
                 if {[info commands ns_certctl] ne ""} {
                     lappend certInfo [join [ns_certctl list] <br>]
+                    set certificateLabel "Loaded Certificates"
                 } else {
                     set server [dict get $entry server]
                     if {$server ne ""} {
@@ -1379,6 +1381,7 @@ proc _ns_stats.process {} {
                         lappend certInfo "Certificate $certfile will expire in [format %.1f $days] days"
                         set processed($certfile) 1
                     }
+                    set certificateLabel "Configured Certificates"
                 }
             }
         }
@@ -1389,14 +1392,15 @@ proc _ns_stats.process {} {
         foreach tuple [ns_driver stats] {
             lappend driverInfo [_ns_stats.pretty {received spooled partial} $tuple %.0f]
         }
-        if {[llength $certInfo] > 0} {
-            lappend driverInfo {} [join $certInfo <br>\n]
-        }
         set driverInfo [list "Driver Info" [join $driverInfo <br>]]
 
     } else {
         set driverInfo ""
     }
+    set certInfo [expr {$certificateLabel ne ""
+                        ? [list $certificateLabel [join $certInfo <br>\n]]
+                        : ""}]
+
     set tag [ns_info tag]
     if {[regexp {([0-9a-f]+)[ +]} $tag . hash]} {
         set tag "<a href='https://bitbucket.org/naviserver/naviserver/commits/?search=$hash'>$tag</a>"
@@ -1468,6 +1472,7 @@ proc _ns_stats.process {} {
                     "Build Date"          [ns_info builddate] \
                     Servers               [join [ns_info servers] <br>] \
                     {*}${driverInfo} \
+                    {*}${certInfo} \
                     DB-Pools             "<table>[join [_ns_stats.process.dbpools]]</table>" \
                     Callbacks            "<table>[join [_ns_stats.process.callbacks]]</table>" \
                     {*}$proxyItems \
