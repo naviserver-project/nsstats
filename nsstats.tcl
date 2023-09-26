@@ -86,6 +86,7 @@ set ::navLinks {
     locks.nsv         "Nsv Locks"
     log               "Logging"
     log.httpclient    "HTTP Client Log"
+    log.smtpsent      "SMTP Sent Log"
     log.levels        "Log Levels"
     log.logfile       "Log File"
     mem               "Memory"
@@ -1897,16 +1898,66 @@ proc _ns_stats.background.sched {} {
     return $html
 }
 
-proc _ns_stats.log.httpclient.chart {path} {
-    ns_log notice "nsstats: process http client log $path"
+proc _ns_stats.log.chart.parse-httpclient {line} {
+    set fields [split $line]
+    lassign $fields ts tz id status method url elapsed sent received cause
+    set ts0 [string range $ts 1 end]
+    #
+    # Provide robustness when invalid URLs (containing unescaped
+    # spaces) were used.
+    #
+    if {[llength $fields] > 10} {
+        lassign [lrange $fields end-3 end] elapsed sent received cause
+        set url [lrange $fields 5 end-4]
+    }
+    set host none
+    regexp {https?://([^/]+)/} $url . host
 
-    set logfiles [_ns_stats.log.httpclient.logfiles]
+    return [list \
+                ts0 $ts0 \
+                id $id \
+                status $status \
+                method $method \
+                host $host \
+                url $url \
+                elapsed $elapsed \
+                sent $sent \
+                received $received \
+                cause $cause \
+               ]
+}
+
+proc _ns_stats.log.chart.parse-module/nssmtpd {line} {
+    set fields [split $line]
+    lassign $fields ts tz id status method url elapsed sent sender rcpt
+    set ts0 [string range $ts 1 end]
+    #[25/Sep/2023:00:02:48 +0200] -sched:...- 250 SUCCESS [smtp.wu.ac.at]:25 0.009911 13313 sender RCPT: USER@HOST
+    set host $url
+
+    return [list \
+                ts0 $ts0 \
+                id $id \
+                status $status \
+                method $method \
+                host $host \
+                url $url \
+                elapsed $elapsed \
+                sent $sent \
+                received 0 \
+                cause "" \
+               ]
+}
+
+proc _ns_stats.log.chart {path section param title} {
+    set logfiles [_ns_stats.log.logfiles $section $param]
+    ns_log notice "nsstats: process $section $param log $path -> $logfiles"
+
     if {[file size $path] < 10} {
         if {[llength $logfiles] > 0} {
             set path [lindex $logfiles 0]
             set logfiles [concat $path {*}[lreverse [lrange $logfiles 1 end]]]
         } else {
-            return "<p>No client log entries found in [ns_quotehtml $path]</p>"
+            return "<p>No $section $param log entries found in [ns_quotehtml $path]</p>"
         }
     }
 
@@ -1915,60 +1966,40 @@ proc _ns_stats.log.httpclient.chart {path} {
     set hostInfos {}
 
     foreach line [split $logcontent \n] {
+        #if {$count>10} break
         if {[string length $line] < 15} {
             break
         }
         incr count
-        #if {$count>10} break
-        set fields [split $line]
-        lassign $fields ts tz id status method url elapsed sent received cause
-        set ts0 [string range $ts 1 end]
-        set tz [string range $tz 0 end-1]
-        #
-        # Provide robustness when invalid URLs (containing unescaped
-        # spaces) were used.
-        #
-        if {[llength $fields] > 10} {
-            lassign [lrange $fields end-3 end] elapsed sent received cause
-            set url [lrange $fields 5 end-4]
+        set data [_ns_stats.log.chart.parse-$section $line]
+        dict with data {
+            #
+            # Convert time to UTC format for JavaScript: 13/Nov/2022:00:19:49 +0100
+            #
+            # The timestgamp "ts" in JavaScript (result of Data.parse())
+            # is the time since January 1, 1970 in milliseconds
+            #
+            set ts [clock scan $ts0 -gmt 1 -format {%d/%b/%Y:%H:%M:%S}]
+
+            dict lappend responsetime $host $ts $elapsed
+            dict incr requestcount0 [list $host $ts]
+            if {[dict exists $hostInfos $host]} {
+                set hostInfo [dict get $hostInfos $host]
+            } else {
+                set hostInfo {}
+            }
+            dict incr hostInfo sent $sent
+            dict incr hostInfo received $received
+            dict incr hostInfo count
+            dict incr hostInfo $status
+            if {[dict exists $hostInfo elapsed]} {
+                dict set hostInfo elapsed [expr {[dict get $hostInfo elapsed] + $elapsed}]
+            } else {
+                dict set hostInfo elapsed $elapsed
+            }
+            dict set hostInfos $host $hostInfo
+            dict set statusCodes $status 1
         }
-        #
-        # Convert time to UTC format for JavaScript:
-        # 13/Nov/2022:00:19:49 +0100
-        #
-        # The timestgamp "ts" in JavaScript (result of Data.parse())
-        # is the time since January 1, 1970 in milliseconds
-        #
-        set ts [clock scan $ts0 -gmt 1 -format {%d/%b/%Y:%H:%M:%S}]
-        #
-        # Get pool from ID: examples: -conn:live:default:85:10717683-, -sched:1:2:54-
-        #
-        #set pool default
-        #if {![regexp {^[-]conn:[^:]+:([^:]+):} $id . pool]} {
-        #    if {[regexp {^[-]sched:} $id]} {
-        #        set pool sched
-        #    }
-        #}
-        set host none
-        regexp {https?://([^/]+)/} $url . host
-        dict lappend responsetime $host $ts $elapsed
-        dict incr requestcount0 [list $host $ts]
-        if {[dict exists $hostInfos $host]} {
-            set hostInfo [dict get $hostInfos $host]
-        } else {
-            set hostInfo {}
-        }
-        dict incr hostInfo sent $sent
-        dict incr hostInfo received $received
-        dict incr hostInfo count
-        dict incr hostInfo $status
-        if {[dict exists $hostInfo elapsed]} {
-            dict set hostInfo elapsed [expr {[dict get $hostInfo elapsed] + $elapsed}]
-        } else {
-            dict set hostInfo elapsed $elapsed
-        }
-        dict set hostInfos $host $hostInfo
-        dict set statusCodes $status 1
     }
     set responsetimeSeries {}
     foreach key [dict keys $responsetime] {
@@ -2008,7 +2039,7 @@ proc _ns_stats.log.httpclient.chart {path} {
                 type: 'lollipop'
             },
             title: {
-                text: 'HTTP Client Log - Response Time Overview'
+                text: '$title - Response Time Overview'
             },
             xAxis: {
                 type: 'datetime',
@@ -2023,7 +2054,7 @@ proc _ns_stats.log.httpclient.chart {path} {
                 type: 'lollipop'
             },
             title: {
-                text: 'HTTP Client Log - Requests per Second'
+                text: '$title - Requests per Second'
             },
             subtitle: {
                 text: "Total number of requests: $count"
@@ -2085,16 +2116,16 @@ proc _ns_stats.log.httpclient.chart {path} {
         <form action="nsstats.tcl" class="row g-1">
         <div class="col"><select class="form-select" name="logfile">$options</select></div>
         <div class="col"><button type="submit" class="btn btn-outline-secondary">Show</button></div>
-        <input type="hidden" name="@page" value="log.httpclient">
+        <input type="hidden" name="@page" value="[ns_queryget @page]">
         </form>
         <p>
         </div>
     }]
 }
 
-proc _ns_stats.log.httpclient.logfiles {} {
+proc _ns_stats.log.logfiles {section param} {
     return [lsort [concat {*}[lmap s [ns_info servers] {
-        set logfile [ns_config ns/server/$s/httpclient logfile]
+        set logfile [ns_config ns/server/$s/$section $param]
         if {$logfile eq "" || ![file exists $logfile]} {
             continue
         }
@@ -2107,8 +2138,15 @@ proc _ns_stats.log.httpclient.logfiles {} {
 }
 
 proc _ns_stats.log.httpclient {} {
+    return [_ns_stats.log.mkchart httpclient logfile "HTTP Client Log"]
+}
+proc _ns_stats.log.smtpsent {} {
+    return [_ns_stats.log.mkchart module/nssmtpd logfile "SMTP Sent Log"]
+}
+
+proc _ns_stats.log.mkchart {section param title} {
     set ::extraHeadEntries {
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
         <script src="https://code.highcharts.com/highcharts.js"></script>
         <script src="https://code.highcharts.com/modules/exporting.js"></script>
         <script src="https://code.highcharts.com/modules/export-data.js"></script>
@@ -2117,9 +2155,9 @@ proc _ns_stats.log.httpclient {} {
         <script src="https://code.highcharts.com/modules/lollipop.js"></script>
     }
 
-    set configured_logfile [ns_config ns/server/[ns_info server]/httpclient logfile ""]
+    set configured_logfile [ns_config ns/server/[ns_info server]/$section $param ""]
     if {$configured_logfile eq ""} {
-        set HTML "<p>No HTTP client logfiles configured</p>"
+        set HTML "<p>No $section $param logfiles configured</p>"
     } else {
         set selected_logfile [ns_queryget logfile ""]
         if {$selected_logfile eq ""} {
@@ -2127,10 +2165,10 @@ proc _ns_stats.log.httpclient {} {
         } else {
             set logfile [file join {*}[lreplace [file split $configured_logfile] end end $selected_logfile]]
         }
-        set HTML [_ns_stats.log.httpclient.chart $logfile]
+        set HTML [_ns_stats.log.chart $logfile $section $param $title]
     }
     append html \
-        [_ns_stats.header "HTTP Client Log"] \
+        [_ns_stats.header $title] \
         $HTML \
         [_ns_stats.footer]
     return $html
