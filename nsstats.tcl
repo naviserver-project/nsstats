@@ -1459,7 +1459,12 @@ proc _ns_stats.process {} {
             lappend proxyItems "nsproxy '$pool'" "<table>$errorMsg</table>"
         }
     }
-
+    try {
+        ns_info buildinfo
+    } on ok {buildinfo} {
+    } on error {errorMsg} {
+        set buildinfo ""
+    }
     set values [list \
                     Host                 "[ns_info hostname] ([ns_info address], Tcl $::tcl_patchLevel, $version_info)" \
                     "Boot Time"           [clock format [ns_info boottime] -format %c] \
@@ -1469,7 +1474,7 @@ proc _ns_stats.process {} {
                     Configuration         [ns_info config] \
                     "Error Log"           [ns_info log] \
                     "Log Statistics"      [_ns_stats.pretty {Notice Warning Debug(sql)} [ns_logctl stats] %.0f] \
-                    Version              "[ns_info patchlevel] (tag $tag)" \
+                    Version              "[ns_info patchlevel] (tag $tag) $buildinfo" \
                     "Build Date"          [ns_info builddate] \
                     Servers               [join [ns_info servers] <br>] \
                     {*}${driverInfo} \

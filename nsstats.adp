@@ -118,7 +118,10 @@ div.methodfilter label {
 <body>
 <%
     set w3color black ;#blue-grey
-    lappend linkLines "<img class='w3-bar-item' src='https://naviserver.sourceforge.io/ns-icon-16.png'>"
+    lappend linkLines [subst [ns_trim -delimiter | {
+      |<a href="https://naviserver.sourceforge.io/[ns_info version]/toc.html">
+      | <img class='w3-bar-item' src='https://naviserver.sourceforge.io/ns-icon-16.png'>
+      |</a>}]]
     set level 0
     foreach {name label} $::navLinks {
         set dropdown [expr {[info procs _ns_stats.$name] eq ""}]
