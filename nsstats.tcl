@@ -1446,11 +1446,19 @@ proc _ns_stats.process {} {
                 } on error {errorMsg} {
                     set pidsrow ""
                 }
+                try {
+                    set workerinfos {}
+                    set nrworkers [llength [ns_proxy workers $pool]]
+                    set workerrow "<tr><td class='subtitle'>Workers:</td><td class='colvalue'><a href='?@page=proxy-workers&pool=$pool''>$nrworkers workers</a></td></tr>"
+                } on error {errorMsg} {
+                    set workerrow ""
+                }
                 set item ""
                 append item \
                     "<tr><td class='subtitle'>Params:</td><td class='colvalue'>$configValues</td></tr>" \
                     "<tr><td class='subtitle'>Stats:</td><td class='colvalue'>$resultstats</td></tr>" \
                     $pidsrow \
+                    $workerrow \
                     "<tr><td class='subtitle'>Active:</td><td class='colvalue'>$active</td></tr>"
                 lappend proxyItems "nsproxy '$pool'" "<table>$item</table>"
             }
@@ -1833,6 +1841,36 @@ proc _ns_stats.url2file {} {
         [_ns_stats.header [list Process "?@page=process"] "Request-to-File Mappings"] \
         "<h4>Registered Url2File Mapping of Server <em>$serverName</em></h4>" \
         [_ns_stats.results requestprocs $col $colTitles ?$queryContext $htmlRows $reverseSort] \
+        "<p>Back to <a href='?@page=process'>process</a> page</p>" \
+        [_ns_stats.footer]
+    return $html
+}
+
+proc _ns_stats.proxy-workers {} {
+    set col          [ns_queryget col 4]
+    set reverseSort  [ns_queryget reversesort 1]
+    set pool         [ns_queryget pool]
+    set cmd          [ns_queryget cmd ""]
+    set queryContext @page=[ns_queryget @page]&pool=$pool
+    set workers [ns_proxy workers $pool]
+    set numericSort 1
+    set colTitles   [list ID pid created runs state]
+    if {$col == 0 || $col == 3} {
+        set numericSort 1
+    }
+    set align [lrepeat [llength $colTitles] right]
+    lset align 0 left
+    lset align 4 left
+
+    set results [lmap e $workers {
+        list [dict get $e id] [dict get $e pid] [dict get $e created] [dict get $e runs] [dict get $e state]
+    }]
+    set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
+
+    append html \
+        [_ns_stats.header [list Process "?@page=process"] "nsproxy Workers"] \
+        "<h4>nsproxy workers for pool <em>$pool</em></h4>" \
+        [_ns_stats.results requestprocs $col $colTitles ?$queryContext $rows $reverseSort $align] \
         "<p>Back to <a href='?@page=process'>process</a> page</p>" \
         [_ns_stats.footer]
     return $html
