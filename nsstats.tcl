@@ -1943,6 +1943,7 @@ proc _ns_stats.background.sched {} {
 
 proc _ns_stats.log.chart.parse-httpclient {line} {
     set fields [split $line]
+    set reused 0
     lassign $fields ts tz id status method url elapsed sent received cause
     set ts0 [string range $ts 1 end]
     #
@@ -1950,8 +1951,8 @@ proc _ns_stats.log.chart.parse-httpclient {line} {
     # spaces) were used.
     #
     if {[llength $fields] > 10} {
-        lassign [lrange $fields end-3 end] elapsed sent received cause
-        set url [lrange $fields 5 end-4]
+        lassign [lrange $fields end-4 end] elapsed sent received reused cause
+        set url [lrange $fields 5 end-5]
     }
     set host none
     regexp {https?://([^/]+)/} $url . host
@@ -1966,6 +1967,7 @@ proc _ns_stats.log.chart.parse-httpclient {line} {
                 elapsed $elapsed \
                 sent $sent \
                 received $received \
+                reused $reused \
                 cause $cause \
                ]
 }
@@ -1987,6 +1989,7 @@ proc _ns_stats.log.chart.parse-module/nssmtpd {line} {
                 elapsed $elapsed \
                 sent $sent \
                 received 0 \
+                reused 0 \
                 cause "" \
                ]
 }
@@ -2034,6 +2037,7 @@ proc _ns_stats.log.chart {path section param title} {
             dict incr hostInfo sent $sent
             dict incr hostInfo received $received
             dict incr hostInfo count
+            dict incr hostInfo reused $reused
             dict incr hostInfo $status
             if {[dict exists $hostInfo elapsed]} {
                 dict set hostInfo elapsed [expr {[dict get $hostInfo elapsed] + $elapsed}]
@@ -2125,7 +2129,9 @@ proc _ns_stats.log.chart {path section param title} {
         <th class="fs-6 text-end">Requests</th>
         <th class="fs-6 text-end">Avg Time</th>
         <th class="fs-6 text-end">Sent</th>
-        <th class="fs-6 text-end">Received</th>
+        [expr {$section eq "httpclient" ? {
+            <th class="fs-6 text-end">Received</th>
+            <th class="fs-6 text-end">Reused</th>} : ""}]
         [join [lmap code $codes {set _ "<th class='fs-6 text-end'>$code</th>"}]]
         </tr>
     }]
@@ -2136,7 +2142,10 @@ proc _ns_stats.log.chart {path section param title} {
             <td class="fs-6 text-end">[dict get $hostInfos $host count]</td>
             <td class="fs-6 text-end">[_ns_stats.hr $avg]s</td>
             <td class="fs-6 text-end">[_ns_stats.hr [dict get $hostInfos $host sent]]B</td>
-            <td class="fs-6 text-end">[_ns_stats.hr [dict get $hostInfos $host received]]B</td>
+            [expr {$section eq "httpclient"
+                   ? [subst {<td class="fs-6 text-end">[_ns_stats.hr [dict get $hostInfos $host received]]B</td>
+                       <td class="fs-6 text-end">[_ns_stats.hr [dict get $hostInfos $host reused]]</td>
+                   }] : ""}]
             [join [lmap code $codes {set _ "<td class='fs-6 text-end'>[dict get $hostInfos $host $code]</td>"}]]
             </tr>
         }]
