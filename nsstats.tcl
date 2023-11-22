@@ -99,7 +99,6 @@ set ::navLinks {
 }
 
 proc _ns_stats.header {args} {
-
     if {[llength $args] == 1} {
         set ::title "NaviServer Stats: [ns_info hostname] - [lindex $args 0]"
         set ::nav "<a href='?@page=index$::rawparam'>Main Menu</a> &gt; <span class='current'>[lindex $args 0]</span>"
@@ -1484,7 +1483,7 @@ proc _ns_stats.process {} {
                     "Log Statistics"      [_ns_stats.pretty {Notice Warning Debug(sql)} [ns_logctl stats] %.0f] \
                     Version              "[ns_info patchlevel] (tag $tag) $buildinfo" \
                     "Build Date"          [ns_info builddate] \
-                    Servers               [join [ns_info servers] <br>] \
+                    Servers               [join [lmap s [ns_info servers] {list $s [ns_config ns/servers $s]}] <br>] \
                     {*}${driverInfo} \
                     {*}${certInfo} \
                     DB-Pools             "<table>[join [_ns_stats.process.dbpools]]</table>" \
@@ -2144,7 +2143,7 @@ proc _ns_stats.log.chart {path section param title} {
             <td class="fs-6 text-end">[_ns_stats.hr [dict get $hostInfos $host sent]]B</td>
             [expr {$section eq "httpclient"
                    ? [subst {<td class="fs-6 text-end">[_ns_stats.hr [dict get $hostInfos $host received]]B</td>
-                       <td class="fs-6 text-end">[_ns_stats.hr [dict get $hostInfos $host reused]]</td>
+                       <td class="fs-6 text-end">[dict get $hostInfos $host reused]</td>
                    }] : ""}]
             [join [lmap code $codes {set _ "<td class='fs-6 text-end'>[dict get $hostInfos $host $code]</td>"}]]
             </tr>
