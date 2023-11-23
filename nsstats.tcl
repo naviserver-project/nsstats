@@ -1074,18 +1074,15 @@ proc _ns_stats.mem.tcl {} {
     set op 0
     set av 0
 
-
     if {[info commands ::dict] ne ""} {
         set trans [dict create]
         foreach thread [ns_info threads] {
             dict set trans thread0x[lindex $thread 2] [lindex $thread 0]
         }
     }
-
-    append html "\
-    <table border='0' cellpadding='0' cellspacing='0'>
-    <tr>
-        <td valign=middle>"
+    append html \
+        "\n<p><strong>Memory reported from OS:</strong> $meminfo</p>" \
+        "<table border='0' cellpadding='0' cellspacing='0'>\n<tr><td valign=middle>\n"
 
     foreach p [lsort [ns_info pools]] {
         append html "\
