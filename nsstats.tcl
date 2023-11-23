@@ -1040,6 +1040,29 @@ if {[info commands ::dict] ne ""} {
 
 
 proc _ns_stats.mem.tcl {} {
+    #
+    # The following works just on Linux. The output is optional.
+    #
+    set meminfo [_ns_stats.pretty_meminfo [ns_info pid]]
+    set html [_ns_stats.header Memory]
+    try {
+        ns_info meminfo
+    } on ok {result} {
+        if {[dict exists $result stats]} {
+            append html [ns_trim -delimiter | [subst {
+                |<h3>Memory Statistics from TCMalloc (Google Performance Tools)</h3>
+                |<p>
+                |<strong>Version:</strong> [dict get $result version]<br>
+                |<strong>Loaded library:</strong> [dict get $result preload]<br>
+                |<strong>Documentation:</strong>
+                |<a href="https://github.com/google/tcmalloc/blob/master/docs/stats.md">Understanding Malloc Stats</a></br>
+                |<strong>Memory reported from OS:</strong> $meminfo<br>
+                |<pre>[dict get $result stats]</pre>
+            }]] [_ns_stats.footer]
+            return $html
+        }
+    }
+
     set talloc 0
     set trequest 0
     set tused 0
@@ -1051,7 +1074,6 @@ proc _ns_stats.mem.tcl {} {
     set op 0
     set av 0
 
-    set html [_ns_stats.header Memory]
 
     if {[info commands ::dict] ne ""} {
         set trans [dict create]
@@ -1324,19 +1346,24 @@ proc _ns_stats.memsizes {pid} {
     set vsize [format %.2f [expr {$vsize         * 4}]]
   }
   if {$rss == 0} {
-    set sizes [exec -ignorestderr /bin/ps -o vsize,rss $pid]
+    set sizes [exec -ignorestderr /bin/ps -o vsz,rss $pid]
     set vsize [lindex $sizes end-1]
     set rss   [lindex $sizes end]
   }
   return [list rss $rss vsize $vsize uss $uss]
 }
 
-proc _ns_stats.pretty_meminfo {pid} {
+proc _ns_stats.pretty_meminfo {pid {braces 0}} {
     try {
+        lassign [expr {$braces? {( )} : {}}] ob cb
         set m [_ns_stats.memsizes $pid]
-        append pretty_meminfo "(" \
-            "vm [_ns_stats.hr [dict get $m vsize]]B " \
-            "rss [_ns_stats.hr [dict get $m rss]]B)"
+        #
+        # Since we get the memory in KB, we have to convert to bytes
+        # for _ns_stats.hr.
+        #
+        append pretty_meminfo $ob \
+            "vm [_ns_stats.hr [expr {[dict get $m vsize]*1024}]]B " \
+            "rss [_ns_stats.hr [expr {[dict get $m rss]*1024}]]B" $cb
     } on error {errorMsg} {
         set pretty_meminfo ""
     }
@@ -1439,7 +1466,7 @@ proc _ns_stats.process {} {
                 try {
                     set pidinfos {}
                     foreach pid [ns_proxy pids $pool] {
-                        append pidinfos "$pid [_ns_stats.pretty_meminfo $pid] "
+                        append pidinfos "$pid [_ns_stats.pretty_meminfo $pid 1] "
                     }
                     set pidsrow "<tr><td class='subtitle'>Pids:</td><td class='colvalue'>$pidinfos</td></tr>"
                 } on error {errorMsg} {
@@ -1476,7 +1503,7 @@ proc _ns_stats.process {} {
                     Host                 "[ns_info hostname] ([ns_info address], Tcl $::tcl_patchLevel, $version_info)" \
                     "Boot Time"           [clock format [ns_info boottime] -format %c] \
                     Uptime                [_ns_stats.fmtSeconds [ns_info uptime]] \
-                    Process              "[ns_info pid] [ns_info nsd] [_ns_stats.pretty_meminfo [ns_info pid]]" \
+                    Process              "[ns_info pid] [ns_info nsd] [_ns_stats.pretty_meminfo [ns_info pid] 1]" \
                     Home                  [ns_info home] \
                     Configuration         [ns_info config] \
                     "Error Log"           [ns_info log] \
