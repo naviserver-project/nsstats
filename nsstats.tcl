@@ -91,9 +91,9 @@ set ::navLinks {
     log.logfile       "Log File"
     mem               "Memory"
     mem.adp           "ADP"
+    mem.tcl           "Allocated Memory"
     mem.cache         "Cache"
     mem.nsvsize       "Shared Variables"
-    mem.tcl           "Tcl Memory"
     process           "Process"
     threads           "Threads"
 }
