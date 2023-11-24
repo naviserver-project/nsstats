@@ -1043,7 +1043,7 @@ proc _ns_stats.mem.tcl {} {
     #
     # The following works just on Linux. The output is optional.
     #
-    set meminfo [_ns_stats.pretty_meminfo [ns_info pid]]
+    set meminfo [_ns_stats.memsizes [ns_info pid] 1]
     set html [_ns_stats.header Memory]
     try {
         ns_info meminfo
@@ -1327,7 +1327,7 @@ proc _ns_stats.process.running_jobs {} {
     return $results
 }
 
-proc _ns_stats.memsizes {pid} {
+proc _ns_stats.memsizes {pid {pretty 0}} {
   #
   # return a dict of memory sizes of pid in number of 1K blocks
   #
@@ -1338,7 +1338,7 @@ proc _ns_stats.memsizes {pid} {
     #
     set F [open /proc/$pid/statm]; set c [read $F]; close $F
     lassign $c vsize rss shared
-    set uss   [format %.2f [expr {($rss-$shared) * 4}]]
+    #set uss   [format %.2f [expr {($rss-$shared) * 4}]]
     set rss   [format %.2f [expr {$rss           * 4}]]
     set vsize [format %.2f [expr {$vsize         * 4}]]
   }
@@ -1347,26 +1347,12 @@ proc _ns_stats.memsizes {pid} {
     set vsize [lindex $sizes end-1]
     set rss   [lindex $sizes end]
   }
-  return [list rss $rss vsize $vsize uss $uss]
+  if {$pretty} {
+      set rss [_ns_stats.hr [expr {$rss*1024}]]B
+      set vsize [_ns_stats.hr [expr {$vsize*1024}]]B
+  }
+  return [list rss $rss vsize $vsize]
 }
-
-proc _ns_stats.pretty_meminfo {pid {braces 0}} {
-    try {
-        lassign [expr {$braces? {( )} : {}}] ob cb
-        set m [_ns_stats.memsizes $pid]
-        #
-        # Since we get the memory in KB, we have to convert to bytes
-        # for _ns_stats.hr.
-        #
-        append pretty_meminfo $ob \
-            "vm [_ns_stats.hr [expr {[dict get $m vsize]*1024}]]B " \
-            "rss [_ns_stats.hr [expr {[dict get $m rss]*1024}]]B" $cb
-    } on error {errorMsg} {
-        set pretty_meminfo ""
-    }
-    return $pretty_meminfo
-}
-
 
 proc _ns_stats.process {} {
     if {[info commands ns_driver] ne ""} {
@@ -1463,7 +1449,7 @@ proc _ns_stats.process {} {
                 try {
                     set pidinfos {}
                     foreach pid [ns_proxy pids $pool] {
-                        append pidinfos "$pid [_ns_stats.pretty_meminfo $pid 1] "
+                        append pidinfos "$pid [list [_ns_stats.memsizes $pid 1]] "
                     }
                     set pidsrow "<tr><td class='subtitle'>Pids:</td><td class='colvalue'>$pidinfos</td></tr>"
                 } on error {errorMsg} {
@@ -1496,11 +1482,14 @@ proc _ns_stats.process {} {
     } on error {errorMsg} {
         set buildinfo ""
     }
+    set processInfo [_ns_stats.memsizes [ns_info pid] 1]
+    set t [clock milliseconds]; set F [open "|cat" w]; puts $F "hi"; close $F
+    dict set processInfo fork-time [expr {[clock milliseconds] - $t}]ms
     set values [list \
                     Host                 "[ns_info hostname] ([ns_info address], Tcl $::tcl_patchLevel, $version_info)" \
                     "Boot Time"           [clock format [ns_info boottime] -format %c] \
                     Uptime                [_ns_stats.fmtSeconds [ns_info uptime]] \
-                    Process              "[ns_info pid] [ns_info nsd] [_ns_stats.pretty_meminfo [ns_info pid] 1]" \
+                    Process              "[ns_info pid] [ns_info nsd] [list $processInfo]" \
                     Home                  [ns_info home] \
                     Configuration         [ns_info config] \
                     "Error Log"           [ns_info log] \
