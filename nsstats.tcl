@@ -1354,6 +1354,18 @@ proc _ns_stats.memsizes {pid {pretty 0}} {
   return [list rss $rss vsize $vsize]
 }
 
+proc _ns_stats.lsof {pid} {
+    try {
+        foreach cmd {/bin/lsof /usr/bin/lsof /usr/sbin/lsof} {
+            if {[file executable $cmd]} break
+        }
+        set result [split [exec -ignorestderr -- $cmd -n -P +p [pid] 2>/dev/null] \n]
+    } on error {errorMsg} {
+        set result {}
+    }
+    return $result
+}
+
 proc _ns_stats.process {} {
     if {[info commands ns_driver] ne ""} {
         #
@@ -1490,6 +1502,7 @@ proc _ns_stats.process {} {
                     "Boot Time"           [clock format [ns_info boottime] -format %c] \
                     Uptime                [_ns_stats.fmtSeconds [ns_info uptime]] \
                     Process              "[ns_info pid] [ns_info nsd] [list $processInfo]" \
+                    "Open Files"          "<a href='?@page=list-lsof'>[llength [_ns_stats.lsof [ns_info pid]]]</a>" \
                     Home                  [ns_info home] \
                     Configuration         [ns_info config] \
                     "Error Log"           [ns_info log] \
@@ -1858,15 +1871,70 @@ proc _ns_stats.url2file {} {
     return $html
 }
 
+proc _ns_stats.list-lsof-filter-lines {list match max} {
+    set filtered [lmap line $list {if {![string match $match $line]} continue;set line}]
+    if {[llength $filtered] > $max} {
+        set filtered [lrange $filtered 0 $max-1]
+    }
+    return $filtered
+}
+
+proc _ns_stats.list-lsof {} {
+    set all [ns_queryget all 0]
+    set max [ns_queryget max 1000]
+    set of [_ns_stats.lsof [ns_info pid]]
+    if {$all} {
+        set displayed [expr {[llength $of] > $max ? [lrange $of 0 $max-1] : $of}]
+        set body [ns_trim -delimiter | [subst {
+            |<strong>Number of Open Files:</strong> [llength $of] (max $max)
+            |<p>(<a href='?@page=list-lsof&all=0'>filtered</a>)<p>
+            |<pre>[join $displayed \n]</pre>
+        }]]
+    } else {
+        set IPv4 [_ns_stats.list-lsof-filter-lines $of *IPv4* $max]
+        set IPv6 [_ns_stats.list-lsof-filter-lines $of *IPv6* $max]
+        set body [ns_trim -delimiter | [subst {
+            |<strong>Number of Open Files:</strong> [llength $of]
+            | (<a href='?@page=list-lsof&all=1'>all</a>)
+            |<p>
+        }]]
+        try {
+            ns_http keepalives
+        } on ok {keepalives} {
+            append body \
+                "<strong>ns_http keep-alive slots:</strong>\n" \
+                "<blockquote><pre>[join $keepalives \n]</pre></blockquote>\n"
+        }
+
+        if {[llength $IPv4] > 0} {
+            append body \
+                "<strong>IPv4 Sockets (max $max):</strong>\n" \
+                "<blockquote><pre>[join $IPv4 \n]</pre></blockquote>\n"
+        }
+        if {[llength $IPv6] > 0} {
+            append body \
+                "<strong>IPv6 Sockets (max $max):</strong>\n" \
+                "<blockquote><pre>[join $IPv6 \n]</pre></blockquote>\n"
+        }
+    }
+    append html \
+        [_ns_stats.header [list Process "?@page=process"] "Open Files"] \
+        "<h4>Open Files</h4>" \
+        $body \
+        "<p>Back to <a href='?@page=process'>process</a> page</p>" \
+        [_ns_stats.footer]
+    return $html
+}
+
 proc _ns_stats.proxy-workers {} {
     set col          [ns_queryget col 4]
     set reverseSort  [ns_queryget reversesort 1]
     set pool         [ns_queryget pool]
     set cmd          [ns_queryget cmd ""]
     set queryContext @page=[ns_queryget @page]&pool=$pool
-    set workers [ns_proxy workers $pool]
-    set numericSort 1
-    set colTitles   [list ID pid created runs state]
+    set workers      [ns_proxy workers $pool]
+    set numericSort  1
+    set colTitles    [list ID pid created runs state]
     if {$col == 0 || $col == 3} {
         set numericSort 1
     }
