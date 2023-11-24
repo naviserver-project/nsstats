@@ -1978,7 +1978,7 @@ proc _ns_stats.log.chart.parse-httpclient {line} {
         set url [lrange $fields 5 end-5]
     }
     set host none
-    regexp {https?://([^/]+)/} $url . host
+    regexp {https?://([^/]+)/?} $url . host
 
     return [list \
                 ts0 $ts0 \
@@ -2020,6 +2020,7 @@ proc _ns_stats.log.chart.parse-module/nssmtpd {line} {
 proc _ns_stats.log.chart {path section param title} {
     set logfiles [_ns_stats.log.logfiles $section $param]
     ns_log notice "nsstats: process $section $param log $path -> $logfiles"
+    set t0 [clock milliseconds]
 
     if {[file size $path] < 10} {
         if {[llength $logfiles] > 0} {
@@ -2071,8 +2072,9 @@ proc _ns_stats.log.chart {path section param title} {
             dict set statusCodes $status 1
         }
     }
+    set t1 [clock milliseconds]
     set responsetimeSeries {}
-    foreach key [dict keys $responsetime] {
+    foreach key [lsort [dict keys $responsetime]] {
         set values [join [lmap {ts value} [dict get $responsetime $key] {
             subst -nocommands {[${ts}000, $value]}
         }] ",\n"]
@@ -2084,7 +2086,7 @@ proc _ns_stats.log.chart {path section param title} {
         }]
     }
     set requestcount {}
-    foreach key [dict keys $requestcount0] {
+    foreach key [lsort [dict keys $requestcount0]] {
         lassign $key host ts
         dict lappend requestcount $host $ts [dict get $requestcount0 $key]
     }
@@ -2178,6 +2180,8 @@ proc _ns_stats.log.chart {path section param title} {
         set tail [file tail $logfile]
         set _ "<option value='$tail' $selected>$tail</option>"
     }] \n]
+    set t2 [clock milliseconds]
+    ns_log notice "nsstats: parse data [expr {$t1-$t0}]ms, graph and table built [expr {$t2-$t1}]ms"
 
     return [subst {
         <div id='responsetime'></div>
