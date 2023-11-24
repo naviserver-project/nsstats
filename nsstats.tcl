@@ -1992,12 +1992,13 @@ proc _ns_stats.log.chart.parse-httpclient {line} {
                 received $received \
                 reused $reused \
                 cause $cause \
+                errorLine [expr {$cause ne "ok" ? $line : ""}] \
                ]
 }
 
 proc _ns_stats.log.chart.parse-module/nssmtpd {line} {
     set fields [split $line]
-    lassign $fields ts tz id status method url elapsed sent sender rcpt
+    lassign $fields ts tz id status statuscode url elapsed sent sender rcpt
     set ts0 [string range $ts 1 end]
     #[25/Sep/2023:00:02:48 +0200] -sched:...- 250 SUCCESS [smtp.wu.ac.at]:25 0.009911 13313 sender RCPT: USER@HOST
     set host $url
@@ -2014,6 +2015,7 @@ proc _ns_stats.log.chart.parse-module/nssmtpd {line} {
                 received 0 \
                 reused 0 \
                 cause "" \
+                errorLine [expr {$statuscode ne "SUCCESS" ? $line : ""}] \
                ]
 }
 
@@ -2034,6 +2036,7 @@ proc _ns_stats.log.chart {path section param title} {
     set F [open $path]; set logcontent [read $F]; close $F
     set count 0
     set hostInfos {}
+    set errorLines {}
 
     foreach line [split $logcontent \n] {
         #if {$count>10} break
@@ -2070,6 +2073,9 @@ proc _ns_stats.log.chart {path section param title} {
             }
             dict set hostInfos $host $hostInfo
             dict set statusCodes $status 1
+            if {$errorLine ne ""} {
+                lappend errorLines $errorLine
+            }
         }
     }
     set t1 [clock milliseconds]
@@ -2183,6 +2189,12 @@ proc _ns_stats.log.chart {path section param title} {
     set t2 [clock milliseconds]
     ns_log notice "nsstats: parse data [expr {$t1-$t0}]ms, graph and table built [expr {$t2-$t1}]ms"
 
+    if {[llength $errorLines] > 0} {
+        set errorLines [ns_trim -delimiter | [subst {
+            |<h4>Errors:</h4>
+            |<hr><pre>\t[join $errorLines \n\t]</pre><hr>
+        }]]
+    }
     return [subst {
         <div id='responsetime'></div>
         <div id='requestcount'></div>
@@ -2191,6 +2203,7 @@ proc _ns_stats.log.chart {path section param title} {
         <h4>Summative Statistics</h4>
         $data
         </table>
+        $errorLines
         <h4>Show other logfile</h4>
         <form action="nsstats.tcl" class="row g-1">
         <div class="col"><select class="form-select" name="logfile">$options</select></div>
