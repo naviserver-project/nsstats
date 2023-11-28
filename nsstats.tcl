@@ -1908,12 +1908,12 @@ proc _ns_stats.list-lsof {} {
 
         if {[llength $IPv4] > 0} {
             append body \
-                "<strong>IPv4 Sockets (max $max):</strong>\n" \
+                "<strong>IPv4 Sockets (current [llength $IPv4], max $max):</strong>\n" \
                 "<blockquote><pre>[join $IPv4 \n]</pre></blockquote>\n"
         }
         if {[llength $IPv6] > 0} {
             append body \
-                "<strong>IPv6 Sockets (max $max):</strong>\n" \
+                "<strong>IPv6 Sockets (current [llength $IPv6], max $max):</strong>\n" \
                 "<blockquote><pre>[join $IPv6 \n]</pre></blockquote>\n"
         }
     }
@@ -2249,7 +2249,7 @@ proc _ns_stats.log.chart {path section param title} {
     if {[llength $errorLines] > 0} {
         set errorLines [ns_trim -delimiter | [subst {
             |<h4>Errors:</h4>
-            |<hr><pre>\t[join $errorLines \n\t]</pre><hr>
+            |<hr><pre>[join $errorLines \n]</pre><hr>
         }]]
     }
     return [subst {
