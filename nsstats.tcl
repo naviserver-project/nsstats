@@ -1046,7 +1046,7 @@ proc _ns_stats.mem.tcl {} {
     set meminfo [_ns_stats.memsizes [ns_info pid] 1]
     set html [_ns_stats.header Memory]
     try {
-        ns_info meminfo
+        ns_info meminfo {*}[expr {[ns_queryget release 0] ? "-release" : ""}]
     } on ok {result} {
         if {[dict exists $result stats]} {
             append html [ns_trim -delimiter | [subst {
@@ -1949,7 +1949,7 @@ proc _ns_stats.proxy-workers {} {
 
     append html \
         [_ns_stats.header [list Process "?@page=process"] "nsproxy Workers"] \
-        "<h4>nsproxy workers for pool <em>$pool</em></h4>" \
+        "<h4>[llength $results] nsproxy workers for pool <em>$pool</em></h4>" \
         [_ns_stats.results requestprocs $col $colTitles ?$queryContext $rows $reverseSort $align] \
         "<p>Back to <a href='?@page=process'>process</a> page</p>" \
         [_ns_stats.footer]
