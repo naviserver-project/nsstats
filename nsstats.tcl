@@ -2064,7 +2064,7 @@ proc _ns_stats.log.chart.parse-module/nssmtpd {line} {
                 ts0 $ts0 \
                 id $id \
                 status $status \
-                method $method \
+                method "" \
                 host $host \
                 url $url \
                 elapsed $elapsed \
