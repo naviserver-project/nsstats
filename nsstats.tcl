@@ -1424,6 +1424,11 @@ proc _ns_stats.process {} {
                         : ""}]
 
     set tag [ns_info tag]
+    if {[regexp {[-][0-9]+[-]g([0-9a-f]+)[+]?} $tag . hash]} {
+        set tag "<a href='https://github.com/naviserver-project/naviserver/commit/$hash'>$tag</a>"
+    } elseif {[regexp {([0-9a-f]+)[ +]} $tag . hash]} {
+        set tag "<a href='https://bitbucket.org/naviserver/naviserver/commits/?search=$hash'>$tag</a>"
+    }
     if {[regexp {([0-9a-f]+)[ +]} $tag . hash]} {
         set tag "<a href='https://bitbucket.org/naviserver/naviserver/commits/?search=$hash'>$tag</a>"
     }

@@ -162,7 +162,6 @@ div.methodfilter label {
 <div class="w3-example">
 <div class="w3-container w3-light-grey">
   <%= $::nav %>
-  <span style='float:right;'> <%= [ns_config ns/servers [ns_info server]] %></span>
 </div><%= $html %>
 </div>
 </div>
