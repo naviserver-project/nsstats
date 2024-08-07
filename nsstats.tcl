@@ -92,8 +92,8 @@ set ::navLinks {
     mem               "Memory"
     mem.adp           "ADP"
     mem.tcl           "Allocated Memory"
-    mem.cache         "Cache"
-    mem.nsvsize       "Shared Variables"
+    mem.cache         "Cache (ns_cache)"
+    mem.nsvsize       "Shared Variables (nsv)"
     process           "Process"
     threads           "Threads"
 }
@@ -737,7 +737,7 @@ proc _ns_stats.mem.nsvsize {} {
     append html \
         [_ns_stats.header "Nsv Size"] \
         "<p>Nsv arrays: $nrArrays, elements: [_ns_stats.hr $totalElements], total bytes: [_ns_stats.hr $totalBytes]B</p>" \
-        [_ns_stats.results nsv-size $col $colTitles ?@page=nsv.size \
+        [_ns_stats.results nsv-size $col $colTitles ?@page=mem.nsvsize \
              $table \
              $reverseSort \
              {left right right right}]
@@ -1913,12 +1913,12 @@ proc _ns_stats.list-lsof {} {
 
         if {[llength $IPv4] > 0} {
             append body \
-                "<strong>IPv4 Sockets (current [llength $IPv4], max $max):</strong>\n" \
+                "<strong>IPv4 Sockets (current [llength $IPv4], max displayed $max):</strong>\n" \
                 "<blockquote><pre>[join $IPv4 \n]</pre></blockquote>\n"
         }
         if {[llength $IPv6] > 0} {
             append body \
-                "<strong>IPv6 Sockets (current [llength $IPv6], max $max):</strong>\n" \
+                "<strong>IPv6 Sockets (current [llength $IPv6], max displayed $max):</strong>\n" \
                 "<blockquote><pre>[join $IPv6 \n]</pre></blockquote>\n"
         }
     }
