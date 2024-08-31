@@ -814,23 +814,30 @@ proc _ns_stats.log.logfile {} {
             }]
         }
     } else {
-        try {
-            set f [open [ns_info log]]
-            seek $f 0 end
-            set n [expr {[tell $f] -10000}]
-            if {$n < 0} {
-                set n 10000
+        if {![file exists [ns_info log]]} {
+            set content [ns_trim -delimiter | [subst {
+                | <p>The configured log file <i>[ns_info log]</i> does not exist.
+                | <p>Was maybe the server is running in forground mode (i.e., started with the '-f' flag)?
+            }]]
+        } else {
+            try {
+                set f [open [ns_info log]]
+                seek $f 0 end
+                set n [expr {[tell $f] -10000}]
+                if {$n < 0} {
+                    set n 10000
+                }
+                seek $f $n
+                # read the first partial line
+                gets $f
+                set system_content [string map $colorcodemap [read $f]]
+            } finally {
+                if {[info exists f]} {
+                    close $f
+                }
             }
-            seek $f $n
-            # read the first partial line
-            gets $f
-            set system_content [string map $colorcodemap [read $f]]
-        } finally {
-            if {[info exists f]} {
-                close $f
-            }
+            set content "<font size=2><pre>[_ns_stats.log.prepare_content system $system_content]</pre></font>"
         }
-        set content "<font size=2><pre>[_ns_stats.log.prepare_content system $system_content]</pre></font>"
     }
 
     append html \
@@ -1048,7 +1055,8 @@ proc _ns_stats.mem.tcl {} {
     try {
         ns_info meminfo {*}[expr {[ns_queryget release 0] ? "-release" : ""}]
     } on ok {result} {
-        if {[dict exists $result stats]} {
+        #ns_log notice "meminfo result <$result>"
+        if {[dict exists $result stats] && [dict get $result stats] ne ""} {
             append html [ns_trim -delimiter | [subst {
                 |<h3>Memory Statistics from TCMalloc (Google Performance Tools)</h3>
                 |<p>
@@ -1082,6 +1090,7 @@ proc _ns_stats.mem.tcl {} {
     }
     append html \
         "\n<p><strong>Memory reported from OS:</strong> $meminfo</p>" \
+        "\n<h4>Memory reported from the Tcl memory allocator:</h4>" \
         "<table border='0' cellpadding='0' cellspacing='0'>\n<tr><td valign=middle>\n"
 
     foreach p [lsort [ns_info pools]] {
@@ -1500,7 +1509,7 @@ proc _ns_stats.process {} {
         set buildinfo ""
     }
     set processInfo [_ns_stats.memsizes [ns_info pid] 1]
-    set t [clock milliseconds]; set F [open "|cat" w]; puts $F "hi"; close $F
+    set t [clock milliseconds]; set F [open "|cat" w]; puts $F "timing-pipe-open+puts"; close $F
     dict set processInfo fork-time [expr {[clock milliseconds] - $t}]ms
     set values [list \
                     Host                 "[ns_info hostname] ([ns_info address], Tcl $::tcl_patchLevel, $version_info)" \
