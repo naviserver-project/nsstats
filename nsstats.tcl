@@ -85,10 +85,10 @@ set ::navLinks {
     locks.mutex       "Mutex and RW-Locks"
     locks.nsv         "Nsv Locks"
     log               "Logging"
+    log.logfile       "System Log"
     log.httpclient    "HTTP Client Log"
     log.smtpsent      "SMTP Sent Log"
     log.levels        "Log Levels"
-    log.logfile       "Log File"
     mem               "Memory"
     mem.adp           "ADP"
     mem.tcl           "Allocated Memory"
@@ -814,7 +814,12 @@ proc _ns_stats.log.logfile {} {
             }]
         }
     } else {
-        if {![file exists [ns_info log]]} {
+        try {
+            set log_to_stderr [expr {"-f" in [ns_info argv]}]
+        } on error {errorMsg} {
+            set log_to_stderr [expr {![file exists [ns_info log]]}]
+        }
+        if {$log_to_stderr} {
             set content [ns_trim -delimiter | [subst {
                 | <p>The configured log file <i>[ns_info log]</i> does not exist.
                 | <p>Was maybe the server is running in forground mode (i.e., started with the '-f' flag)?
@@ -1458,6 +1463,8 @@ proc _ns_stats.process {} {
         # Use catch for the time being to handle forward
         # compatibility (when no ns_proxy stats are available)
         #
+        set pool ""
+        ns_log notice "ns_proxy pools <[ns_proxy pools]>"
         if {[catch {
             foreach pool [lsort [ns_proxy pools]] {
                 #
@@ -2801,7 +2808,7 @@ if { ($enabled == 0 && [ns_conn peeraddr] ni {"127.0.0.1" "::1"}) ||
     return
 } else {
     # Produce page
-    ns_set update [ns_conn outputheaders] "Expires" "now"
+    ns_set iupdate [ns_conn outputheaders] "expires" "now"
     set html [_ns_stats.$page]
     if {$html ne ""} {
         if {[info exists ::ad_conn(file)]} {
