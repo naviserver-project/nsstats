@@ -1509,12 +1509,21 @@ proc _ns_stats.process {} {
             lappend proxyItems "nsproxy '$pool'" "<table>$errorMsg</table>"
         }
     }
+
+    try {
+        ns_http taskthreads
+    } on ok {taskthreadinfo} {
+    } on error {errorMsg} {
+        set taskthreadinfo ""
+    }
+
     try {
         ns_info buildinfo
     } on ok {buildinfo} {
     } on error {errorMsg} {
         set buildinfo ""
     }
+
     set processInfo [_ns_stats.memsizes [ns_info pid] 1]
     set t [clock milliseconds]; set F [open "|cat" w]; puts $F "timing-pipe-open+puts"; close $F
     dict set processInfo fork-time [expr {[clock milliseconds] - $t}]ms
@@ -1536,6 +1545,7 @@ proc _ns_stats.process {} {
                     DB-Pools             "<table>[join [_ns_stats.process.dbpools]]</table>" \
                     Callbacks            "<table>[join [_ns_stats.process.callbacks]]</table>" \
                     {*}$proxyItems \
+                    "Task Threads"        [join $taskthreadinfo <br>] \
                     "Socket Callbacks"    [join [ns_info sockcallbacks] <br>] \
                     "Running Scheduled Procs (repeated)" [join [_ns_stats.process.running_scheds] <br>] \
                     "Running Jobs"        [join [_ns_stats.process.running_jobs] <br>] \
@@ -2801,9 +2811,48 @@ if { [info commands _ns_stats.$page] eq "" } {
     set page process
 }
 
+proc public_ip {ip} {
+    try {
+        # For NaviServer 5
+        ns_ip public $ip
+    } on error {errorMsg} {
+        # backwards compatibility
+        expr {$ip ni {"127.0.0.1" "::1"}}
+    }
+}
+
+if {$enabled == 0} {
+    #
+    # When the module is disabled, no access is granted.
+    #
+    set allowed 0
+} elseif {![public_ip [ns_conn peeraddr]]} {
+    #
+    # Allow access for non-public IP addresses. This is for
+    # installation tests on local machines. These addresses are not
+    # routed over the public Internet.
+    #
+    set allowed 1
+} elseif  {[info commands ::ad_try] ne "" && ("admin" in [ns_conn urlv] || "acs-admin" in  [ns_conn urlv])} {
+    #
+    # In OpenACS installations, allow access, when we have a site
+    # "admin" or a sitewide "acs-admin" link, which are always access
+    # checked.
+    #
+    set allowed 1
+} elseif {$user ne "" && [ns_conn authuser] eq $user && [ns_conn authpassword] eq $password} {
+    #
+    # Allow access, when a user is configured, and it is the
+    # authenicated user and the password is correct.
+    #
+    set allowed 1
+} else {
+    set allowed 0
+}
+
+
 # Check user access if configured
-if { ($enabled == 0 && [ns_conn peeraddr] ni {"127.0.0.1" "::1"}) ||
-     ($user ne "" && ([ns_conn authuser] ne $user || [ns_conn authpassword] ne $password)) } {
+if { !$allowed } {
     ns_returnunauthorized
     return
 } else {
