@@ -2826,7 +2826,7 @@ if {$enabled == 0} {
     # When the module is disabled, no access is granted.
     #
     set allowed 0
-} elseif {![public_ip [ns_conn peeraddr]]} {
+} elseif {![public_ip [ns_conn peeraddr -source direct]]} {
     #
     # Allow access for non-public IP addresses. This is for
     # installation tests on local machines. These addresses are not
