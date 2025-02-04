@@ -1,5 +1,5 @@
 Statistics Module for NaviServer 4.99.27
-Release 1.12
+Release 1.13
 vlad@crystalballinc.com
 neumann@wu-wien.ac.at
 
@@ -14,7 +14,7 @@ particular, nsstats provides information about e.g.
   - scheduled procedures
   - threads
   - driver usage
-  - web-access to 
+  - web-access to
     * configuration file
     * last entries from error.log
 
@@ -25,7 +25,7 @@ Changes since 1.0
   - queueing and spooling statistics
   - queuing time/filter time runtime per pool
   - more detailed cache statistics (e.g. saved times)
-  - access to configuration file 
+  - access to configuration file
   - max wait, total wait, total lock time, avg lock time
   - nsv locks (mapping from variable names to buckets and locks)
   - threads: added user time, system times, processor number and state
@@ -57,18 +57,19 @@ Configuration
    The nststats module can be configured by the following variables,
    which can be configured in the NaviServer config file.
 
-       ns_section "ns/module/nsstats"
-       ns_param enabled  1
-       ns_param user     ""
-       ns_param password ""    
-       ns_param bglocks  {oacs:sched_procs}
+       ns_section "ns/module/nsstats" {
+          ns_param enabled  1
+          ns_param user     "nsadmin"
+          ns_param password ""
+          ns_param bglocks  {oacs:sched_procs}
+       }
 
    These variables have the following meanings:
 
    * enabled (boolean value, default 1)
 
       Enable/disable the nsstats module for this nsd
-    
+
    * user (string, default "")
    * password (string, default "")
 
@@ -83,7 +84,15 @@ Configuration
       predominantly in background processing, then the putting these
       in relation with requests makes no much sense. One example for
       such a lock is the "oacs:sched_procs" lock in OpenACS
-  
+
+  When this configuration is not provided in the configration file,
+  it is still possible to configure nsstats by values at the top
+  of the script file.
+
+  Access control can be achieved for the configured/default user
+  via the nsperm module, or - when used in OpenACS - via the
+  permissions provided via the URL path.
+
 Authors
      Vlad Seryakov vlad@crystalballinc.com
      Gustaf Neumann neumann@wu-wien.ac.at

@@ -42,10 +42,10 @@
 # the config file in the section "ns/module/nsstats" or here locally
 # in this file.
 #
-set user     [ns_config ns/module/nsstats user ""]
+set user     [ns_config ns/module/nsstats user "nsadmin"]
 set password [ns_config ns/module/nsstats password ""]
 set enabled  [ns_config ns/module/nsstats enabled 1]
-
+set debug    0
 set ::templateFile nsstats.adp
 
 
@@ -73,6 +73,8 @@ if { ![nsv_exists _ns_stats threads_0] } {
     nsv_set _ns_stats sched_paused  16
     nsv_set _ns_stats sched_running 32
 }
+set severity [expr {$debug ? "notice" : "debug"}]
+
 
 set ::navLinks {
     background        "Background"
@@ -1464,7 +1466,6 @@ proc _ns_stats.process {} {
         # compatibility (when no ns_proxy stats are available)
         #
         set pool ""
-        ns_log notice "ns_proxy pools <[ns_proxy pools]>"
         if {[catch {
             foreach pool [lsort [ns_proxy pools]] {
                 #
@@ -2820,41 +2821,75 @@ proc public_ip {ip} {
         expr {$ip ni {"127.0.0.1" "::1"}}
     }
 }
+ns_log $severity "nsstats: enabled $enabled configured user '$user' authuser '[ns_conn authuser]'"
 
 if {$enabled == 0} {
     #
     # When the module is disabled, no access is granted.
     #
     set allowed 0
-} elseif {![public_ip [ns_conn peeraddr -source direct]]} {
-    #
-    # Allow access for non-public IP addresses. This is for
-    # installation tests on local machines. These addresses are not
-    # routed over the public Internet.
-    #
-    set allowed 1
+
 } elseif  {[info commands ::ad_try] ne "" && ("admin" in [ns_conn urlv] || "acs-admin" in  [ns_conn urlv])} {
     #
     # In OpenACS installations, allow access, when we have a site
     # "admin" or a sitewide "acs-admin" link, which are always access
     # checked.
     #
+    ns_log $severity "nsstats: OpenACS admin"
+
     set allowed 1
+
+} elseif {$user ne "" && [info commands ns_perm] ne "" && $user in [lmap {u . .} [ns_perm listusers] {set u}]} {
+    #
+    # We have the "nsperm" module enabled, and the configured user is
+    # in the loaded user table.
+    #
+    ns_log $severity "nsstats: use nsperm"
+
+    if {[ns_conn authuser] ne $user} {
+        set allowed 0
+    } else {
+        try {
+            ns_perm checkpass $user [ns_conn authpassword]
+        } on error {errorMsg} {
+            set allowed 0
+        } on ok {r} {
+            set allowed 1
+        }
+    }
+
 } elseif {$user ne "" && [ns_conn authuser] eq $user && [ns_conn authpassword] eq $password} {
     #
     # Allow access, when a user is configured, and it is the
     # authenicated user and the password is correct.
     #
+    ns_log $severity "check password for user '$user' confingured in the file"
+
+    set allowed 1
+
+} elseif {![public_ip [ns_conn peeraddr -source direct]]} {
+    #
+    # Allow access for non-public IP addresses. This is for
+    # installation tests on local machines. These addresses are not
+    # routed over the public Internet.
+    #
+    ns_log $severity "nsstats: non-public IP"
+
     set allowed 1
 } else {
     set allowed 0
 }
+ns_log $severity "nsstats: access for user '$user' granted: $allowed"
 
 
 # Check user access if configured
 if { !$allowed } {
+    set html [_ns_stats.index]
     ns_returnunauthorized
-    return
+    if {[info exists ::ad_conn(file)]} {
+        ad_script_abort
+    }
+    #return
 } else {
     # Produce page
     ns_set iupdate [ns_conn outputheaders] "expires" "now"
