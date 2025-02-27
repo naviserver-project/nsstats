@@ -82,6 +82,18 @@ set ::navLinks {
     threads           "Threads"
 }
 
+#
+# Version compatibility proc
+#
+catch {ns_config} errorMsg
+if {[lsearch $errorMsg ?-all?]} {
+    proc ns_config_get_all {section key} {ns_config -all $section $key}
+} {
+    # Older versions of NaviServer don't support the "-all" flag,
+    # continue to return just the first value as before
+    proc ns_config_get_all {section key} {ns_config $section $key}
+}
+
 proc _ns_stats.header {args} {
     if {[llength $args] == 1} {
         set ::title "NaviServer Stats: [ns_info hostname] - [lindex $args 0]"
@@ -1542,7 +1554,7 @@ proc _ns_stats.process {} {
         foreach driver [ns_driver names] {
             set section [ns_driversection -driver $driver -server $s]
             if {$section eq ""} continue
-            set addr [ns_config ns/module/$driver/servers $s]
+            set addr [ns_config_get_all ns/module/$driver/servers $s]
             if {$addr ne ""} {
                 lappend addresses $addr
                 lappend writerThreads $driver: [ns_config $section writerthreads 0]
