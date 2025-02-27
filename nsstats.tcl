@@ -1556,13 +1556,13 @@ proc _ns_stats.process {} {
             if {$section eq ""} continue
             set addr [ns_config_get_all ns/module/$driver/servers $s]
             if {$addr ne ""} {
-                lappend addresses $addr
+                lappend addresses "$driver: $addr"
                 lappend writerThreads $driver: [ns_config $section writerthreads 0]
                 lappend spoolerThreads $driver: [ns_config $section spoolerthreads 0]
             } else {
                 set port [ns_config $section port]
                 if {$port ne ""} {
-                    lappend addresses [ns_config $section address]:$port
+                    lappend addresses "$driver: [ns_config $section address]:$port"
                     lappend writerThreads $driver: [ns_config $section writerthreads 0]
                     lappend spoolerThreads $driver: [ns_config $section spoolerthreads 0]
                 }
