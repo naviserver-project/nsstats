@@ -1679,9 +1679,17 @@ proc _ns_stats.process {} {
             |   [llength [ns_server -server $s url2file]]
             |</a>}]]
 
+        try {
+            set serverlogdirEntry [list "Log Directory" [ns_server -server $s logdir]]
+        } on error {errorMsg} {
+            set serverlogdirEntry {}
+        }
+
+
         set values [list \
                         "Address"            [join [lsort -unique $addresses] <br>] \
                         "Server Directory"   $serverdir \
+                        {*}$serverlogdirEntry \
                         "Page Directory"     [ns_server -server $s pagedir] \
                         "Tcl Library"        [ns_server -server $s tcllib] \
                         "Access Log"         [ns_config ns/server/$s/module/nslog file] \
