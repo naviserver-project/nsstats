@@ -1530,7 +1530,7 @@ proc _ns_stats.process {} {
                     "Open Files"          "<a href='?@page=list-lsof'>[llength [_ns_stats.lsof [ns_info pid]]]</a>" \
                     Home                  [ns_info home] \
                     Configuration         [ns_info config] \
-                    "Error Log"           [ns_info log] \
+                    "System Log"          [ns_info log] \
                     "Log Statistics"      [_ns_stats.pretty {Notice Warning Debug(sql)} [ns_logctl stats] %.0f] \
                     Version              "[ns_info patchlevel] (tag $tag) $buildinfo" \
                     "Build Date"          [ns_info builddate] \
