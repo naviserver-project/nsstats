@@ -1685,6 +1685,11 @@ proc _ns_stats.process {} {
             set serverlogdirEntry {}
         }
 
+        try {
+            set modulesEntry [list "Loaded Modules" [lsort [ns_ictl getmodules -server $s]]]
+        } on error {errorMsg} {
+            set modulesEntry {}
+        }
 
         set values [list \
                         "Address"            [join [lsort -unique $addresses] <br>] \
@@ -1693,6 +1698,7 @@ proc _ns_stats.process {} {
                         "Page Directory"     [ns_server -server $s pagedir] \
                         "Tcl Library"        [ns_server -server $s tcllib] \
                         "Access Log"         [ns_config ns/server/$s/module/nslog file] \
+                        {*}$modulesEntry \
                         "Writer Threads"     $writerThreads \
                         "Spooler Threads"    $spoolerThreads \
                         "Handlers"           $requestHandlers \
