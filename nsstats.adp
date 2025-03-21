@@ -25,7 +25,7 @@
     }
     header.custom-header h1 {
       margin: 0;
-      font-size: 1.8rem;
+      font-size: 24px;
       display: inline-block;
     }
     header.custom-header .header-right {
@@ -35,12 +35,15 @@
     header.custom-header .header-right p {
       margin: 0;
       line-height: 1.2;
-      font-size: smaller;
+      font-size: 12px;
     }
     header.custom-header h1 a {
        color: #fff;
+       font-size: 1em;
        text-decoration: none;
     }
+    header span.tagline { font-size: 16px; font-weight: 400; margin-left: 16px; }
+
     /* Breadcrumbs */
     .breadcrumbs {
       padding: 8px 16px;
@@ -73,8 +76,8 @@
     .menu-bar .dropdown-btn {
       color: #fff;
       text-decoration: none;
-      padding: 14px 20px;
-      font-size: 16px;
+      padding: 14px 10px;
+      font-size: 1em;
       background-color: inherit;
       border: none;
       cursor: pointer;
@@ -122,7 +125,7 @@
       left: 0;
       background-color: #fff;
       min-width: 250px;
-      box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+      box-shadow: 0 8px 1em rgba(0,0,0,0.2);
       z-index: 1;
     }
     .dropdown .dropdown-content a {
@@ -147,7 +150,7 @@
 
     /* Raw Toggle */
     .raw-toggle {
-      padding: 14px 20px;
+      padding: 12px 20px;
       color: #fff;
     }
     .raw-label {
@@ -370,7 +373,7 @@ table.config {font-size: 0.9rem;}
               
 <!-- Header -->
 <header class="custom-header">
-  <h1><a href="<%=[ns_conn url]%>">NaviServer Statistics</a></h1>
+  <h1><a href="<%=[ns_conn url]%>">NaviServer<span class="tagline">Monitoring and Statistics</span></a></h1>
   <div class="header-right">
     <p><strong><%=[ns_info hostname]%></strong></p>
     <p><%=[_ns_stats.fmtTime [ns_time]]%></p>
