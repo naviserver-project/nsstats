@@ -28,8 +28,8 @@ set user     [ns_config ns/module/nsstats user "nsadmin"]
 set password [ns_config ns/module/nsstats password ""]
 set enabled  [ns_config ns/module/nsstats enabled 1]
 set debug    0
-set ::templateFile nsstats.adp
 
+set ::templateFile nsstats
 
 if { ![nsv_exists _ns_stats threads_0] } {
     nsv_set _ns_stats thread_0      "OK"
@@ -63,8 +63,8 @@ set ::navLinks {
     background.jobs   "Jobs"
     background.sched  "Scheduled Procedures"
     config            "Configuration"
-    config.file       "Config File"
-    config.params     "Config Parameters"
+    config.file       "Configuration File"
+    config.params     "Configuration Parameters"
     locks             "Locks"
     locks.mutex       "Mutex and RW-Locks"
     locks.nsv         "Nsv Locks"
@@ -72,7 +72,7 @@ set ::navLinks {
     log.logfile       "System Log"
     log.httpclient    "HTTP Client Log"
     log.smtpsent      "SMTP Sent Log"
-    log.levels        "Log Levels"
+    log.levels        "Log Severities"
     mem               "Memory"
     mem.adp           "ADP"
     mem.tcl           "Allocated Memory"
@@ -80,6 +80,24 @@ set ::navLinks {
     mem.nsvsize       "Shared Variables (nsv)"
     process           "Process"
     threads           "Threads"
+}
+set ::titles {
+    background.jobs   "Jobs"
+    background.sched  "Scheduled Procedures"
+    config.file       "Configuration File"
+    config.params     "Configuration Parameters"
+    locks.mutex       "Memory Lock Statistics (Mutex and RW-Locks)"
+    locks.nsv         "Shared Variable Lock Statistics (nsv)"
+    log.logfile       "System Logfile"
+    log.httpclient    "HTTP Client Logfile Analysis"
+    log.smtpsent      "SMTP Sent Logfile Analysis"
+    log.levels        "Log Severities"
+    mem.adp           "ADP"
+    mem.tcl           "Allocated Memory"
+    mem.cache         "Cache Statistics (ns_cache)"
+    mem.nsvsize       "Shared Variable Statistics (nsv)"
+    process           "Process Information"
+    threads           "Running Threads"
 }
 
 #
@@ -158,6 +176,11 @@ td.defaulted {color: #aaa;}
 td.unread {color: red;}
 td.notneeded {color: orange;}
 
+tr.sortable td.selected   { background: #666666; color: #ffffff; }
+tr.sortable td.unselected { background: #999999; color: #ffffff; }
+tr.data td.selected       { background: #ececec; }
+tr.data td.unselected     { background: #ffffff; }
+
 .tooltip {
   position: relative;
   /*display: inline-block;*/
@@ -231,7 +254,7 @@ div.methodfilter label { margin-right: 6px; }
 }
 
 proc _ns_stats.footer {} {
-    set ::footer "</body></html>"
+    set ::footer "" ;#"</body></html>"
 }
 
 proc _ns_stats.index {} {
@@ -466,8 +489,8 @@ proc _ns_stats.mem.cache {} {
 
         append html \
             [_ns_stats.header Cache] \
-            "<h4>ns_cache operations saved since the start of the server [_ns_stats.fmtSeconds $totalSaved] on [_ns_stats.hr $totalRequests] requests " \
-            "([_ns_stats.hr [expr {$totalSaved/$totalRequests}]]s per request on average)</h4>" \n \
+            "<p class='summary'>ns_cache operations saved since the start of the server [_ns_stats.fmtSeconds $totalSaved] on [_ns_stats.hr $totalRequests] requests " \
+            "([_ns_stats.hr [expr {$totalSaved/$totalRequests}]]s per request on average)</p>" \n \
             [_ns_stats.results cache $col $colTitles ?@page=mem.cache $table $reverseSort {
                 left right right right right right right right right right right right right right right right right right
             }] \
@@ -604,7 +627,7 @@ proc _ns_stats.locks.mutex {} {
         lock time request req $p_lockTimePerReq, max requests per sec $p_maxPages <br>(except: [join $non_per_req_locks {, }])"
     append html \
         [_ns_stats.header "Locks"] \
-        "<h4>$line</h4>" \
+        "<p class='summary'>$line</p>" \
         [_ns_stats.results locks $col $colTitles ?@page=locks.mutex $rows $reverseSort {
             left right right right right right right right right right right right right right right
         }] \
@@ -981,16 +1004,31 @@ proc _ns_stats.config.params {} {
     set toc ""
     set sectionhtml ""
     foreach e $order {
-        if {$e eq ".br"} {
-            append sectionhtml "<tr><td colspan='2'>&nbsp</td></tr>\n"
-        }
+        #if {$e eq ".br"} {
+        #    append sectionhtml "<tr><td colspan='2'>&nbsp</td></tr>\n"
+        #}
         foreach section [lsort [array names table -regexp $e]] {
             set name [string map {~ /} $section]
             lappend toc "<a href='#ref-$name'>$name</a>"
-            set anchor "<a name='ref-$name'>$name</a>"
-            append sectionhtml "\n<tr><td colspan='2' class='colsection'><h4>$anchor</h4></td></tr>\n$table($section)\n"
+            #set anchor "<a name='ref-$name'>$name</a>"
+            append sectionhtml [ns_trim -delimiter | [subst {
+                | <section id="ref-$name">
+                |  <h2>$name</h2>
+                |  <table class="data-table">
+                |  <tr><th class="coltitle">Parameter</th><th class="coltitle">Value</th></tr>
+                |   $table($section)
+                |  </table>
+                | </section>
+            }]]
             unset table($section)
         }
+        # foreach section [lsort [array names table -regexp $e]] {
+        #     set name [string map {~ /} $section]
+        #     lappend toc "<a href='#ref-$name'>$name</a>"
+        #     set anchor "<a name='ref-$name'>$name</a>"
+        #     append sectionhtml "\n<tr><td colspan='2' class='colsection'><h4>$anchor</h4></td></tr>\n$table($section)\n"
+        #     unset table($section)
+        # }
     }
     if {[array size table] > 0} {
         append sectionhtml "\n<tr><td colspan='2' class='colsection'><h4>Extra Parameters</h4></td></tr>\n\n"
@@ -1001,14 +1039,18 @@ proc _ns_stats.config.params {} {
             append sectionhtml "\n<tr><td colspan='2' class='colsection'><h4>$anchor</h4></td></tr>\n$table($section)\n"
         }
     }
+    set ::sidebar [ns_trim -delimiter | [subst {
+        |<div class="sidebar">
+        |  <ul>
+        |   <li>[join $toc </li>\n<li>]</li>\n
+        |  </ul>
+        | </div>
+    }]]
+
     append html \
-        [_ns_stats.header "Config Parameters"] \
-        "<h4>The following values are defined in the configuration database:</h4>" \
-        "<table><tr><td valign='top' style='background:#eeeeee; white-space:nowrap;'>" \
-        "<ul style='list-style-type: none; margin: 0; padding: 0;'><li>[join $toc </li><li>]</li></ul>" \
-        </td><td> \
-        <table>$sectionhtml</table> \
-        </td></tr> \
+        [_ns_stats.header "Configuration Parameters"] \
+        "<p class='summary'>The following values are defined in the configuration database:</p>" \
+        "<div class='config values'>$sectionhtml</div>" \
         [_ns_stats.footer]
     return $html
 }
@@ -1199,7 +1241,7 @@ proc _ns_stats.mem.tcl {} {
 
 proc _ns_stats.process.table {values} {
     set html [subst {
-        <table class="data">
+        <table class="data-table w3-table w3-hoverable">
         <tr>
         <th valign="middle">Key</th>
         <th valign="middle">Value</th>
@@ -1248,7 +1290,9 @@ proc _ns_stats.process.callbacks {} {
 }
 
 proc _ns_stats.redirect {url} {
+    ns_log notice "RETURN REDIRECT <$url>"
     ns_returnredirect $url
+    ns_log notice "RETURN REDIRECT <$url> DONE"
     if {[info commands ad_script_abort] ne ""} {
         #
         # Avoid automatic triggering of ADP interpretation when
@@ -1274,8 +1318,8 @@ proc _ns_stats.log.levels {} {
         lappend values $s "<a href='[ns_conn url]?@page=[ns_queryget @page]&toggle=$s'>$label</a>"
     }
     append html \
-        [_ns_stats.header "Log Levels"] \
-        "<p>The following table shows the current log levels:<p>\n" \
+        [_ns_stats.header "Log Severity States"] \
+        "<p>The following table shows the log severities along with their activation states:<p>\n" \
         [_ns_stats.process.table $values] \
         [_ns_stats.footer]
     return $html
@@ -1709,7 +1753,7 @@ proc _ns_stats.process {} {
                        ]
 
         append html \
-            "<h2>Server $s</h2>" \n \
+            "<h2>Server '$s'</h2>" \n \
             [_ns_stats.process.table $values]
     }
 
@@ -2507,20 +2551,12 @@ proc _ns_stats.results {
     set numCols [llength $colTitles]
 
     for {set colNum 1} {$colNum <= $numCols} {incr colNum} {
-        if {$colNum == $selectedColNum} {
-            set colHdrColor($colNum)        "#666666"
-            set colHdrFontColor($colNum)    "#ffffff"
-            set colColor($colNum)           "#ececec"
-        } else {
-            set colHdrColor($colNum)        "#999999"
-            set colHdrFontColor($colNum)    "#ffffff"
-            set colColor($colNum)           "#ffffff"
-        }
+        set colClass($colNum) [expr {$colNum == $selectedColNum ? "selected" : "unselected"}]
     }
 
     set html [ns_trim -delimiter | [subst {
-        |<table class="$name">
-        |<tr>
+        |<table class="$name data-table w3-table w3-hoverable">
+        |<tr class="sortable">
     }]]
 
     set i 1
@@ -2549,10 +2585,8 @@ proc _ns_stats.results {
         }
 
         append html \
-            "<td valign='middle' align='$colAlign' bgcolor='$colHdrColor($i)'>" \
-            "<a href='$url&col=$i$::rawparam'>" \
-            "<font color='$colHdrFontColor($i)'>$title</font>" \
-            "</a></td>"
+            "<th valign='middle' align='$colAlign' class='coltitle $colClass($i)'>" \
+            "<a href='$url&col=$i$::rawparam'>$title</a></th>"
 
         incr i
     }
@@ -2561,7 +2595,7 @@ proc _ns_stats.results {
 
     foreach row $rows {
         set i 1
-        append html "<tr>"
+        append html "<tr class='data'>"
 
         foreach column $row title $colTitles {
             set colAlign "left"
@@ -2573,7 +2607,7 @@ proc _ns_stats.results {
                     set colAlign $align
                 }
             }
-            append html "<td class='$title' bgcolor='$colColor($i)' valign=top align=$colAlign>$column</td>"
+            append html "<td class='x $colClass($i)' valign='top' align='$colAlign'>$column</td>"
             incr i
         }
 
@@ -2829,7 +2863,7 @@ proc public_ip {ip} {
         expr {$ip ni {"127.0.0.1" "::1"}}
     }
 }
-ns_log $severity "nsstats: enabled $enabled configured user '$user' authuser '[ns_conn authuser]'"
+#ns_log $severity "nsstats: enabled $enabled configured user '$user' authuser '[ns_conn authuser]'"
 
 if {$enabled == 0} {
     #
@@ -2908,7 +2942,10 @@ if { !$allowed } {
         } else {
             set path [ns_url2file [ns_conn url]]
         }
-        set fn [file join {*}[lrange [file split $path] 0 end-1]]/$::templateFile
+        set fn [file join {*}[lrange [file split $path] 0 end-1]]/$::templateFile-[ns_info version].adp
+        if {![file exists $fn]} {
+            set fn [file join {*}[lrange [file split $path] 0 end-1]]/$::templateFile.adp
+        }
         #ns_log notice "final script <$fn> path <$path>"
         if {[file exists $fn]} {
             ns_return 200 text/html [ns_adp_parse -file $fn]
