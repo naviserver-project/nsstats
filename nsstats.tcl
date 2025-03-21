@@ -841,7 +841,7 @@ proc _ns_stats.log.logfile {} {
         if {$log_to_stderr} {
             set content [ns_trim -delimiter | [subst {
                 | <p>The configured log file <i>[ns_info log]</i> does not exist.
-                | <p>Was maybe the server is running in forground mode (i.e., started with the '-f' flag)?
+                | <p>Was maybe the server is running in foreground mode (i.e., started with the '-f' flag)?
             }]]
         } else {
             try {
@@ -2903,9 +2903,9 @@ if {$enabled == 0} {
 } elseif {$user ne "" && [ns_conn authuser] eq $user && [ns_conn authpassword] eq $password} {
     #
     # Allow access, when a user is configured, and it is the
-    # authenicated user and the password is correct.
+    # authenticated user and the password is correct.
     #
-    ns_log $severity "check password for user '$user' confingured in the file"
+    ns_log $severity "check password for user '$user' configured in the file"
 
     set allowed 1
 
