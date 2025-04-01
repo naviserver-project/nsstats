@@ -5,7 +5,58 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><%=$::title%></title>
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <style>
+<style>
+
+:root {
+  --background-color: #f9f9f9;            /* body */
+  --text-color: #000000;                  /* body text */
+  --link-color: #004080;                  /* link color */
+
+  --header-background-color: #004080;     /* header and menubar */
+  --header-text-color: #fff;              /* header */
+  --secondary-bg: #f1f1f1;                /* breadcrums, sidebar */
+  --dropdown-btn-bg: #0056b3;             /* dropdown buttons */
+  --dropdown-btn-color: #fff;             /* dropdown buttons */
+  --dropdown-content-bg: #fff;            /* dropdown content */
+  --dropdown-content-link-color: var(--link-color); /* dropdown --content */
+  --dropdown-content-border-width: 0px;
+  --dropdown-hover-bg: #ddd;              /* dropdown link hover */
+  --subtitle-bg: #e6e6e6;                 /* table subtitle */
+  --h-text-color: #004080;                /* h2 text */
+  --th-bg: #999;                          /* data-table header */
+  --border-color: #ccc;                   /* sidebar, data-table */
+  --sidebar-link-color: #004080;          /* sidebar link */
+
+  /*--hover-color: #e0e0e0;
+  --accent-color: #0066cc;*/
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background-color: #0F1B2B;
+    --text-color: #E0E0E0;
+    --link-color: #4D90FE;
+
+    --header-background-color: #1B263B;
+    --header-text-color: #fff;
+    --secondary-bg: #1B263B;
+    --dropdown-btn-bg: #333333;
+    --dropdown-btn-color: #8CA6C0;
+    --dropdown-content-bg: #1f1f1f;
+    --dropdown-content-link-color: var(--dropdown-btn-color); /* dropdown content */
+    --dropdown-content-border-width: 1px;
+    --dropdown-hover-bg: #2C3E50;
+    --subtitle-bg: #444;
+    --h-text-color: #DCDCDC;
+    --th-bg: #666;
+    --border-color: #444;
+    --sidebar-link-color: #ddd;
+
+    /* --hover-color: #2C3E50;
+    --accent-color: #4D90FE; */
+  }
+}
+
     /* Global */
     html {
       scroll-behavior: smooth;
@@ -13,14 +64,19 @@
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background-color: #f9f9f9;
+      background-color: var(--background-color); /*was #f9f9f9;*/
+      color: var(--text-color);
     }
-    /* Header */
+a {
+  color: var(--link-color);
+  text-decoration: none;
+}
+/* Header */
     header.custom-header {
       display: flex;
       align-items: center;
-      background-color: #004080;
-      color: #fff;
+      background-color: var(--header-background-color); /*was #004080;*/
+      color: var(--header-text-color); /*was #fff; */
       padding: 20px;
     }
     header.custom-header h1 {
@@ -38,22 +94,26 @@
       font-size: 12px;
     }
     header.custom-header h1 a {
-       color: #fff;
+       color: var(--dropdown-btn-color);
        font-size: 1em;
        text-decoration: none;
     }
+    header.custom-header h1 a:hover {
+      text-decoration: underline;
+    }
+
     header span.tagline { font-size: 16px; font-weight: 400; margin-left: 16px; }
 
     /* Breadcrumbs */
     .breadcrumbs {
       padding: 8px 16px;
-      background-color: #f1f1f1;
+      background-color: var(--secondary-bg); /*was #f1f1f1;*/
       font-size: 0.9em;
       color: #666;
       clear: both;
     }
     .breadcrumbs a {
-      color: #004080;
+      color: var(--link-color); /*was #004080;*/
       text-decoration: none;
     }
     .breadcrumbs a:hover {
@@ -65,7 +125,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background-color: #004080 !important;
+      background-color: var(--header-background-color) !important; /*was #004080;*/
       padding: 0 10px;
     }
     .menu-left {
@@ -74,7 +134,7 @@
     }
     .menu-bar a,
     .menu-bar .dropdown-btn {
-      color: #fff;
+      color: var(--dropdown-btn-color);
       text-decoration: none;
       padding: 14px 10px;
       font-size: 1em;
@@ -85,7 +145,7 @@
     .menu-bar a:hover,
     .menu-bar a.active,
     .menu-left .dropdown:hover .dropdown-btn {
-      background-color: #0056b3;
+        background-color: var(--dropdown-btn-bg) !important; /*was #0056b3*/
     }
    /* Menubar adjustments for small devices */
     @media (max-width: 905px) {
@@ -123,7 +183,8 @@
       position: absolute;
       top: 100%;
       left: 0;
-      background-color: #fff;
+      background-color: var(--dropdown-content-bg);
+      border: var(--dropdown-content-border-width) solid var(--dropdown-btn-bg);
       min-width: 250px;
       box-shadow: 0 8px 1em rgba(0,0,0,0.2);
       z-index: 1;
@@ -132,12 +193,12 @@
       display: block;
       text-align: left;
       padding: 12px 16px;
-      color: #004080;
+      color: var(--dropdown-content-link-color); /*was #004080;*/
       text-decoration: none;
       white-space: normal;
     }
     .dropdown .dropdown-content a:hover {
-      background-color: #ddd;
+      background-color: var(--dropdown-hover-bg) !important; /* was #ddd*/
     }
     .dropdown:hover .dropdown-content {
       display: block;
@@ -169,14 +230,14 @@
     /* Sidebar */
     .sidebar {
       width: 250px;
-      background-color: #eeeeee;
+      background-color: var(--secondary-bg); /*was #eeeeee;*/
       padding: 15px;
       box-sizing: border-box;
       position: sticky;
       top: 0;
       height: calc(100vh - 100px);
       overflow-y: auto;
-      border-right: 1px solid #ccc;
+      border-right: 1px solid var(--border-color) /*was #ccc*/;
       margin-right: 20px;
     }
     .sidebar ul {
@@ -189,7 +250,7 @@
     }
     .sidebar a {
       text-decoration: none;
-      color: #004080;
+      color: var(--sidebar-link-color); /*was #004080;*/
       font-weight: bold;
       font-size: 13px;
     }
@@ -200,7 +261,7 @@
         top: 0;
         height: calc(100vh - 100px);
         overflow-y: auto;
-        border-right: 1px solid #ccc;
+        border-right: 1px solid var(--border-color);
         margin-right: 10px;
       }
       .sidebar a {
@@ -215,8 +276,8 @@
       flex: 1;
     }
     .content h2 {
-      color: #004080;
-      border-bottom: 2px solid #ccc;
+      color: var(--h-text-color); /*was #004080;*/
+      border-bottom: 2px solid var(--border-color) ;
       padding-bottom: 5px;
       margin-top: 10px;
       text-align: left;
@@ -242,13 +303,13 @@
     }
     .data-table th,
     .data-table td {
-      border: 1px solid #ccc;
+      border: 1px solid var(--border-color) ;
       padding: 8px;
       text-align: left;
       font-size: 0.9rem;
     }
     .data-table th {
-      background-color: #999;
+      background-color:  var(--th-bg); /*was #999*/
       color: #fff;
     }
     .data-table th a {
@@ -327,7 +388,9 @@
 
 
 /* For nested table in process page */
-table.data-table td td.subtitle {text-align: right; white-space: nowrap; font-style: italic; background-color: #e6e6e6;}
+table.data-table td td.subtitle {text-align: right; white-space: nowrap; font-style: italic;
+   background-color:  var(--subtitle-bg) /*was #e6e6e6;*/
+}
 table.data-table td table td {font-size:smaller !important; padding: 2px !important; border-width: 0px !important;}
 
 /* Styling for defaulted/unread/notneed parameters */
@@ -335,7 +398,6 @@ td.defaulted {color: #aaa;}
 td.unread {color: red;}
 td.notneeded {color: orange;}
 table.config {font-size: 0.9rem;}
-
 
   </style>
   <%= $::extraHeadEntries %>
@@ -349,7 +411,7 @@ table.config {font-size: 0.9rem;}
         if {$name eq "process"} continue
         set dropdown [expr {[info procs _ns_stats.$name] eq ""}]
         set postincr 0
-        
+
         if {$dropdown} {
             set item [subst [ns_trim -delimiter | {
                 |<div class="dropdown">
@@ -363,17 +425,17 @@ table.config {font-size: 0.9rem;}
             #
             # End pulldown before outputting next item.
             #
-            lappend linkLines </div></div>       
+            lappend linkLines </div></div>
             incr level -1
         }
         lappend linkLines "[string repeat {  } $level]$item"
         incr level $postincr
-    }        
+    }
 %>
-              
+
 <!-- Header -->
 <header class="custom-header">
-  <h1><a href="<%=[ns_conn url]%>">NaviServer<span class="tagline">Monitoring and Statistics</span></a></h1>
+  <h1><a href="<%=[ns_conn url]%>"><strong>NaviServer</strong></a><span class="tagline">Monitoring and Statistics</span></h1>
   <div class="header-right">
     <p><strong><%=[ns_info hostname]%></strong></p>
     <p><%=[_ns_stats.fmtTime [ns_time]]%></p>
@@ -402,7 +464,7 @@ table.config {font-size: 0.9rem;}
   <!-- Sidebar -->
   <%=[expr {[info exists ::sidebar] ? $::sidebar : ""}]%>
   <!-- Main Content -->
-    <div class="content"> 
+    <div class="content">
     <h2><%=[dict get $::titles $::page]%></h2>
 <%= $html %>
     </div>
@@ -414,4 +476,3 @@ table.config {font-size: 0.9rem;}
 
 </body>
 </html>
-
