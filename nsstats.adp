@@ -8,51 +8,53 @@
 <style>
 
 :root {
-  --background-color: #f9f9f9;            /* body */
-  --text-color: #000000;                  /* body text */
-  --link-color: #004080;                  /* link color */
+  --color-body-bg: #f9f9f9;               /* body */
+  --color-body-text: #000000;             /* body text */
+  --color-anchor: #004080;                /* link text color */
 
-  --header-background-color: #004080;     /* header and menubar */
-  --header-text-color: #fff;              /* header */
-  --secondary-bg: #f1f1f1;                /* breadcrums, sidebar */
-  --dropdown-btn-bg: #0056b3;             /* dropdown buttons */
-  --dropdown-btn-color: #fff;             /* dropdown buttons */
-  --dropdown-content-bg: #fff;            /* dropdown content */
-  --dropdown-content-link-color: var(--link-color); /* dropdown --content */
+  --color-border: #ccc;                   /* sidebar, data-table */
+  --color-dropdown-btn-bg: #0056b3;       /* dropdown buttons */
+  --color-dropdown-btn-text: #fff;        /* dropdown buttons */
+  --color-dropdown-content-anchor-text: var(--color-anchor); /* dropdown --content */
+  --color-dropdown-content-bg: #fff;      /* dropdown content */
+  --color-dropdown-hover-bg: #ddd;        /* dropdown link hover */
+  --color-h2-text: #004080;               /* h2 text */
+  --color-header-bg: #004080;             /* header and menubar */
+  --color-header-strong-text: #fff;       /* "NaviServer" in the main header */
+  --color-header-text: #fff;              /* header */
+  --color-secondary-bg: #f1f1f1;          /* breadcrums, sidebar */
+  --color-sidebar-anchor: #004080;        /* sidebar link */
+  --color-subtitle-bg: #e6e6e6;           /* table subtitle */
+  --color-table-header-bg: #999;          /* data-table header */
   --dropdown-content-border-width: 0px;
-  --dropdown-hover-bg: #ddd;              /* dropdown link hover */
-  --subtitle-bg: #e6e6e6;                 /* table subtitle */
-  --h-text-color: #004080;                /* h2 text */
-  --th-bg: #999;                          /* data-table header */
-  --border-color: #ccc;                   /* sidebar, data-table */
-  --sidebar-link-color: #004080;          /* sidebar link */
 
-  /*--hover-color: #e0e0e0;
+  /*--color-anchor-hover: #e0e0e0;
   --accent-color: #0066cc;*/
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background-color: #0F1B2B;
-    --text-color: #E0E0E0;
-    --link-color: #4D90FE;
+    --color-body-bg: #0F1B2B;
+    --color-body-text: #E0E0E0;
+    --color-anchor: #84b3ff; /*#4D90FE;*/
 
-    --header-background-color: #1B263B;
-    --header-text-color: #fff;
-    --secondary-bg: #1B263B;
-    --dropdown-btn-bg: #333333;
-    --dropdown-btn-color: #8CA6C0;
-    --dropdown-content-bg: #1f1f1f;
-    --dropdown-content-link-color: var(--dropdown-btn-color); /* dropdown content */
-    --dropdown-content-border-width: 1px;
-    --dropdown-hover-bg: #2C3E50;
-    --subtitle-bg: #444;
-    --h-text-color: #DCDCDC;
-    --th-bg: #666;
-    --border-color: #444;
-    --sidebar-link-color: #ddd;
+    --color-border: #444;
+    --color-dropdown-btn-bg: #333333;
+    --color-dropdown-btn-text: #8CA6C0;
+    --color-dropdown-content-anchor-text: var(--color-dropdown-btn-text); /* dropdown content */
+    --color-dropdown-content-bg: #1f1f1f;
+    --color-dropdown-hover-bg: #2C3E50;
+    --color-h2-text: #DCDCDC;
+    --color-header-bg: #1B263B;
+    --color-header-strong-text: #9CB3C9; /* var(--color-anchor), #B0CFE0; */
+    --color-header-text: #fff;
+    --color-secondary-bg: #1B263B;
+    --color-sidebar-anchor: #ddd;
+    --color-subtitle-bg: #444;
+    --color-table-header-bg: #666;
+    --dropdown-content-border-width: 2px;
 
-    /* --hover-color: #2C3E50;
+    /* --color-anchor-hover: #2C3E50;
     --accent-color: #4D90FE; */
   }
 }
@@ -64,19 +66,19 @@
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background-color: var(--background-color); /*was #f9f9f9;*/
-      color: var(--text-color);
+      background-color: var(--color-body-bg); /*was #f9f9f9;*/
+      color: var(--color-body-text);
     }
 a {
-  color: var(--link-color);
+  color: var(--color-anchor);
   text-decoration: none;
 }
 /* Header */
     header.custom-header {
       display: flex;
       align-items: center;
-      background-color: var(--header-background-color); /*was #004080;*/
-      color: var(--header-text-color); /*was #fff; */
+      background-color: var(--color-header-bg); /*was #004080;*/
+      color: var(--color-header-text); /*was #fff; */
       padding: 20px;
     }
     header.custom-header h1 {
@@ -94,26 +96,28 @@ a {
       font-size: 12px;
     }
     header.custom-header h1 a {
-       color: var(--dropdown-btn-color);
        font-size: 1em;
        text-decoration: none;
     }
     header.custom-header h1 a:hover {
       text-decoration: underline;
+      color: var(--color-header-strong-text);
     }
-
+    header.custom-header h1 a strong {
+       color: var(--color-header-strong-text); /*var(--color-dropdown-btn-text);*/
+    }
     header span.tagline { font-size: 16px; font-weight: 400; margin-left: 16px; }
 
     /* Breadcrumbs */
     .breadcrumbs {
       padding: 8px 16px;
-      background-color: var(--secondary-bg); /*was #f1f1f1;*/
+      background-color: var(--color-secondary-bg); /*was #f1f1f1;*/
       font-size: 0.9em;
       color: #666;
       clear: both;
     }
     .breadcrumbs a {
-      color: var(--link-color); /*was #004080;*/
+      color: var(--color-anchor); /*was #004080;*/
       text-decoration: none;
     }
     .breadcrumbs a:hover {
@@ -125,7 +129,7 @@ a {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background-color: var(--header-background-color) !important; /*was #004080;*/
+      background-color: var(--color-header-bg) !important; /*was #004080;*/
       padding: 0 10px;
     }
     .menu-left {
@@ -134,7 +138,7 @@ a {
     }
     .menu-bar a,
     .menu-bar .dropdown-btn {
-      color: var(--dropdown-btn-color);
+      color: var(--color-dropdown-btn-text);
       text-decoration: none;
       padding: 14px 10px;
       font-size: 1em;
@@ -145,7 +149,7 @@ a {
     .menu-bar a:hover,
     .menu-bar a.active,
     .menu-left .dropdown:hover .dropdown-btn {
-        background-color: var(--dropdown-btn-bg) !important; /*was #0056b3*/
+        background-color: var(--color-dropdown-btn-bg) !important; /*was #0056b3*/
     }
    /* Menubar adjustments for small devices */
     @media (max-width: 905px) {
@@ -183,8 +187,8 @@ a {
       position: absolute;
       top: 100%;
       left: 0;
-      background-color: var(--dropdown-content-bg);
-      border: var(--dropdown-content-border-width) solid var(--dropdown-btn-bg);
+      background-color: var(--color-dropdown-content-bg);
+      border: var(--dropdown-content-border-width) solid var(--color-dropdown-btn-bg);
       min-width: 250px;
       box-shadow: 0 8px 1em rgba(0,0,0,0.2);
       z-index: 1;
@@ -193,12 +197,12 @@ a {
       display: block;
       text-align: left;
       padding: 12px 16px;
-      color: var(--dropdown-content-link-color); /*was #004080;*/
+      color: var(--color-dropdown-content-anchor-text); /*was #004080;*/
       text-decoration: none;
       white-space: normal;
     }
     .dropdown .dropdown-content a:hover {
-      background-color: var(--dropdown-hover-bg) !important; /* was #ddd*/
+      background-color: var(--color-dropdown-hover-bg) !important; /* was #ddd*/
     }
     .dropdown:hover .dropdown-content {
       display: block;
@@ -230,14 +234,14 @@ a {
     /* Sidebar */
     .sidebar {
       width: 250px;
-      background-color: var(--secondary-bg); /*was #eeeeee;*/
+      background-color: var(--color-secondary-bg); /*was #eeeeee;*/
       padding: 15px;
       box-sizing: border-box;
       position: sticky;
       top: 0;
       height: calc(100vh - 100px);
       overflow-y: auto;
-      border-right: 1px solid var(--border-color) /*was #ccc*/;
+      border-right: 1px solid var(--color-border) /*was #ccc*/;
       margin-right: 20px;
     }
     .sidebar ul {
@@ -250,7 +254,7 @@ a {
     }
     .sidebar a {
       text-decoration: none;
-      color: var(--sidebar-link-color); /*was #004080;*/
+      color: var(--color-sidebar-anchor); /*was #004080;*/
       font-weight: bold;
       font-size: 13px;
     }
@@ -261,7 +265,7 @@ a {
         top: 0;
         height: calc(100vh - 100px);
         overflow-y: auto;
-        border-right: 1px solid var(--border-color);
+        border-right: 1px solid var(--color-border);
         margin-right: 10px;
       }
       .sidebar a {
@@ -276,8 +280,8 @@ a {
       flex: 1;
     }
     .content h2 {
-      color: var(--h-text-color); /*was #004080;*/
-      border-bottom: 2px solid var(--border-color) ;
+      color: var(--color-h2-text); /*was #004080;*/
+      border-bottom: 2px solid var(--color-border) ;
       padding-bottom: 5px;
       margin-top: 10px;
       text-align: left;
@@ -303,13 +307,13 @@ a {
     }
     .data-table th,
     .data-table td {
-      border: 1px solid var(--border-color) ;
+      border: 1px solid var(--color-border) ;
       padding: 8px;
       text-align: left;
       font-size: 0.9rem;
     }
     .data-table th {
-      background-color:  var(--th-bg); /*was #999*/
+      background-color:  var(--color-table-header-bg); /*was #999*/
       color: #fff;
     }
     .data-table th a {
@@ -389,7 +393,7 @@ a {
 
 /* For nested table in process page */
 table.data-table td td.subtitle {text-align: right; white-space: nowrap; font-style: italic;
-   background-color:  var(--subtitle-bg) /*was #e6e6e6;*/
+   background-color:  var(--color-subtitle-bg) /*was #e6e6e6;*/
 }
 table.data-table td table td {font-size:smaller !important; padding: 2px !important; border-width: 0px !important;}
 
