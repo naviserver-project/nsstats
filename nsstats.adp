@@ -461,7 +461,7 @@ table.config {font-size: 0.9rem;}
 
 <!-- Breadcrumbs -->
 <div class="breadcrumbs">
-  <a href="/">Home</a> &gt; <a href="<%=[ns_conn url]%>">nsstats</a>  &gt; <%=[dict get $::navLinks $::page]%>
+  <a href="/">Home</a> &gt; <a href="<%=[ns_conn url]%>">nsstats</a>  &gt; <%=[dict get $::navLinks $page]%>
   <!-- <%= $::nav %> -->
 </div>
 
@@ -471,7 +471,7 @@ table.config {font-size: 0.9rem;}
   <%=[expr {[info exists ::sidebar] ? $::sidebar : ""}]%>
   <!-- Main Content -->
     <div class="content">
-    <h2><%=[dict get $::titles $::page]%></h2>
+    <h2><%=[dict get $::titles $page]%></h2>
 <%= $html %>
     </div>
 </div>
