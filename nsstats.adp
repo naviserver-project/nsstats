@@ -19,9 +19,10 @@
   --color-dropdown-content-bg: #fff;      /* dropdown content */
   --color-dropdown-hover-bg: #ddd;        /* dropdown link hover */
   --color-h2-text: #004080;               /* h2 text */
-  --color-header-bg: #004080;             /* header and menubar */
+  --color-header-bg: #004080;             /* header */
   --color-header-strong-text: #fff;       /* "NaviServer" in the main header */
   --color-header-text: #fff;              /* header */
+  --color-menubar-bg: #004080ed;          /* menubar */
   --color-secondary-bg: #f1f1f1;          /* breadcrums, sidebar */
   --color-sidebar-anchor: #004080;        /* sidebar link */
   --color-subtitle-bg: #e6e6e6;           /* table subtitle */
@@ -48,6 +49,7 @@
     --color-header-bg: #1B263B;
     --color-header-strong-text: #9CB3C9; /* var(--color-anchor), #B0CFE0; */
     --color-header-text: #fff;
+    --color-menubar-bg: var(--color-header-bg);
     --color-secondary-bg: #1B263B;
     --color-sidebar-anchor: #ddd;
     --color-subtitle-bg: #444;
@@ -129,7 +131,7 @@ a {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background-color: var(--color-header-bg) !important; /*was #004080;*/
+      background-color: var(--color-menubar-bg) !important; /*was #004080;*/
       padding: 0 10px;
     }
     .menu-left {
