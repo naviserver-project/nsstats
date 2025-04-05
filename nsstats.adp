@@ -312,7 +312,7 @@ a {
       width: 2em;
     }
     .data-table.sched th:nth-child(4),
-    .data-table.sched td: nth-child(4) {
+    .data-table.sched td:nth-child(4) {
       width: 250px;
     }
 
