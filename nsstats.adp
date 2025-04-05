@@ -307,6 +307,11 @@ a {
         width: 150px; /* Reduced width on small screens */
       }
     }
+
+   .data-table.sched th,
+   .data-table.sched td {
+       word-break: break-word;
+    }
     .data-table.sched th:first-child,
     .data-table.sched td:first-child {
       width: 2em;
@@ -332,7 +337,6 @@ a {
       padding: 8px;
       text-align: left;
       font-size: 0.9rem;
-      word-break: break-word;
     }
     .data-table th {
       background-color:  var(--color-table-header-bg); /*was #999*/
