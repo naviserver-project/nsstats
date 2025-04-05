@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><%=$::title%></title>
-  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <!--<link rel="icon" type="image/svg+xml" href="favicon.svg"> -->
 <style>
 
 :root {
@@ -307,6 +307,11 @@ a {
         width: 150px; /* Reduced width on small screens */
       }
     }
+    .data-table.sched th:first-child,
+    .data-table.sched td:first-child {
+      width: 2em;
+    }
+
     .data-table th,
     .data-table td {
       border: 1px solid var(--color-border) ;
