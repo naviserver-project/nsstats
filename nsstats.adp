@@ -318,6 +318,7 @@ a {
       padding: 8px;
       text-align: left;
       font-size: 0.9rem;
+      word-break: break-word;
     }
     .data-table th {
       background-color:  var(--color-table-header-bg); /*was #999*/
