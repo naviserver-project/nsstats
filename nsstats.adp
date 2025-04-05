@@ -311,6 +311,10 @@ a {
     .data-table.sched td:first-child {
       width: 2em;
     }
+    .data-table.sched th:nth-child(4),
+    .data-table.sched td: nth-child(4) {
+      width: 250px;
+    }
 
     .data-table th,
     .data-table td {
