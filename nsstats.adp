@@ -313,7 +313,17 @@ a {
     }
     .data-table.sched th:nth-child(4),
     .data-table.sched td:nth-child(4) {
-      width: 250px;
+      width: 450px;
+    }
+    @media (max-width: 905px) {
+      .data-table.sched th,
+      .data-table.sched td {
+          font-size: smaller;
+       }
+      .data-table.sched th:nth-child(4),
+      .data-table.sched td:nth-child(4) {
+        width: 220px; /* Reduced width on small screens */
+      }
     }
 
     .data-table th,
