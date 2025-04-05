@@ -65,7 +65,6 @@ set ::navLinks {
     config            "Configuration"
     config.file       "Configuration File"
     config.params     "Configuration Parameters"
-    list-lsof         "Open Files"
     locks             "Locks"
     locks.mutex       "Mutex and RW-Locks"
     locks.nsv         "Nsv Locks"
@@ -74,17 +73,24 @@ set ::navLinks {
     log.httpclient    "HTTP Client Log"
     log.smtpsent      "SMTP Sent Log"
     log.levels        "Log Severities"
-    mapped            "Connection Pool Mappings"
     mem               "Memory"
     mem.adp           "ADP"
     mem.tcl           "Allocated Memory"
     mem.cache         "Cache (ns_cache)"
     mem.nsvsize       "Shared Variables (nsv)"
     process           "Process"
-    proxy-workers     "nsproxy Workers"
     threads           "Threads"
-    url2file          "Url2File Mappings"
 }
+
+# The following entries have no counter parts in the navLinks
+# (we could add some of these to sub menus).
+#
+#    list-lsof         "Open Files"
+#    mapped            "Connection Pool Mappings"
+#    proxy-workers     "nsproxy Workers"
+#    url2file          "Url2File Mappings"
+
+
 set ::titles {
     background.jobs   "Jobs"
     background.sched  "Scheduled Procedures"
@@ -1727,7 +1733,7 @@ proc _ns_stats.process {} {
         set requestHandlers [ns_trim -delimiter | [subst {
             |Request Handlers:&nbsp;
             |<a href='?@page=requestprocs&server=$s'>[llength [ns_server -server $s requestprocs]]</a>,
-            |URL mappings:
+            |URL to file mappings:
             |<a href='?@page=url2file&server=$s'>
             |   [llength [ns_server -server $s url2file]]
             |</a>}]]
@@ -2012,7 +2018,6 @@ proc _ns_stats.list-lsof {} {
     }
     append html \
         [_ns_stats.header [list Process "?@page=process"] "Open Files"] \
-        "<h4>Open Files</h4>" \
         $body \
         "<p>Back to <a href='?@page=process'>process</a> page</p>" \
         [_ns_stats.footer]

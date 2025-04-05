@@ -485,7 +485,8 @@ table.config {font-size: 0.9rem;}
 
 <!-- Breadcrumbs -->
 <div class="breadcrumbs">
-  <a href="/">Home</a> &gt; <a href="<%=[ns_conn url]%>">nsstats</a>  &gt; <%=[dict get $::navLinks $page]%>
+  <a href="/">Home</a> &gt; <a href="<%=[ns_conn url]%>">nsstats</a>
+  &gt; <%=[expr {[dict exists $::navLinks $page]?[dict get $::navLinks $page]:[dict get $::titles $page]}]%>
   <!-- <%= $::nav %> -->
 </div>
 
