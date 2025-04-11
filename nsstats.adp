@@ -348,6 +348,7 @@ a {
     .data-table .coltitle {
       /*background-color: #eaeaea;*/
       font-weight: bold;
+      vertical-align: top;
     }
     .data-table .colvalue {
       overflow-wrap: break-word;
