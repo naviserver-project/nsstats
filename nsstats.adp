@@ -22,7 +22,7 @@
   --color-header-bg: #004080;             /* header */
   --color-header-strong-text: #fff;       /* "NaviServer" in the main header */
   --color-header-text: #fff;              /* header */
-  --color-menubar-bg: #004080ed;          /* menubar */
+  --color-menubar-bg: #00376f;            /* menubar; was 004080ed; */
   --color-secondary-bg: #f1f1f1;          /* breadcrums, sidebar */
   --color-sidebar-anchor: #004080;        /* sidebar link */
   --color-subtitle-bg: #e6e6e6;           /* table subtitle */
