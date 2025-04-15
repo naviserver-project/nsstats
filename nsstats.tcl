@@ -2200,37 +2200,42 @@ proc _ns_stats.log.chart {path section param title} {
         }
         incr count
         set data [_ns_stats.log.chart.parse-$section $line]
-        dict with data {
-            #
-            # Convert time to UTC format for JavaScript: 13/Nov/2022:00:19:49 +0100
-            #
-            # The timestgamp "ts" in JavaScript (result of Data.parse())
-            # is the time since January 1, 1970 in milliseconds
-            #
-            set ts [clock scan $ts0 -gmt 1 -format {%d/%b/%Y:%H:%M:%S}]
+        try {
+            dict with data {
+                #
+                # Convert time to UTC format for JavaScript: 13/Nov/2022:00:19:49 +0100
+                #
+                # The timestgamp "ts" in JavaScript (result of Data.parse())
+                # is the time since January 1, 1970 in milliseconds
+                #
+                set ts [clock scan $ts0 -gmt 1 -format {%d/%b/%Y:%H:%M:%S}]
 
-            dict lappend responsetime $host $ts $elapsed
-            dict incr requestcount0 [list $host $ts]
-            if {[dict exists $hostInfos $host]} {
-                set hostInfo [dict get $hostInfos $host]
-            } else {
-                set hostInfo {}
+                dict lappend responsetime $host $ts $elapsed
+                dict incr requestcount0 [list $host $ts]
+                if {[dict exists $hostInfos $host]} {
+                    set hostInfo [dict get $hostInfos $host]
+                } else {
+                    set hostInfo {}
+                }
+                dict incr hostInfo sent $sent
+                dict incr hostInfo received $received
+                dict incr hostInfo count
+                dict incr hostInfo reused $reused
+                dict incr hostInfo $status
+                if {[dict exists $hostInfo elapsed]} {
+                    dict set hostInfo elapsed [expr {[dict get $hostInfo elapsed] + $elapsed}]
+                } else {
+                    dict set hostInfo elapsed $elapsed
+                }
+                dict set hostInfos $host $hostInfo
+                dict set statusCodes $status 1
+                if {$errorLine ne ""} {
+                    lappend errorLines $errorLine
+                }
             }
-            dict incr hostInfo sent $sent
-            dict incr hostInfo received $received
-            dict incr hostInfo count
-            dict incr hostInfo reused $reused
-            dict incr hostInfo $status
-            if {[dict exists $hostInfo elapsed]} {
-                dict set hostInfo elapsed [expr {[dict get $hostInfo elapsed] + $elapsed}]
-            } else {
-                dict set hostInfo elapsed $elapsed
-            }
-            dict set hostInfos $host $hostInfo
-            dict set statusCodes $status 1
-            if {$errorLine ne ""} {
-                lappend errorLines $errorLine
-            }
+        } on error {errorMsg} {
+            ns_log warning _ns_stats.log.chart: cannot parse <$line>: $errorMsg
+            continue
         }
     }
     set t1 [clock milliseconds]
