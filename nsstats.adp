@@ -419,8 +419,10 @@ a {
 
 
 /* For nested table in process page */
-table.data-table td td.subtitle {text-align: right; white-space: nowrap; font-style: italic;
-   background-color:  var(--color-subtitle-bg) /*was #e6e6e6;*/
+table.data-table td td.subtitle {
+   text-align: right; white-space: nowrap; font-style: italic;
+   width:100px;
+   background-color:  var(--color-subtitle-bg); /*was #e6e6e6;*/
 }
 table.data-table td table td {font-size:smaller !important; padding: 2px !important; border-width: 0px !important;}
 
