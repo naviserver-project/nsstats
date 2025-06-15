@@ -1593,7 +1593,7 @@ proc _ns_stats.process {} {
                     "Log Statistics"      [_ns_stats.pretty {Notice Warning Debug(sql)} [ns_logctl stats] %.0f] \
                     Version              "[ns_info patchlevel] (tag $tag) $buildinfo" \
                     "Build Date"          [ns_info builddate] \
-                    Servers               [join [lmap s [ns_info servers] {list $s [ns_config ns/servers $s]}] <br>] \
+                    Servers               [join [lmap s [ns_info servers] {string cat "<a href='#$s'>$s</a>: [ns_config ns/servers $s]"}] <br>] \
                     {*}${driverInfo} \
                     {*}${certInfo} \
                     DB-Pools             "<table>[join [_ns_stats.process.dbpools]]</table>" \
@@ -1768,7 +1768,7 @@ proc _ns_stats.process {} {
                        ]
 
         append html \
-            "<h2>Server '$s'</h2>" \n \
+            "<h2 id='$s'>Server '$s'</h2>" \n \
             [_ns_stats.process.table $values]
     }
 
@@ -2860,6 +2860,8 @@ proc _ns_stats.hr {n {format %.2f}} {
 # Main processing logic
 set page [ns_queryget @page]
 
+ns_log notice severity $severity user $user password $password enabled $enabled debug $debug page $page
+
 #
 # raw number display
 #
@@ -2882,7 +2884,7 @@ proc public_ip {ip} {
         expr {$ip ni {"127.0.0.1" "::1"}}
     }
 }
-#ns_log $severity "nsstats: enabled $enabled configured user '$user' authuser '[ns_conn authuser]'"
+ns_log $severity "nsstats: enabled $enabled configured user '$user' authuser '[ns_conn authuser]'"
 
 if {$enabled == 0} {
     #
@@ -2890,7 +2892,7 @@ if {$enabled == 0} {
     #
     set allowed 0
 
-} elseif  {[info commands ::ad_try] ne "" && ("admin" in [ns_conn urlv] || "acs-admin" in  [ns_conn urlv])} {
+} elseif {[info commands ::ad_try] ne "" && ("admin" in [ns_conn urlv] || "acs-admin" in  [ns_conn urlv])} {
     #
     # In OpenACS installations, allow access, when we have a site
     # "admin" or a sitewide "acs-admin" link, which are always access
@@ -2905,18 +2907,19 @@ if {$enabled == 0} {
     # We have the "nsperm" module enabled, and the configured user is
     # in the loaded user table.
     #
-    ns_log $severity "nsstats: use nsperm"
-
+    ns_log $severity "nsstats: use nsperm, call 'ns_conn authuser'"
     if {[ns_conn authuser] ne $user} {
+        ns_log $severity "ns_conn authuser -> [ns_conn authuser]"
         set allowed 0
+        #
+        # Add permissions for GET and POST request
+        #
+        ns_perm allowuser GET  [ns_conn url] $user
+        ns_perm allowuser POST [ns_conn url] $user
+        #ns_log $severity permissions  \n[join [ns_perm listperms] \n]
     } else {
-        try {
-            ns_perm checkpass $user [ns_conn authpassword]
-        } on error {errorMsg} {
-            set allowed 0
-        } on ok {r} {
-            set allowed 1
-        }
+        # Authentication was already checked by NaviServer via nsperm
+        set allowed 1
     }
 
 } elseif {$user ne "" && [ns_conn authuser] eq $user && [ns_conn authpassword] eq $password} {
