@@ -2132,8 +2132,15 @@ proc _ns_stats.log.chart.parse-httpclient {line} {
         lassign [lrange $fields end-4 end] elapsed sent received reused cause
         set url [lrange $fields 5 end-5]
     }
+
     set host none
-    regexp {https?://([^/]+)/?} $url . host
+    try {
+        # remove curly braces and quotes
+        regexp {https?://([^/]+)/?} [lindex $url 0 0] . host
+    } on error {errorMsg} {
+        # remove curly braces
+        regexp {https?://([^/]+)/?} [lindex $url 0] . host
+    }
 
     return [list \
                 ts0 $ts0 \
