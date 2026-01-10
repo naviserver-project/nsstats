@@ -2186,7 +2186,8 @@ proc _ns_stats.log.chart {path section param title} {
     ns_log notice "nsstats: process $section $param log $path -> $logfiles"
     set t0 [clock milliseconds]
 
-    if {[file size $path] < 10} {
+    set filesize [expr {[file exists $path] ? [file size $path] : 0}]
+    if {$filesize < 10} {
         if {[llength $logfiles] > 0} {
             set path [lindex $logfiles 0]
             set logfiles [concat $path {*}[lreverse [lrange $logfiles 1 end]]]
@@ -2867,7 +2868,7 @@ proc _ns_stats.hr {n {format %.2f}} {
 # Main processing logic
 set page [ns_queryget @page]
 
-ns_log notice severity $severity user $user password $password enabled $enabled debug $debug page $page
+#ns_log notice severity $severity user $user password $password enabled $enabled debug $debug page $page
 
 #
 # raw number display
