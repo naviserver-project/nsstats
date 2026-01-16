@@ -804,7 +804,11 @@ proc _ns_stats.log.logfile {} {
         set access_content ""
         foreach s [ns_info servers] {
             try {
-                set lines [exec fgrep -- $filter [ns_config ns/server/$s/module/nslog file]]
+                set path [ns_config ns/server/$s/module/nslog file]
+                if {[file pathtype $path] eq "relative"} {
+                    set path [file normalize [ns_config ns/parameters logdir]/$path]
+                }
+                set lines [exec fgrep -- $filter $path]
                 append access_content $lines \n
             } on error {errorMsg} {
                 # just return no content lines when fgrep fails
