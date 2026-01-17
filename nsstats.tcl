@@ -804,7 +804,17 @@ proc _ns_stats.log.logfile {} {
         set access_content ""
         foreach s [ns_info servers] {
             try {
-                set path [ns_config ns/server/$s/module/nslog file]
+                set section ns/server/$s/module/nslog
+                set path [ns_config $section file]
+                if {$path eq ""} {
+                    # check the default
+                    set defaultSet [ns_configsection -filter defaults $section]
+                    if {$defaultSet eq ""} {
+                        # module not configured
+                        continue
+                    }
+                    set path [ns_set get $defaultSet file]
+                }
                 if {[file pathtype $path] eq "relative"} {
                     set path [file normalize [ns_config ns/parameters logdir]/$path]
                 }
