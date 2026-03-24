@@ -783,8 +783,13 @@ proc _ns_stats.mem.nsvsize {} {
 proc _ns_stats.log.prepare_content {type content} {
     set content [ns_quotehtml $content]
     switch $type {
-       access { regsub -all { ([-][^\]\n\" ]+[-]) } $content { <a href='nsstats.tcl?@page=log.logfile\&filter=\1'>\1</a> } content}
-       system { regsub -all {\[([-][^\]\n\" ]+[-])\]} $content {[<a href='nsstats.tcl?@page=log.logfile\&filter=\1'>\1</a>]} content}
+        access { regsub -all { ([-][^\]\n\" ]+[-]) } $content \
+                     { <a href='nsstats.tcl?@page=log.logfile\&filter=\1'>\1</a> } \
+                     content }
+        system { regsub -all {\[([-][^\]\n\" ]+[-])\]} $content \
+                     [string map [list @X@ [ns_queryget system_log [file tail [ns_info log]]]] \
+                          {[<a href='nsstats.tcl?@page=log.logfile\&filter=\1\&system_log=@X@'>\1</a>]}] \
+                     content }
     }
     return $content
 }
@@ -799,6 +804,9 @@ proc _ns_stats.log.logfile {} {
                           [binary decode hex 1b5b313b33396d] "" \
                          ]
     set filter [ns_queryget filter ""]
+    set system_log_tail [ns_queryget system_log [file tail [ns_info log]]]
+    set system_log [file dirname [ns_info log]]/$system_log_tail
+    set system_suffix [string range $system_log [string length [ns_info log]] end]
 
     if {$filter ne ""} {
         set access_content ""
@@ -819,19 +827,26 @@ proc _ns_stats.log.logfile {} {
                     set path [file normalize [ns_config ns/parameters logdir]/$path]
                 }
                 set lines [exec fgrep -- $filter $path]
+                if {$system_suffix ne "" && [file exists $path$system_suffix]} {
+                    append path $system_suffix
+                }
+                set lines [exec fgrep -- $filter $path]
                 append access_content $lines \n
             } on error {errorMsg} {
                 # just return no content lines when fgrep fails
             }
         }
         try {
-            set system_content [string map $colorcodemap [exec fgrep -A100 -- $filter [ns_info log]]]
+            set system_content [string map $colorcodemap [exec fgrep -A100 -- $filter $system_log]]
         } on error {errorMsg} {
             set system_content ""
         }
         try {
             set currentLine ""
             set lines {}
+            #
+            # Join continuation lines
+            #
             foreach l [split $system_content \n] {
                 if {[string range $l 0 0] eq ":"} {
                     append currentLine \n$l
@@ -841,6 +856,9 @@ proc _ns_stats.log.logfile {} {
                 }
             }
             lappend lines $currentLine
+            #
+            # Search in joined lines
+            #
             set system_content [join [lmap l $lines {
                 if {![string match *$filter* $l]} continue
                 set l
@@ -865,20 +883,20 @@ proc _ns_stats.log.logfile {} {
         try {
             set log_to_stderr [expr {"-f" in [ns_info argv]}]
         } on error {errorMsg} {
-            set log_to_stderr [expr {![file exists [ns_info log]]}]
+            set log_to_stderr [expr {![file exists $system_log]}]
         }
         if {$log_to_stderr} {
             set content [ns_trim -delimiter | [subst {
-                | <p>The configured log file <i>[ns_info log]</i> does not exist.
+                | <p>The configured log file <i>$system_log</i> does not exist.
                 | <p>Was maybe the server is running in foreground mode (i.e., started with the '-f' flag)?
             }]]
         } else {
             try {
-                set f [open [ns_info log]]
+                set f [open $system_log]
                 seek $f 0 end
-                set n [expr {[tell $f] -10000}]
+                set n [expr {[tell $f] - 40000}]
                 if {$n < 0} {
-                    set n 10000
+                    set n 40000
                 }
                 seek $f $n
                 # read the first partial line
@@ -893,11 +911,28 @@ proc _ns_stats.log.logfile {} {
         }
     }
 
+    set tails [lmap file [lsort -decreasing [glob [ns_info log].*]] {
+        if {[file size $file] < 10} continue
+        file tail $file
+    }]
+    set options [join [lmap tail [list [file tail [ns_info log]] {*}$tails] {
+        set selected [expr {"[file dirname $system_log]/$tail" eq $system_log ? " selected" : ""}]
+        set _ "<option value='$tail'$selected>$tail</option>"
+    }] \n]
+
     append html \
         [_ns_stats.header Log] \
-        "<form method='post' action='./nsstats.tcl'>Filter: " \
-        "<input type='hidden' name='@page' value='log.logfile'>" \
-        "<input name='filter' value='$filter' size='40'></form>" \
+        [ns_trim -subst -delimiter | {
+            |<form id='logform' method='post' action='./nsstats.tcl'>Filter:
+            |  <input type='hidden' name='@page' value='log.logfile'>
+            |  <input name='filter' value='$filter' size='40'>
+            |  <select name='system_log'>$options</select>
+            |</form>
+            |<script>
+            |  const form = document.getElementById('logform');
+            |  form.elements.system_log.addEventListener('change', function () {form.submit();});
+            |</script>
+        }] \
         $content \
         [_ns_stats.footer]
 
@@ -1470,7 +1505,7 @@ proc _ns_stats.process {} {
                 # external programs are necessary.
                 #
                 if {[info commands ns_certctl] ne ""} {
-                    lappend certInfo [join [ns_certctl list] <br>]
+                    lappend certInfo [join [lsort -unique [ns_certctl list]] <br>]
                     set certificateLabel "Loaded Certificates"
                 } else {
                     set server [dict get $entry server]
