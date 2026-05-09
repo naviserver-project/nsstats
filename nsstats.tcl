@@ -1068,9 +1068,6 @@ proc _ns_stats.config.params {} {
     set toc ""
     set sectionhtml ""
     foreach e $order {
-        #if {$e eq ".br"} {
-        #    append sectionhtml "<tr><td colspan='2'>&nbsp</td></tr>\n"
-        #}
         foreach section [lsort [array names table -regexp $e]] {
             set name [string map {~ /} $section]
             lappend toc "<a href='#ref-$name'>$name</a>"
@@ -1086,21 +1083,21 @@ proc _ns_stats.config.params {} {
             }]]
             unset table($section)
         }
-        # foreach section [lsort [array names table -regexp $e]] {
-        #     set name [string map {~ /} $section]
-        #     lappend toc "<a href='#ref-$name'>$name</a>"
-        #     set anchor "<a name='ref-$name'>$name</a>"
-        #     append sectionhtml "\n<tr><td colspan='2' class='colsection'><h4>$anchor</h4></td></tr>\n$table($section)\n"
-        #     unset table($section)
-        # }
     }
     if {[array size table] > 0} {
-        append sectionhtml "\n<tr><td colspan='2' class='colsection'><h4>Extra Parameters</h4></td></tr>\n\n"
+        # append sectionhtml "\n<tr><td colspan='2' class='colsection'><h2>Extra Parameters</h2></td></tr>\n\n"
         foreach section [lsort [array names table]] {
             set name [string map {~ /} $section]
             lappend toc "<a href='#ref-$name'>$name</a>"
-            set anchor "<a name='ref-$name'>$name</a>"
-            append sectionhtml "\n<tr><td colspan='2' class='colsection'><h4>$anchor</h4></td></tr>\n$table($section)\n"
+            append sectionhtml [ns_trim -delimiter | [subst {
+                | <section id="ref-$name">
+                |  <h2>$name</h2>
+                |  <table class="data-table">
+                |  <tr><th class="coltitle">Parameter</th><th class="coltitle">Value</th></tr>
+                |   $table($section)
+                |  </table>
+                | </section>
+            }]]
         }
     }
     set ::sidebar [ns_trim -delimiter | [subst {
