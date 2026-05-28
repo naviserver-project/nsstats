@@ -973,22 +973,46 @@ set ::tips(~module~,writerthreads) "Number of writer threads. (integer)"
 set ::tips(~tcl\$,errorlogheaders) "Connection headers to be logged in case of error (list)"
 
 
-proc _ns_stats.tooltip {section field} {
-    foreach n [array names ::tips] {
-        lassign [split $n ,] re f
-        if {$field eq $f && [regexp $re $section]} {return $::tips($n)}
+proc _ns_stats.skipConfigSection {sectionName} {
+    if {[namespace which ::ns_configdoc::sectionSpec] eq ""} {
+        return 0
     }
-    return ""
+
+    set spec [::ns_configdoc::sectionSpec $sectionName]
+    if {$spec eq ""} {
+        return 0
+    }
+    #
+    # Sections with "providesParamDoc" are helper/default sections whose
+    # values are intended to be copied into real configuration sections
+    # via ns_section -from.  In nsstats, the copied values are already
+    # materialized in the target sections, so showing the helper section
+    # would usually be redundant.
+    #
+    return [dict exists $spec :providesParamDoc]
 }
 
+
 proc _ns_stats.config.params {} {
+    set paramDocFile [file join [ns_info home] modules tcl config-parameters.tcl]
+    ns_log notice paramDocFile [file readable $paramDocFile] $paramDocFile
+    if {[file readable $paramDocFile]} {
+        source $paramDocFile
+    } else {
+        set ::configParamDoc {}
+    }
+
     set out [list]
     foreach section [lsort [ns_configsections]] {
         # We want to have e.g. "aaa/pools" before "aaa/pool/foo",
         # therefore we map "/" to "" to put it in the collating sequence
         # after plain chars
         set sectionName [ns_set name $section]
-        set name [string map {/ ~} $sectionName]
+        if {[_ns_stats.skipConfigSection $sectionName]} {
+            continue
+        }
+
+        set tableName [string map {/ ~} $sectionName]
 
         try {
             set defaults [ns_configsection -filter defaults $sectionName]
@@ -1003,6 +1027,11 @@ proc _ns_stats.config.params {} {
         set keys {}
         for { set i 0 } { $i < [ns_set size $section] } { incr i } {
             set key [string tolower [ns_set key $section $i]]
+            if {[ns_set isnull $section $i]} {
+                # these are most likely parameters, which have just been queried for existence
+                ns_log notice "DEBUG: ignore NULL value (section $sectionName key $key)"
+                continue
+            }
             set value [ns_set value $section $i]
             if {$defaults ne ""} {
                 set default [ns_set iget $defaults $key]
@@ -1022,41 +1051,78 @@ proc _ns_stats.config.params {} {
 
         set line ""
         foreach section_key [lsort [dict keys $keys]] {
-            set tip [_ns_stats.tooltip $name $section_key]
-            set tipclass [expr {$tip ne "" ? "tip" : ""}]
             set valueDicts [dict get $keys $section_key]
-            set values ""
-            set class "colvalue"
-            set tooltip_text ""
-            foreach valueDict [dict get $keys $section_key] {
-                set value [dict get $valueDict value]
+
+            #
+            # Collect runtime defaults for this parameter first. Usually there is only
+            # one, but repeated parameters may produce more.
+            #
+            set defaults {}
+            foreach valueDict $valueDicts {
                 set default [dict get $valueDict default]
-                set flags ""
-                if {[dict get $valueDict defaulted]} {
-                    lappend class defaulted tooltip
+                if {$default ne ""} {
+                    lappend defaults $default
+                }
+            }
+            set defaults [lsort -unique $defaults]
+            set defaultForTooltip [join $defaults {, }]
+
+            #
+            # The parameter tooltip is still shown only when we have documentation.
+            #
+            set spec ""
+            if {[namespace which ::ns_configdoc::get] ne ""} {
+                set spec [::ns_configdoc::get $sectionName $section_key]
+            }
+            if {[namespace which ::ns_configdoc::tooltip] ne ""} {
+                set tip [::ns_configdoc::tooltip $sectionName $section_key $defaultForTooltip]
+            } else {
+                set tip ""
+            }
+
+            set titleClasses {coltitle}
+
+            if {$tip ne ""} {
+                lappend titleClasses tip
+            }
+
+            if {$spec ne "" && [dict exists $spec deprecated]} {
+                lappend titleClasses deprecated
+            }
+            set tipclass [expr {$tip ne "" ? "tip" : ""}]
+
+            set values {}
+            set classes {colvalue}
+            set tooltip_text ""
+
+            foreach valueDict $valueDicts {
+                set value       [dict get $valueDict value]
+                set default     [dict get $valueDict default]
+                set isDefaulted [dict get $valueDict defaulted]
+                set isUnread    [dict get $valueDict unread]
+
+                if {$isDefaulted} {
+                    lappend classes defaulted tooltip
                     set tooltip_text {<span class="tooltiptext">Value is default</span>}
-                }
-                if {[dict get $valueDict unread]} {
-                    lappend class unread tooltip
+
+                } elseif {$isUnread} {
+                    lappend classes unread tooltip
                     set tooltip_text {<span class="tooltiptext">Value was not read during startup</span>}
+
+                } elseif {$default ne "" && $default eq $value} {
+                    lappend classes notneeded tooltip
+                    set tooltip_text {<span class="tooltiptext">Value is set to default (not needed)</span>}
                 }
-                if {$default ne "" && ![dict get $valueDict defaulted]} {
-                    append section_key " " "($default)"
-                    if {$default eq $value} {
-                        lappend class notneeded tooltip
-                        set tooltip_text {<span class="tooltiptext">Value is set to default (not needed)</span>}
-                    }
-                }
-                if {$flags ne ""} {
-                    append value " " $flags
-                }
+
                 lappend values $value
             }
-            lappend line "<tr><td title='$tip' class='coltitle $tipclass'>$section_key:</td>\n\
-        <td class='$class'>[join $values <br>]$tooltip_text</td></tr>"
+
+            lappend line "<tr><td title='[ns_quotehtml $tip]' class='[join [lsort -unique $titleClasses] { }]'>$section_key:</td>\n\
+        <td class='[lsort -unique $classes]'>[join $values <br>]$tooltip_text</td></tr>"
         }
-        set table($name) [join $line \n]
+        set table($tableName) [join $line \n]
     }
+
     set order {
         ns~parameters ns~encodings ns~mimetypes ns~fastpath ns~threads .br
         ns~modules ns~module~.* .br

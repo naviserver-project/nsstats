@@ -1,6 +1,6 @@
 # Statistics Module for NaviServer 4.99.27 or Newer
 
-**Release:** 1.13  
+**Release:** 1.14  
 
 ## Overview
 

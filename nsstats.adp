@@ -350,6 +350,23 @@ a {
       font-weight: bold;
       vertical-align: top;
     }
+    .data-table td.coltitle.deprecated {
+      /*color: #6f42c1;*/
+      font-style: italic;
+      opacity: 0.75;
+    }
+    .data-table td.coltitle.deprecated::after {
+      content: "deprecated";
+      display: inline-block;
+      margin-left: 0.45em;
+      padding: 0.05em 0.35em;
+      border: 1px solid #6f42c1;
+      border-radius: 0.35em;
+      color: #6f42c1;
+      font-size: 0.75em;
+      font-weight: normal;
+      line-height: 1.2;
+    }
     .data-table .colvalue {
       overflow-wrap: break-word;
     }
