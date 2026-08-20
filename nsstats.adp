@@ -442,6 +442,7 @@ table.data-table td td.subtitle {
    background-color:  var(--color-subtitle-bg); /*was #e6e6e6;*/
 }
 table.data-table td table td {font-size:smaller !important; padding: 2px !important; border-width: 0px !important;}
+table.data-table td.right, table.data-table th.right { text-align: right;}
 
 /* Styling for defaulted/unread/notneed parameters */
 td.defaulted {color: #aaa;}

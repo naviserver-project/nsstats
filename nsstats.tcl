@@ -2552,44 +2552,134 @@ proc _ns_stats.threads {} {
 
     set pid [pid]
     set threadInfo [ns_info threads]
-    if {[file readable /proc/$pid/statm] && [llength [lindex $threadInfo 0]] > 7} {
-        set colNumSort  {. 0 0 1 1 1 0 0 1 1 0}
-        set colTitles   {Thread Parent ID    Flags "Create Time" TID   State utime stime Args}
-        set align       {left   left   right left   left         right right right right left}
-        set osInfo      1
-        set HZ          100  ;# for more reliable handling, we should implement jiffies_to_timespec or jiffies_to_secs in C
+    set cpuSource  none
+    set cpuTimes   {}
+    set osInfo     0
+
+    if {[llength [lindex $threadInfo 0]] > 7} {
+        try {
+            set cpuTimes [ns_info threadcputimes]
+            set cpuSource api
+        } on error {errorMsg} {
+            if {[file readable /proc/$pid/statm]} {
+                set cpuSource proc
+                set HZ     100  ;# for more reliable handling, we should implement jiffies_to_timespec or jiffies_to_secs in C
+                set HZ 100
+            }
+        }
+        set osInfo 1
+    }
+
+    if {$osInfo} {
+        set colNumSort {. 0 0 1 1 1 0 1 1 1 0}
+        set colTitles  {Thread Parent ID    Flags "Create Time" TID   State utime stime "CPU %" Args}
+        set align      {left   left   right left   left         right right right right right   left}
     } else {
-        set colNumSort  {. 0 0 1 1 1 0}
-        set colTitles   {Thread Parent ID    Flags "Create Time" Args}
-        set align       {left   left   right left   left         left}
-        set osInfo      0
+        set colNumSort {. 0 0 1 1 1 0}
+        set colTitles  {Thread Parent ID Flags "Create Time" Args}
+        set align      {left left right left left left}
     }
 
     if {$osInfo} {
         set ti {}
+        set cpuSample [dict create threads {}]
+
+        # collect a sample of CPU times per thread
         foreach t $threadInfo {
-            set fn /proc/$pid/task/[lindex $t 7]/stat
-            if {[file readable $fn]} {
-                set f [open $fn]; set s [read $f]; close $f
-            } elseif {[file readable /proc/$pid/task/$pid/stat]} {
-                set f [open /proc/$pid/task/$pid/stat]; set s [read $f]; close $f
-            } else {
-                set s ""
+            set tid   [lindex $t 7]
+            set state 0
+            set utime 0
+            set stime 0
+
+            if {$cpuSource eq "api"} {
+                if {[dict exists $cpuTimes $tid]} {
+                    set times [dict get $cpuTimes $tid]
+
+                    set utime [expr {[dict get $times user] / 1000000.0}]
+                    set stime [expr {[dict get $times system] / 1000000.0}]
+
+                    if {[dict exists $times state]} {
+                        set state [dict get $times state]
+                    }
+                }
+
+            } elseif {$cpuSource eq "proc"} {
+                set fn /proc/$pid/task/$tid/stat
+
+                if {[file readable $fn]} {
+                    set f [open $fn]
+                    set s [read $f]
+                    close $f
+                } elseif {[file readable /proc/$pid/task/$pid/stat]} {
+                    set f [open /proc/$pid/task/$pid/stat]
+                    set s [read $f]
+                    close $f
+                } else {
+                    set s ""
+                }
+
+                if {$s ne ""} {
+                    lassign $s tid comm state ppid pgrp session tty_nr tpgid \
+                        flags minflt cminflt majflt cmajflt utime stime \
+                        cutime cstime priority nice numthreads itrealval \
+                        starttime vsize rss rsslim startcode endcode \
+                        startstack kstkesp kstkeip signal blocked sigignore \
+                        sigcatch wchan nswap cnswap ext_signal processor
+
+                    set state "$state [format %.2d $processor]"
+                    set utime [expr {$utime * 1.0 / $HZ}]
+                    set stime [expr {$stime * 1.0 / $HZ}]
+                }
             }
-            if {$s ne ""} {
-                lassign $s tid comm state ppid pgrp session tty_nr tpgid flags minflt \
-                    cminflt majflt cmajflt utime stime cutime cstime priority nice \
-                    numthreads itrealval starttime vsize rss rsslim startcode endcode \
-                    startstack kstkesp kstkeip signal blocked sigignore sigcatch wchan \
-                    nswap cnswap ext_signal processor
-                set state "$state [format %.2d $processor]"
-            } else {
-                lassign {} tid state
-                lassign {0 0} utime stime
-            }
+
+            set threadKey [list $tid [lindex $t 4]]
+
+            dict set cpuSample threads $threadKey \
+                [dict create utime $utime stime $stime]
+
             lappend ti [linsert $t 5 $tid $state $utime $stime]
         }
-        set threadInfo $ti
+        dict set cpuSample sampled_at [clock clicks -microseconds]
+
+        # get the previous sample when available
+        set previousSample \
+            [nsv_set -reset _ns_stats threadCpuSample $cpuSample]
+
+        set sampledAt [dict get $cpuSample sampled_at]
+        set elapsed   0.0
+        if {[dict exists $previousSample sampled_at]} {
+            set elapsed [expr {($sampledAt - [dict get $previousSample sampled_at]) / 1000000.0 }]
+        }
+
+        #
+        # Add the CPU usage percentages
+        #
+        set tiWithCpu {}
+
+        foreach t $ti {
+            set tid       [lindex $t 5]
+            set threadKey [list $tid [lindex $t 4]]
+            set cpu       -1.0
+
+            if {$elapsed > 0.0
+                && [dict exists $previousSample threads $threadKey]} {
+
+                set old [dict get $previousSample threads $threadKey]
+                set du  [expr {[lindex $t 7] - [dict get $old utime]}]
+                set ds  [expr {[lindex $t 8] - [dict get $old stime]}]
+
+                if {$du >= 0.0 && $ds >= 0.0} {
+                    set cpu [expr {100.0 * ($du + $ds) / $elapsed}]
+                }
+            }
+
+            #
+            # Insert before proc and arg.
+            #
+            lappend tiWithCpu [linsert $t 9 $cpu]
+        }
+
+        set threadInfo $tiWithCpu
     }
 
     set rows ""
@@ -2599,18 +2689,21 @@ proc _ns_stats.threads {} {
         set id      [lindex $t 2]
         set flags   [_ns_stats.getThreadType [lindex $t 3]]
         set create  [_ns_stats.fmtTime [lindex $t 4]]
+
         if {$osInfo} {
             set tid      [lindex $t 5]
             set state    [lindex $t 6]
             set utime    [lindex $t 7]
             set stime    [lindex $t 8]
-            set proc     [lindex $t 9]
-            set arg      [lindex $t 10]
+            set cpu      [lindex $t 9]
+            set cpuDisplay [expr {$cpu < 0.0 ? "\u2014" : [format %.1f $cpu] }]
+            set proc     [lindex $t 10]
+            set arg      [lindex $t 11]
             if {"p:0x0" eq $proc} { set proc "NULL" }
             if {"a:0x0" eq $arg} { set arg "NULL" }
-            set stime    [_ns_stats.hr [expr {$stime*1.0/$HZ}]]s
-            set utime    [_ns_stats.hr [expr {$utime*1.0/$HZ}]]s
-            lappend rows [list $thread $parent $id $flags $create $tid $state $utime $stime $arg]
+            set stime    [_ns_stats.hr $stime]s
+            set utime    [_ns_stats.hr $utime]s
+            lappend rows [list $thread $parent $id $flags $create $tid $state $utime $stime $cpuDisplay $arg]
         } else {
             set proc     [lindex $t 5]
             set arg      [lindex $t 6]
@@ -2714,17 +2807,21 @@ proc _ns_stats.results {
         }
 
         set colAlign "left"
+        set cssAlign ""
 
         if {[llength $colAlignment]} {
             set align [lindex $colAlignment $i-1]
 
             if {[string length $align]} {
                 set colAlign $align
+                if {$align eq "right"} {
+                    set cssAlign right
+                }
             }
         }
 
         append html \
-            "<th valign='middle' align='$colAlign' class='coltitle $colClass($i)'>" \
+            "<th valign='middle' align='$colAlign' class='coltitle $colClass($i) $cssAlign'>" \
             "<a href='$url&col=$i$::rawparam'>$title</a></th>"
 
         incr i
@@ -2738,15 +2835,19 @@ proc _ns_stats.results {
 
         foreach column $row title $colTitles {
             set colAlign "left"
+            set cssAlign ""
 
             if {[llength $colAlignment]} {
                 set align [lindex $colAlignment $i-1]
 
                 if {[string length $align]} {
                     set colAlign $align
+                    if {$align eq "right"} {
+                        set cssAlign right
+                    }
                 }
             }
-            append html "<td class='x $colClass($i)' valign='top' align='$colAlign'>$column</td>"
+            append html "<td class='x $colClass($i) $cssAlign' valign='top' align='$colAlign'>$column</td>"
             incr i
         }
 
