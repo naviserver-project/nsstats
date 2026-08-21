@@ -513,6 +513,36 @@ proc _ns_stats.mem.cache {} {
     }
     return $html
 }
+
+
+proc _ns_stats.requestsPerSecond {} {
+    set now      [clock microseconds]
+    set requests [_ns_stats.totalRequests]
+    set sample   [dict create timestamp $now requests $requests]
+
+    set previousSample \
+        [nsv_set -reset _ns_stats requestRateSample $sample]
+
+    if {$previousSample eq ""
+        || ![dict exists $previousSample timestamp]
+        || ![dict exists $previousSample requests]} {
+        return ""
+    }
+
+    set elapsed [expr {
+        ($now - [dict get $previousSample timestamp]) / 1000000.0
+    }]
+    set delta [expr {
+        $requests - [dict get $previousSample requests]
+    }]
+
+    if {$elapsed <= 0.0 || $delta < 0} {
+        return ""
+    }
+
+    return [expr {$delta / $elapsed}]
+}
+
 proc _ns_stats.totalRequests {} {
     set totalRequests 0
     foreach s [ns_info servers] {
@@ -2713,8 +2743,12 @@ proc _ns_stats.threads {} {
         }
     }
 
+    set requestRate [_ns_stats.requestsPerSecond]
+    set requestRateDisplay [expr {$requestRate ne "" ? "[format %.2f $requestRate] requests per second" : "\u2014"}]
+
     append html \
         [_ns_stats.header Threads] \
+        "Current Request rate: $requestRateDisplay" \
         [_ns_stats.results threads $col $colTitles ?@page=threads $rows $reverseSort $align] \
         [_ns_stats.footer]
     return $html
