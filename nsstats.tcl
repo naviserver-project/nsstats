@@ -78,6 +78,7 @@ set ::navLinks {
     mem.tcl           "Allocated Memory"
     mem.cache         "Cache (ns_cache)"
     mem.nsvsize       "Shared Variables (nsv)"
+    utilization       "Utilization"
     process           "Process"
     threads           "Threads"
 }
@@ -112,6 +113,7 @@ set ::titles {
     proxy-workers     "nsproxy Workers"
     requestprocs      "Request Handlers"
     threads           "Running Threads"
+    utilization       "Utilization"
     url2file          "Url2File Mappings"
 }
 
@@ -514,33 +516,71 @@ proc _ns_stats.mem.cache {} {
     return $html
 }
 
+proc _ns_stats.requestRates {sampleKey} {
+    set now          [clock microseconds]
+    set total        0
+    set serverCounts {}
 
-proc _ns_stats.requestsPerSecond {} {
-    set now      [clock microseconds]
-    set requests [_ns_stats.totalRequests]
-    set sample   [dict create timestamp $now requests $requests]
+    foreach server [ns_info servers] {
+        set requests 0
+
+        foreach pool [ns_server -server $server pools] {
+            incr requests \
+                [dict get [ns_server -server $server -pool $pool stats] requests]
+        }
+
+        dict set serverCounts $server $requests
+        incr total $requests
+    }
+
+    set sample [dict create \
+                    timestamp $now \
+                    total     $total \
+                    servers   $serverCounts]
 
     set previousSample \
-        [nsv_set -reset _ns_stats requestRateSample $sample]
+        [nsv_set -reset _ns_stats $sampleKey $sample]
+
+    set rates {}
 
     if {$previousSample eq ""
         || ![dict exists $previousSample timestamp]
-        || ![dict exists $previousSample requests]} {
-        return ""
+        || ![dict exists $previousSample total]
+        || ![dict exists $previousSample servers]} {
+        return $rates
     }
 
     set elapsed [expr {
         ($now - [dict get $previousSample timestamp]) / 1000000.0
     }]
-    set delta [expr {
-        $requests - [dict get $previousSample requests]
-    }]
 
-    if {$elapsed <= 0.0 || $delta < 0} {
-        return ""
+    if {$elapsed <= 0.0} {
+        return $rates
     }
 
-    return [expr {$delta / $elapsed}]
+    set previousTotal [dict get $previousSample total]
+    set totalDelta    [expr {$total - $previousTotal}]
+
+    if {$totalDelta >= 0} {
+        dict set rates total [expr {$totalDelta / $elapsed}]
+    }
+
+    set previousServerCounts [dict get $previousSample servers]
+
+    dict for {server requests} $serverCounts {
+        if {[dict exists $previousServerCounts $server]} {
+            set delta [expr {
+                $requests - [dict get $previousServerCounts $server]
+            }]
+
+            if {$delta >= 0} {
+                dict set rates servers $server \
+                    [expr {$delta / $elapsed}]
+            }
+        }
+    }
+
+    return $rates
 }
 
 proc _ns_stats.totalRequests {} {
@@ -556,6 +596,826 @@ proc _ns_stats.totalRequests {} {
     }
     return $totalRequests
 }
+
+
+proc _ns_stats.utilizationSample {} {
+    set now     [clock microseconds]
+    set drivers {}
+    set queues  {}
+    set servers {}
+
+    foreach stats [ns_driver stats] {
+        dict set drivers [dict get $stats thread] $stats
+    }
+
+    foreach kind {driver writer spooler} {
+        if {![catch {ns_driver queues $kind} entries]} {
+            foreach entry $entries {
+                dict set queues $kind [dict get $entry thread] $entry
+            }
+        }
+    }
+
+    foreach server [ns_info servers] {
+        foreach pool [ns_server -server $server pools] {
+            set stats   [ns_server -server $server -pool $pool stats]
+            set threads [ns_server -server $server -pool $pool threads]
+
+            dict set servers $server pools $pool \
+                [dict create \
+                     stats   $stats \
+                     threads $threads \
+                     waiting [ns_server -server $server -pool $pool waiting] \
+                     active  [llength \
+                                  [ns_server -server $server \
+                                       -pool $pool all]]]
+        }
+    }
+
+    set sample [dict create \
+                    timestamp $now \
+                    drivers   $drivers \
+                    queues    $queues \
+                    servers   $servers]
+
+    set previous \
+        [nsv_set -reset _ns_stats utilizationSample $sample]
+
+    set elapsed 0.0
+    if {$previous ne "" && [dict exists $previous timestamp]} {
+        set elapsed [expr {
+            ($now - [dict get $previous timestamp]) / 1000000.0
+        }]
+    }
+
+    return [dict create \
+                current  $sample \
+                previous $previous \
+                elapsed  $elapsed]
+}
+
+proc _ns_stats.intervalRate {current previous elapsed args} {
+    if {$elapsed <= 0.0
+        || ![dict exists $current {*}$args]
+        || ![dict exists $previous {*}$args]} {
+        return -1.0
+    }
+
+    set delta [expr {
+        [dict get $current {*}$args]
+        - [dict get $previous {*}$args]
+    }]
+
+    return [expr {$delta >= 0 ? $delta / $elapsed : -1.0}]
+}
+
+proc _ns_stats.intervalAverage {
+    current previous valuePath requestsPath
+} {
+    if {![dict exists $current {*}$valuePath]
+        || ![dict exists $previous {*}$valuePath]
+        || ![dict exists $current {*}$requestsPath]
+        || ![dict exists $previous {*}$requestsPath]} {
+        return -1.0
+    }
+
+    set count [expr {
+        [dict get $current {*}$requestsPath]
+        - [dict get $previous {*}$requestsPath]
+    }]
+
+    if {$count <= 0} {
+        return -1.0
+    }
+
+    set value [expr {
+        [dict get $current {*}$valuePath]
+        - [dict get $previous {*}$valuePath]
+    }]
+
+    return [expr {$value >= 0.0 ? $value / $count : -1.0}]
+}
+
+
+#### REALLY NEEDED?
+proc _ns_stats.dictGetDef {dictionary args} {
+    set default [lindex $args end]
+    set path    [lrange $args 0 end-1]
+
+    if {[dict exists $dictionary {*}$path]} {
+        return [dict get $dictionary {*}$path]
+    }
+    return $default
+}
+
+
+proc _ns_stats.utilization.sumPoolCounter {sample counter} {
+    set total 0
+
+    if {![dict exists $sample servers]} {
+        return $total
+    }
+
+    dict for {server serverData} [dict get $sample servers] {
+        dict for {pool poolData} [dict get $serverData pools] {
+            set total [expr {$total + [_ns_stats.dictGetDef $poolData stats $counter 0]}]
+        }
+    }
+
+    return $total
+}
+
+proc _ns_stats.utilization.sumDriverCounter {sample counter} {
+    set total 0
+    if {![dict exists $sample drivers]} {
+        return $total
+    }
+    dict for {driver stats} [dict get $sample drivers] {
+        incr total [_ns_stats.dictGetDef $stats $counter 0]
+    }
+    return $total
+}
+
+
+proc _ns_stats.utilization.rate {current previous elapsed} {
+    if {$elapsed <= 0.0} {
+        return -1.0
+    }
+
+    set delta [expr {$current - $previous}]
+    return [expr {$delta >= 0 ? $delta / $elapsed : -1.0}]
+}
+
+#proc _ns_stats.utilization.displayRate {rate {suffix /s}} {
+#    return [expr {
+#        $rate < 0.0 ? "\u2014" : "[_ns_stats.hr $rate %.1f]$suffix"
+#    }]
+#}
+
+proc _ns_stats.utilization.displayRate {rate {suffix /s}} {
+    if {$rate < 0.0} {
+        return "\u2014"
+    } elseif {$rate < 0.1} {
+        return "[format %.3f $rate]$suffix"
+    } elseif {$rate < 10.0} {
+        return "[format %.2f $rate]$suffix"
+    } elseif {$rate < 100.0} {
+        return "[format %.1f $rate]$suffix"
+    } else {
+        return "[format %.0f $rate]$suffix"
+    }
+}
+
+proc _ns_stats.utilization.globalSummary {sample threadCpu} {
+    set current  [dict get $sample current]
+    set previous [dict get $sample previous]
+    set elapsed  [dict get $sample elapsed]
+
+    #
+    # Current pool/thread gauges.
+    #
+    set activeRequests       0
+    set poolWaiting          0
+    set connThreadsCurrent   0
+    set connThreadsIdle      0
+    set connThreadsStopping  0
+    set connThreadsMax       0
+
+    dict for {server serverData} [dict get $current servers] {
+        dict for {pool poolData} [dict get $serverData pools] {
+            incr activeRequests      [dict get $poolData active]
+            incr poolWaiting         [_ns_stats.dictGetDef $poolData waiting 0]
+            set threads              [_ns_stats.dictGetDef $poolData threads {}]
+            incr connThreadsCurrent  [_ns_stats.dictGetDef $threads current 0]
+            incr connThreadsIdle     [_ns_stats.dictGetDef $threads idle 0]
+            incr connThreadsStopping [_ns_stats.dictGetDef $threads stopping 0]
+            incr connThreadsMax      [_ns_stats.dictGetDef $threads max 0]
+        }
+    }
+
+    set connThreadsBusy [expr {
+        max(0, $connThreadsCurrent
+               - $connThreadsIdle
+               - $connThreadsStopping)
+    }]
+
+    set connThreadUtilization [expr {
+        $connThreadsCurrent > 0
+        ? 100.0 * $connThreadsBusy / $connThreadsCurrent
+        : 0.0
+    }]
+
+    #
+    # Current driver-local socket gauges.
+    #
+    set driverWaiting [_ns_stats.utilization.sumDriverCounter $current waiting]
+    set driverReading [_ns_stats.utilization.sumDriverCounter $current reading]
+    set driverClosing [_ns_stats.utilization.sumDriverCounter $current closing]
+
+    #
+    # Interval pool counters.
+    #
+    set currentRequests  [_ns_stats.utilization.sumPoolCounter $current requests]
+    set previousRequests [_ns_stats.utilization.sumPoolCounter $previous requests]
+
+    set currentQueued     [_ns_stats.utilization.sumPoolCounter $current queued]
+    set previousQueued    [_ns_stats.utilization.sumPoolCounter $previous queued]
+
+    set currentSpooled    [_ns_stats.utilization.sumPoolCounter $current spools]
+    set previousSpooled   [_ns_stats.utilization.sumPoolCounter $previous spools]
+
+    set currentDropped    [_ns_stats.utilization.sumPoolCounter $current dropped]
+    set previousDropped   [_ns_stats.utilization.sumPoolCounter $previous dropped]
+
+    set requestRate       [_ns_stats.utilization.rate $currentRequests $previousRequests $elapsed]
+    set queuedRate        [_ns_stats.utilization.rate $currentQueued $previousQueued $elapsed]
+    set spooledRate       [_ns_stats.utilization.rate $currentSpooled $previousSpooled $elapsed]
+    set droppedRate       [_ns_stats.utilization.rate $currentDropped $previousDropped $elapsed]
+
+    #
+    # Interval-average request timing.
+    #
+    set requestDelta [expr {$currentRequests - $previousRequests}]
+    set timingValues {}
+
+    foreach {counter label} {
+        queuetime  queue
+        filtertime filter
+        runtime    run
+        tracetime  trace
+    } {
+        set currentTime  [_ns_stats.utilization.sumPoolCounter $current $counter]
+        set previousTime [_ns_stats.utilization.sumPoolCounter $previous $counter]
+
+        if {$requestDelta > 0 && $currentTime >= $previousTime} {
+            set average [expr {
+                ($currentTime - $previousTime) / double($requestDelta)
+            }]
+            lappend timingValues "$label [_ns_stats.hr $average]s"
+        }
+    }
+
+    #
+    # CPU percentages. The helper should return dictionaries containing
+    # at least "name" and "cpu".
+    #
+    set driverCpuTotal 0.0
+    set driverCpuMax   0.0
+    set connCpuTotal   0.0
+    set writerCpuTotal 0.0
+    set spoolerCpuTotal 0.0
+
+    dict for {threadKey threadData} $threadCpu {
+        set name [_ns_stats.dictGetDef $threadData name ""]
+        set cpu  [_ns_stats.dictGetDef $threadData cpu  -1.0]
+
+        if {$cpu < 0.0} {
+            continue
+        }
+
+        switch -glob -- $name {
+            "-driver:*" {
+                set driverCpuTotal [expr {$driverCpuTotal + $cpu}]
+                set driverCpuMax   [expr {max($driverCpuMax, $cpu)}]
+            }
+            "-conn:*" {
+                set connCpuTotal [expr {$connCpuTotal + $cpu}]
+            }
+            "-writer:*" {
+                set writerCpuTotal [expr {$writerCpuTotal + $cpu}]
+            }
+            "-spooler:*" {
+                set spoolerCpuTotal [expr {$spoolerCpuTotal + $cpu}]
+            }
+        }
+    }
+
+    #
+    # Determine the most important current warning.
+    #
+    set severity ok
+    set reasons  {}
+
+    if {$droppedRate > 0.0} {
+        set severity critical
+        lappend reasons \
+            "[_ns_stats.utilization.displayRate $droppedRate] dropped"
+    }
+
+    if {$driverCpuMax >= 90.0} {
+        if {$severity eq "ok"} {
+            set severity warning
+        }
+        lappend reasons \
+            "driver thread at [format %.1f $driverCpuMax]%"
+    }
+
+    if {$driverWaiting > 0} {
+        if {$severity eq "ok"} {
+            set severity warning
+        }
+        lappend reasons "$driverWaiting requests awaiting pool assignment"
+    }
+
+    if {$poolWaiting > 0} {
+        if {$severity eq "ok"} {
+            set severity warning
+        }
+        lappend reasons "$poolWaiting requests waiting for connection threads"
+    }
+
+    if {$connThreadsCurrent > 0
+        && $connThreadsBusy == $connThreadsCurrent
+        && $connThreadsCurrent >= $connThreadsMax} {
+        if {$severity eq "ok"} {
+            set severity warning
+        }
+        lappend reasons "all configured connection threads busy"
+    }
+
+    set status [expr {[llength $reasons] == 0 ? "OK" :  "[string toupper $severity]: [join $reasons {; }]"}]
+
+    #
+    # Return the key/value list expected by _ns_stats.process.table.
+    #
+    return [list \
+                [list "Sample Interval"      [expr {$elapsed > 0.0 ? [_ns_stats.fmtSeconds $elapsed] : "\u2014; refresh to obtain interval values"}]] \
+                [list "Request Rate"         [_ns_stats.utilization.displayRate $requestRate]] \
+                [list "Active Requests"      $activeRequests] \
+                [list "Pool Waiting"         $poolWaiting] \
+                [list "Connection Threads"   "$connThreadsBusy busy, $connThreadsIdle idle, $connThreadsCurrent current, $connThreadsMax maximum ([format %.1f $connThreadUtilization]% busy)"] \
+                [list "Driver CPU"           "[format %.1f $driverCpuTotal]% total, [format %.1f $driverCpuMax]% busiest thread"] \
+                [list "Connection CPU"       "[format %.1f $connCpuTotal]%"] \
+                [list "Writer / Spooler CPU" "[format %.1f $writerCpuTotal]% / [format %.1f $spoolerCpuTotal]%"] \
+                [list "Driver Socket States"  "$driverReading waiting for input, $driverWaiting awaiting pool assignment, $driverClosing in close wait"] \
+                [list "Interval Request Handling" "[_ns_stats.utilization.displayRate $queuedRate] queued, [_ns_stats.utilization.displayRate $spooledRate] spooled, [_ns_stats.utilization.displayRate $droppedRate] dropped"] \
+                [list "Interval Request Timing"    [expr {[llength $timingValues] > 0 ? [join $timingValues ", "] : "\u2014"}]] \
+                [list "Status"                     $status]]
+}
+
+proc _ns_stats.utilization.driverCpuInfo {threadCpu driverThread} {
+    set driverName      ""
+    set driverCpu       -1.0
+    set writerCpu       0.0
+    set spoolerCpu      0.0
+    set writerCount     0
+    set spoolerCount    0
+    set writerMeasured  0
+    set spoolerMeasured 0
+
+    set directDriverName [format {-driver:%s-}     $driverThread]
+    set driverSuffix     [format {*:%s-}           $driverThread]
+    set writerPattern    [format {-writer:%s:*-}   $driverThread]
+    set spoolerPattern   [format {-spooler:%s:*-}  $driverThread]
+
+    dict for {threadKey data} $threadCpu {
+        set name   [_ns_stats.dictGetDef $data name ""]
+        set parent [_ns_stats.dictGetDef $data parent ""]
+        set cpu    [_ns_stats.dictGetDef $data cpu -1.0]
+
+        if {$name eq $directDriverName
+            || ([string match "-driver:*" $name]
+                && [string match $driverSuffix $name])} {
+            set driverName $name
+            set driverCpu  $cpu
+            continue
+        }
+
+        if {[string match $writerPattern $name]} {
+            incr writerCount
+
+            if {$cpu >= 0.0} {
+                set writerCpu [expr {$writerCpu + $cpu}]
+                incr writerMeasured
+            }
+            continue
+        }
+
+        if {[string match $spoolerPattern $name]} {
+            incr spoolerCount
+
+            if {$cpu >= 0.0} {
+                set spoolerCpu [expr {$spoolerCpu + $cpu}]
+                incr spoolerMeasured
+            }
+        }
+    }
+
+    return [dict create \
+                driverName       $driverName \
+                driverCpu        $driverCpu \
+                writerCpu        $writerCpu \
+                writerCount      $writerCount \
+                writerMeasured   $writerMeasured \
+                spoolerCpu       $spoolerCpu \
+                spoolerCount     $spoolerCount \
+                spoolerMeasured  $spoolerMeasured]
+}
+
+proc _ns_stats.utilization.pluralize {count base} {
+    return $base[expr {$count>1 ? "s" : ""}]
+}
+
+proc _ns_stats.utilization.driverRows {sample threadCpu} {
+    set current  [dict get $sample current]
+    set previous [dict get $sample previous]
+    set elapsed  [dict get $sample elapsed]
+    set rows     {}
+
+    if {![dict exists $current drivers]} {
+        return $rows
+    }
+
+    dict for {driverThread stats} [dict get $current drivers] {
+        set module  [dict get $stats module]
+        set section ns/module/$module
+
+        set maxQueueSize  [ns_config $section maxqueuesize 1024]
+        set writerConfig  [ns_config $section writerthreads 0]
+        set spoolerConfig [ns_config $section spoolerthreads 0]
+
+        set waiting [dict get $stats waiting]
+        set reading [dict get $stats reading]
+        set closing [dict get $stats closing]
+
+        #
+        # The sum covers the driver-local lists. It is not the complete
+        # drvPtr->queuesize value.
+        #
+        set localSockets [expr {
+            $waiting + $reading + $closing
+        }]
+
+        #
+        # Obtain interval rates when a previous sample for the same
+        # driver instance exists.
+        #
+        set receivedRate -1.0
+        set partialRate  -1.0
+        set spooledRate  -1.0
+        set errorRate    -1.0
+
+        if {$elapsed > 0.0
+            && [dict exists $previous drivers $driverThread]} {
+            set old [dict get $previous drivers $driverThread]
+
+            set receivedRate [_ns_stats.utilization.rate \
+                                  [dict get $stats received] \
+                                  [dict get $old received] \
+                                  $elapsed]
+
+            set partialRate [_ns_stats.utilization.rate \
+                                 [dict get $stats partial] \
+                                 [dict get $old partial] \
+                                 $elapsed]
+
+            set spooledRate [_ns_stats.utilization.rate \
+                                 [dict get $stats spooled] \
+                                 [dict get $old spooled] \
+                                 $elapsed]
+
+            set errorRate [_ns_stats.utilization.rate \
+                               [dict get $stats errors] \
+                               [dict get $old errors] \
+                               $elapsed]
+        }
+
+        set cpuInfo [_ns_stats.utilization.driverCpuInfo $threadCpu $driverThread]
+        set driverCpu [dict get $cpuInfo driverCpu]
+        set driverCpuDisplay [expr { $driverCpu < 0.0 ? "\u2014" : "[format %.1f $driverCpu]%" }]
+
+        set writerCount     [_ns_stats.dictGetDef $cpuInfo writerCount 0]
+        set writerMeasured  [_ns_stats.dictGetDef $cpuInfo writerMeasured 0]
+
+        if {$writerCount == 0} {
+            set writerDisplay "\u2014"
+        } elseif {$writerMeasured > 0} {
+            set writerCpu [_ns_stats.dictGetDef $cpuInfo writerCpu 0.0]
+            set writerDisplay "$writerCount [_ns_stats.utilization.pluralize $writerCount thread], [format %.1f $writerCpu]% CPU"
+        } else {
+            set writerDisplay "$writerCount [_ns_stats.utilization.pluralize $writerCount thread], \u2014 CPU"
+        }
+
+        set spoolerCount     [_ns_stats.dictGetDef $cpuInfo spoolerCount 0]
+        set spoolerMeasured  [_ns_stats.dictGetDef $cpuInfo spoolerMeasured 0]
+        if {$spoolerCount == 0} {
+            set spoolerDisplay "\u2014"
+        } elseif {$spoolerMeasured > 0} {
+            set spoolerCpu [_ns_stats.dictGetDef $cpuInfo spoolerCpu 0.0]
+            set spoolerDisplay "$spoolerCount [_ns_stats.utilization.pluralize $spoolerCount thread], [format %.1f $spoolerCpu]% CPU"
+        } else {
+            set spoolerDisplay "$spoolerCount [_ns_stats.utilization.pluralize $spoolerCount thread], \u2014 CPU"
+        }
+
+        #
+        # Build a concise status and retain the reasons.
+        #
+        set severity ok
+        set reasons  {}
+
+        if {$driverCpu >= 90.0} {
+            set severity critical
+            lappend reasons "CPU [format %.1f $driverCpu]%"
+        } elseif {$driverCpu >= 75.0} {
+            set severity warning
+            lappend reasons "CPU [format %.1f $driverCpu]%"
+        }
+
+        if {$waiting > 0} {
+            if {$severity eq "ok"} {
+                set severity warning
+            }
+            lappend reasons "$waiting awaiting pool assignment"
+        }
+
+        #
+        # Driver errors can result from malformed or aborted connections,
+        # so report them without automatically calling the driver
+        # saturated.
+        #
+        if {$errorRate > 0.0} {
+            lappend reasons \
+                "[_ns_stats.utilization.displayRate $errorRate] errors"
+        }
+
+        if {[llength $reasons] == 0} {
+            set status OK
+        } else {
+            set status "[string toupper $severity]: [join $reasons {; }]"
+        }
+
+        lappend rows [list \
+                          $driverThread \
+                          $module \
+                          $driverCpuDisplay \
+                          [_ns_stats.utilization.displayRate $receivedRate] \
+                          [_ns_stats.utilization.displayRate $partialRate] \
+                          [_ns_stats.utilization.displayRate $spooledRate] \
+                          [_ns_stats.utilization.displayRate $errorRate] \
+                          $reading \
+                          $waiting \
+                          $closing \
+                          $localSockets \
+                          $maxQueueSize \
+                          $writerDisplay \
+                          $spoolerDisplay \
+                          $status]
+    }
+
+    return $rows
+}
+
+proc _ns_stats.utilization.poolRows {sample} {
+    set current  [_ns_stats.dictGetDef $sample current {}]
+    set previous [_ns_stats.dictGetDef $sample previous {}]
+    set elapsed  [_ns_stats.dictGetDef $sample elapsed 0.0]
+    set rows     {}
+
+    set currentTotalRequests  [_ns_stats.utilization.sumPoolCounter $current requests]
+    set previousTotalRequests [_ns_stats.utilization.sumPoolCounter $previous requests]
+    set totalRequestRate      [_ns_stats.utilization.rate $currentTotalRequests $previousTotalRequests $elapsed]
+
+    set currentServers        [_ns_stats.dictGetDef $current servers {}]
+
+    foreach server [lsort [dict keys $currentServers]] {
+        set serverData [_ns_stats.dictGetDef $currentServers $server {}]
+        set pools      [_ns_stats.dictGetDef $serverData pools {}]
+
+        foreach pool [lsort [dict keys $pools]] {
+            set poolData [_ns_stats.dictGetDef $pools $pool {}]
+            set stats    [_ns_stats.dictGetDef $poolData stats {}]
+            set threads  [_ns_stats.dictGetDef $poolData threads {}]
+
+            set oldPoolData [_ns_stats.dictGetDef $previous servers $server pools $pool {}]
+            set oldStats    [_ns_stats.dictGetDef $oldPoolData stats {}]
+            set poolLabel   [expr { $pool eq "" ? "default" : $pool}]
+
+            #
+            # Current gauges.
+            #
+            set active         [_ns_stats.dictGetDef $poolData active 0]
+            set waiting        [_ns_stats.dictGetDef $poolData waiting 0]
+            set threadCurrent  [_ns_stats.dictGetDef $threads current 0]
+            set threadIdle     [_ns_stats.dictGetDef $threads idle 0]
+            set threadStopping [_ns_stats.dictGetDef $threads stopping 0]
+            set threadMax      [_ns_stats.dictGetDef $threads max 0]
+
+            set threadBusy [expr {max(0, $threadCurrent - $threadIdle - $threadStopping)}]
+            set threadBusyPercentage [expr {
+                $threadCurrent > 0
+                ? 100.0 * $threadBusy / $threadCurrent
+                : 0.0
+            }]
+
+            set threadDisplay [format {%d/%d/%d} $threadBusy $threadCurrent $threadMax]
+
+            #
+            # Pool-specific configuration.
+            #
+            set configPath [expr {
+                $pool eq ""
+                ? "ns/server/$server"
+                : "ns/server/$server/pool/$pool"
+            }]
+
+            set maxConnections [ns_config $configPath maxconnections 100]
+
+            #
+            # Cumulative counters.
+            #
+            set requests     [_ns_stats.dictGetDef $stats requests 0]
+            set oldRequests  [_ns_stats.dictGetDef $oldStats requests 0]
+            set requestDelta [expr {$requests - $oldRequests}]
+            set requestRate  [_ns_stats.utilization.rate $requests $oldRequests $elapsed]
+
+            set queuedRate   [_ns_stats.utilization.rate \
+                                  [_ns_stats.dictGetDef $stats queued 0] \
+                                  [_ns_stats.dictGetDef $oldStats queued 0] \
+                                  $elapsed]
+
+            set spooledRate  [_ns_stats.utilization.rate \
+                                  [_ns_stats.dictGetDef $stats spools 0] \
+                                  [_ns_stats.dictGetDef $oldStats spools 0] \
+                                  $elapsed]
+
+            set droppedRate  [_ns_stats.utilization.rate \
+                                  [_ns_stats.dictGetDef $stats dropped 0] \
+                                  [_ns_stats.dictGetDef $oldStats dropped 0] \
+                                  $elapsed]
+
+            #
+            # Share of the total process-wide request rate.
+            #
+            if {$requestRate >= 0.0 && $totalRequestRate > 0.0} {
+                set globalShare [expr { 100.0 * $requestRate / $totalRequestRate }]
+                set globalShareDisplay [format %.1f%% $globalShare]
+            } else {
+                set globalShareDisplay "\u2014"
+            }
+
+            #
+            # Compute interval-average timing values.
+            #
+            set averageQueue   -1.0
+            set averageFilter  -1.0
+            set averageRun     -1.0
+            set averageTrace   -1.0
+            set averageService -1.0
+
+            if {$requestDelta > 0} {
+                foreach {counter variableName} {
+                    queuetime  averageQueue
+                    filtertime averageFilter
+                    runtime    averageRun
+                    tracetime  averageTrace
+                } {
+                    set currentValue  [_ns_stats.dictGetDef $stats $counter 0.0]
+                    set previousValue [_ns_stats.dictGetDef $oldStats $counter 0.0]
+                    set delta [expr {$currentValue - $previousValue}]
+
+                    if {$delta >= 0.0} {
+                        set $variableName [expr {$delta / double($requestDelta)}]
+                    }
+                }
+
+                if {$averageFilter >= 0.0
+                    && $averageRun >= 0.0
+                    && $averageTrace >= 0.0} {
+                    set averageService [expr {$averageFilter + $averageRun + $averageTrace}]
+                }
+            }
+
+            set queueDisplay  [expr {$averageQueue    >= 0.0 ? "[_ns_stats.hr $averageQueue]s"   : "\u2014"}]
+            set serviceDisplay [expr {$averageService >= 0.0 ? "[_ns_stats.hr $averageService]s" : "\u2014"}]
+
+            #
+            # Estimate the maximum request rate using the configured
+            # maximum number of connection threads and the interval
+            # average service time.
+            #
+            set estimatedCapacity -1.0
+            set estimatedLoad     -1.0
+
+            if {$threadMax > 0 && $averageService > 0.0} {
+                set estimatedCapacity [expr {$threadMax / $averageService}]
+
+                if {$requestRate >= 0.0} {
+                    set estimatedLoad [expr {100.0 * $requestRate / $estimatedCapacity}]
+                }
+            }
+
+            set capacityDisplay [expr {$estimatedCapacity >= 0.0
+                                       ? "[_ns_stats.utilization.displayRate $estimatedCapacity]"
+                                       : "\u2014"
+                                   }]
+
+            set loadDisplay [expr {$estimatedLoad >= 0.0 ? "[format %.1f $estimatedLoad]%" : "\u2014" }]
+
+            #
+            # Classify only clear pressure indicators.
+            #
+            set severity ok
+            set reasons  {}
+
+            if {$droppedRate > 0.0} {
+                set severity critical
+                lappend reasons  "[_ns_stats.utilization.displayRate $droppedRate] dropped"
+            }
+
+            if {$waiting > 0} {
+                if {$severity eq "ok"} {
+                    set severity warning
+                }
+                lappend reasons "$waiting waiting"
+            }
+
+            if {$threadCurrent > 0
+                && $threadIdle == 0
+                && $threadCurrent >= $threadMax} {
+                if {$severity eq "ok"} {
+                    set severity warning
+                }
+                lappend reasons "all connection threads busy"
+            }
+
+            if {$estimatedLoad >= 90.0} {
+                if {$severity eq "ok"} {
+                    set severity warning
+                }
+                lappend reasons "estimated load [format %.1f $estimatedLoad]%"
+            }
+
+            if {[llength $reasons] == 0} {
+                set status OK
+            } else {
+                set status "[string toupper $severity]: [join $reasons {; }]"
+            }
+
+            lappend rows [list \
+                              $server \
+                              $poolLabel \
+                              [_ns_stats.utilization.displayRate $requestRate] \
+                              $globalShareDisplay \
+                              $active \
+                              $waiting \
+                              $threadDisplay \
+                              [format %.1f%% $threadBusyPercentage] \
+                              $maxConnections \
+                              $queueDisplay \
+                              $serviceDisplay \
+                              $capacityDisplay \
+                              $loadDisplay \
+                              [_ns_stats.utilization.displayRate $queuedRate] \
+                              [_ns_stats.utilization.displayRate $spooledRate] \
+                              [_ns_stats.utilization.displayRate $droppedRate] \
+                              $status]
+        }
+    }
+
+    return $rows
+}
+
+proc _ns_stats.utilization {} {
+    set sample        [_ns_stats.utilizationSample]
+    set cpuData       [_ns_stats.threadCpuPercentages utilizationThreadCpuSample]
+    set threadCpu     [_ns_stats.dictGetDef $cpuData byThread {}]
+    set driverRows    [_ns_stats.utilization.driverRows $sample $threadCpu]
+    set poolRows      [_ns_stats.utilization.poolRows $sample]
+
+    set globalSummary [_ns_stats.utilization.globalSummary $sample $threadCpu]
+
+    set driverRows    [_ns_stats.utilization.driverRows $sample $threadCpu]
+    set driverTitles {
+        "Driver Thread" Module "CPU %" "Received/s" "Partial/s" "Spooled/s" "Errors/s"
+        "Input Wait" "Pool Retry" "Close Wait" "Local Sockets" Maxqueuesize Writers Spoolers Status
+    }
+    set driverAlign {
+        left left right right right right right
+        right right right right right left left left
+    }
+
+    set poolTitles {
+        Server Pool Req/s "Global Share" Active Waiting "Threads (busy/current/max)" "Busy %"
+        "Max Connections" "Avg Queue" "Avg Service" "Est. Capacity" "Est. Load"
+        Queued/s Spooled/s Dropped/s Status
+    }
+    set poolAlign {
+        left left right right right right right right
+        right right right right right
+        right right right left
+    }
+
+    append html \
+        [_ns_stats.header "Utilization and Bottlenecks"] \
+        [_ns_stats.results global-summary 0 {Metric Value} LINK $globalSummary 0 {left left}] \
+        "<h2>Network Drivers</h2>" \
+        [_ns_stats.results drivers 0 $driverTitles "?@page=utilization" $driverRows 0 $driverAlign] \
+        "<h2>Servers and Connection Pools</h2>" \
+        [_ns_stats.results utilization-pools 0 $poolTitles "?@page=utilization" $poolRows 0 $poolAlign] \
+        [_ns_stats.footer]
+    return $html
+}
+
 
 proc _ns_stats.locks.mutex {} {
     set col         [ns_queryget col 1]
@@ -2576,181 +3436,306 @@ proc _ns_stats.log.mkchart {section param title} {
     return $html
 }
 
+proc _ns_stats.threadCpuPercentages {sampleKey} {
+    set pid         [pid]
+    set rawThreads  [ns_info threads]
+    set cpuSource   none
+    set cpuTimes    {}
+    set collected   {}
+    set current     [dict create threads {}]
+    set cpuAvailable 0
+
+    #
+    # Older NaviServer versions do not include the OS TID.
+    #
+    if {[llength $rawThreads] == 0
+        || [llength [lindex $rawThreads 0]] <= 7} {
+        return [dict create \
+                    available 0 \
+                    elapsed   0.0 \
+                    rows      $rawThreads \
+                    byThread  {}]
+    }
+
+    try {
+        set cpuTimes [ns_info threadcputimes]
+        set cpuSource api
+    } on error {errorMsg} {
+        if {[file isdirectory /proc/$pid/task]} {
+            set cpuSource proc
+            set HZ 100
+        }
+    }
+
+    if {$cpuSource eq "none"} {
+        return [dict create \
+                    available 0 \
+                    elapsed   0.0 \
+                    rows      $rawThreads \
+                    byThread  {}]
+    }
+
+    set cpuAvailable 1
+
+    #
+    # Collect the current cumulative CPU counters.
+    #
+    foreach t $rawThreads {
+        set name       [lindex $t 0]
+        set parent     [lindex $t 1]
+        set createTime [lindex $t 4]
+        set tid        [lindex $t 7]
+        set state      0
+        set utime      0.0
+        set stime      0.0
+        set valid      0
+
+        if {$cpuSource eq "api"} {
+            if {[dict exists $cpuTimes $tid]} {
+                set times [dict get $cpuTimes $tid]
+
+                set utime [expr {
+                    [dict get $times user] / 1000000.0
+                }]
+                set stime [expr {
+                    [dict get $times system] / 1000000.0
+                }]
+
+                if {[dict exists $times state]} {
+                    set state [dict get $times state]
+                }
+                set valid 1
+            }
+
+        } elseif {$cpuSource eq "proc"} {
+            set filename /proc/$pid/task/$tid/stat
+
+            if {[file readable $filename]} {
+                set f [open $filename]
+                set s [read $f]
+                close $f
+
+                #
+                # This retains the current parser. A separate improvement
+                # could parse the parenthesized comm field more defensively.
+                #
+                lassign $s statTid comm state ppid pgrp session ttyNr tpgid \
+                    flags minflt cminflt majflt cmajflt userJiffies systemJiffies \
+                    cutime cstime priority nice numthreads itrealval \
+                    starttime vsize rss rsslim startcode endcode \
+                    startstack kstkesp kstkeip signal blocked sigignore \
+                    sigcatch wchan nswap cnswap extSignal processor
+
+                set state "$state [format %.2d $processor]"
+                set utime [expr {$userJiffies   / double($HZ)}]
+                set stime [expr {$systemJiffies / double($HZ)}]
+                set valid 1
+            }
+        }
+
+        #
+        # Combining the OS TID with the NaviServer thread creation time
+        # protects the delta calculation against OS TID reuse.
+        #
+        set threadKey [list $tid $createTime]
+
+        if {$valid} {
+            dict set current threads $threadKey \
+                [dict create utime $utime stime $stime]
+        }
+
+        lappend collected [dict create \
+                               raw        $t \
+                               key        $threadKey \
+                               name       $name \
+                               parent     $parent \
+                               tid        $tid \
+                               state      $state \
+                               utime      $utime \
+                               stime      $stime \
+                               valid      $valid]
+    }
+
+    set sampledAt [clock microseconds]
+    dict set current sampled_at $sampledAt
+
+    set previous \
+        [nsv_set -reset _ns_stats $sampleKey $current]
+
+    set elapsed 0.0
+    if {$previous ne ""
+        && [dict exists $previous sampled_at]} {
+        set elapsed [expr {
+            ($sampledAt - [dict get $previous sampled_at])
+            / 1000000.0
+        }]
+    }
+
+    #
+    # Compute CPU percentages and build both result representations.
+    #
+    set rows     {}
+    set byThread {}
+
+    foreach entry $collected {
+        set t          [dict get $entry raw]
+        set threadKey  [dict get $entry key]
+        set name       [dict get $entry name]
+        set parent     [dict get $entry parent]
+        set tid        [dict get $entry tid]
+        set state      [dict get $entry state]
+        set utime      [dict get $entry utime]
+        set stime      [dict get $entry stime]
+        set valid      [dict get $entry valid]
+        set cpu        -1.0
+
+        if {$valid
+            && $elapsed > 0.0
+            && [dict exists $previous threads $threadKey]} {
+            set old [dict get $previous threads $threadKey]
+            set du  [expr {$utime - [dict get $old utime]}]
+            set ds  [expr {$stime - [dict get $old stime]}]
+
+            if {$du >= 0.0 && $ds >= 0.0} {
+                set cpu [expr {
+                    100.0 * ($du + $ds) / $elapsed
+                }]
+            }
+        }
+
+        dict set byThread $threadKey \
+            [dict create \
+                 name       $name \
+                 parent     $parent \
+                 tid        $tid \
+                 createTime [lindex $t 4] \
+                 state      $state \
+                 utime      $utime \
+                 stime      $stime \
+                 cpu        $cpu]
+
+        #
+        # Construct the exact layout consumed by _ns_stats.threads:
+        #
+        #   name parent id flags create
+        #   tid state utime stime cpu
+        #   proc arg
+        #
+        lappend rows [list \
+                          [lindex $t 0] \
+                          [lindex $t 1] \
+                          [lindex $t 2] \
+                          [lindex $t 3] \
+                          [lindex $t 4] \
+                          $tid \
+                          $state \
+                          $utime \
+                          $stime \
+                          $cpu \
+                          [lindex $t 5] \
+                          [lindex $t 6]]
+    }
+
+    return [dict create \
+                available $cpuAvailable \
+                elapsed   $elapsed \
+                rows      $rows \
+                byThread  $byThread]
+}
+
 proc _ns_stats.threads {} {
     set col         [ns_queryget col 1]
     set reverseSort [ns_queryget reversesort 1]
 
-    set pid [pid]
-    set threadInfo [ns_info threads]
-    set cpuSource  none
-    set cpuTimes   {}
-    set osInfo     0
+    set cpuData \
+        [_ns_stats.threadCpuPercentages threadCpuSample]
 
-    if {[llength [lindex $threadInfo 0]] > 7} {
-        try {
-            set cpuTimes [ns_info threadcputimes]
-            set cpuSource api
-        } on error {errorMsg} {
-            if {[file readable /proc/$pid/statm]} {
-                set cpuSource proc
-                set HZ     100  ;# for more reliable handling, we should implement jiffies_to_timespec or jiffies_to_secs in C
-                set HZ 100
-            }
-        }
-        set osInfo 1
-    }
+    set osInfo    [dict get $cpuData available]
+    set threadInfo [dict get $cpuData rows]
 
     if {$osInfo} {
         set colNumSort {. 0 0 1 1 1 0 1 1 1 0}
-        set colTitles  {Thread Parent ID    Flags "Create Time" TID   State utime stime "CPU %" Args}
-        set align      {left   left   right left   left         right right right right right   left}
+        set colTitles {
+            Thread Parent ID Flags "Create Time"
+            TID State utime stime "CPU %" Args
+        }
+        set align {
+            left left right left left
+            right right right right right left
+        }
     } else {
         set colNumSort {. 0 0 1 1 1 0}
-        set colTitles  {Thread Parent ID Flags "Create Time" Args}
-        set align      {left left right left left left}
+        set colTitles {Thread Parent ID Flags "Create Time" Args}
+        set align     {left left right left left left}
     }
 
-    if {$osInfo} {
-        set ti {}
-        set cpuSample [dict create threads {}]
+    set rows {}
 
-        # collect a sample of CPU times per thread
-        foreach t $threadInfo {
-            set tid   [lindex $t 7]
-            set state 0
-            set utime 0
-            set stime 0
-
-            if {$cpuSource eq "api"} {
-                if {[dict exists $cpuTimes $tid]} {
-                    set times [dict get $cpuTimes $tid]
-
-                    set utime [expr {[dict get $times user] / 1000000.0}]
-                    set stime [expr {[dict get $times system] / 1000000.0}]
-
-                    if {[dict exists $times state]} {
-                        set state [dict get $times state]
-                    }
-                }
-
-            } elseif {$cpuSource eq "proc"} {
-                set fn /proc/$pid/task/$tid/stat
-
-                if {[file readable $fn]} {
-                    set f [open $fn]
-                    set s [read $f]
-                    close $f
-                } elseif {[file readable /proc/$pid/task/$pid/stat]} {
-                    set f [open /proc/$pid/task/$pid/stat]
-                    set s [read $f]
-                    close $f
-                } else {
-                    set s ""
-                }
-
-                if {$s ne ""} {
-                    lassign $s tid comm state ppid pgrp session tty_nr tpgid \
-                        flags minflt cminflt majflt cmajflt utime stime \
-                        cutime cstime priority nice numthreads itrealval \
-                        starttime vsize rss rsslim startcode endcode \
-                        startstack kstkesp kstkeip signal blocked sigignore \
-                        sigcatch wchan nswap cnswap ext_signal processor
-
-                    set state "$state [format %.2d $processor]"
-                    set utime [expr {$utime * 1.0 / $HZ}]
-                    set stime [expr {$stime * 1.0 / $HZ}]
-                }
-            }
-
-            set threadKey [list $tid [lindex $t 4]]
-
-            dict set cpuSample threads $threadKey \
-                [dict create utime $utime stime $stime]
-
-            lappend ti [linsert $t 5 $tid $state $utime $stime]
-        }
-        dict set cpuSample sampled_at [clock clicks -microseconds]
-
-        # get the previous sample when available
-        set previousSample \
-            [nsv_set -reset _ns_stats threadCpuSample $cpuSample]
-
-        set sampledAt [dict get $cpuSample sampled_at]
-        set elapsed   0.0
-        if {[dict exists $previousSample sampled_at]} {
-            set elapsed [expr {($sampledAt - [dict get $previousSample sampled_at]) / 1000000.0 }]
-        }
-
-        #
-        # Add the CPU usage percentages
-        #
-        set tiWithCpu {}
-
-        foreach t $ti {
-            set tid       [lindex $t 5]
-            set threadKey [list $tid [lindex $t 4]]
-            set cpu       -1.0
-
-            if {$elapsed > 0.0
-                && [dict exists $previousSample threads $threadKey]} {
-
-                set old [dict get $previousSample threads $threadKey]
-                set du  [expr {[lindex $t 7] - [dict get $old utime]}]
-                set ds  [expr {[lindex $t 8] - [dict get $old stime]}]
-
-                if {$du >= 0.0 && $ds >= 0.0} {
-                    set cpu [expr {100.0 * ($du + $ds) / $elapsed}]
-                }
-            }
-
-            #
-            # Insert before proc and arg.
-            #
-            lappend tiWithCpu [linsert $t 9 $cpu]
-        }
-
-        set threadInfo $tiWithCpu
-    }
-
-    set rows ""
-    foreach t [_ns_stats.sortResults $threadInfo [expr {$col - 1}] [lindex $colNumSort $col] $reverseSort] {
-        set thread  [lindex $t 0]
-        set parent  [lindex $t 1]
-        set id      [lindex $t 2]
-        set flags   [_ns_stats.getThreadType [lindex $t 3]]
-        set create  [_ns_stats.fmtTime [lindex $t 4]]
+    foreach t [_ns_stats.sortResults \
+                   $threadInfo \
+                   [expr {$col - 1}] \
+                   [lindex $colNumSort $col] \
+                   $reverseSort] {
+        set thread [lindex $t 0]
+        set parent [lindex $t 1]
+        set id     [lindex $t 2]
+        set flags  [_ns_stats.getThreadType [lindex $t 3]]
+        set create [_ns_stats.fmtTime [lindex $t 4]]
 
         if {$osInfo} {
-            set tid      [lindex $t 5]
-            set state    [lindex $t 6]
-            set utime    [lindex $t 7]
-            set stime    [lindex $t 8]
-            set cpu      [lindex $t 9]
-            set cpuDisplay [expr {$cpu < 0.0 ? "\u2014" : [format %.1f $cpu] }]
-            set proc     [lindex $t 10]
-            set arg      [lindex $t 11]
-            if {"p:0x0" eq $proc} { set proc "NULL" }
-            if {"a:0x0" eq $arg} { set arg "NULL" }
-            set stime    [_ns_stats.hr $stime]s
-            set utime    [_ns_stats.hr $utime]s
-            lappend rows [list $thread $parent $id $flags $create $tid $state $utime $stime $cpuDisplay $arg]
+            set tid   [lindex $t 5]
+            set state [lindex $t 6]
+            set utime [_ns_stats.hr [lindex $t 7]]s
+            set stime [_ns_stats.hr [lindex $t 8]]s
+            set cpu   [lindex $t 9]
+            set proc  [lindex $t 10]
+            set arg   [lindex $t 11]
+
+            set cpuDisplay [expr {
+                $cpu < 0.0 ? "\u2014" : [format %.1f $cpu]
+            }]
+
+            if {$proc eq "p:0x0"} {
+                set proc NULL
+            }
+            if {$arg eq "a:0x0"} {
+                set arg NULL
+            }
+
+            lappend rows [list \
+                              $thread $parent $id $flags $create \
+                              $tid $state $utime $stime \
+                              $cpuDisplay $arg]
         } else {
-            set proc     [lindex $t 5]
-            set arg      [lindex $t 6]
-            if {"p:0x0" eq $proc} { set proc "NULL" }
-            if {"a:0x0" eq $arg} { set arg "NULL" }
-            lappend rows [list $thread $parent $id $flags $create $arg]
+            set proc [lindex $t 5]
+            set arg  [lindex $t 6]
+
+            if {$proc eq "p:0x0"} {
+                set proc NULL
+            }
+            if {$arg eq "a:0x0"} {
+                set arg NULL
+            }
+
+            lappend rows \
+                [list $thread $parent $id $flags $create $arg]
         }
     }
 
-    set requestRate [_ns_stats.requestsPerSecond]
-    set requestRateDisplay [expr {$requestRate ne "" ? "[format %.2f $requestRate] requests per second" : "\u2014"}]
+    set requestRates [_ns_stats.requestRates total]
+    set totalRateDisplay [expr {
+        [dict exists $requestRates total]
+        ? "[format %.1f [dict get $requestRates total]] requests per second"
+        : "n/a"
+    }]
 
     append html \
         [_ns_stats.header Threads] \
-        "Current Request rate: $requestRateDisplay" \
-        [_ns_stats.results threads $col $colTitles ?@page=threads $rows $reverseSort $align] \
+        "Current Total Request rate: $totalRateDisplay" \
+        [_ns_stats.results threads $col $colTitles \
+             ?@page=threads $rows $reverseSort $align] \
         [_ns_stats.footer]
+
     return $html
 }
 
@@ -2830,6 +3815,7 @@ proc _ns_stats.results {
     foreach title $colTitles {
         set url $colUrl
 
+        #ns_log notice DEBUG TITLE col $i title $title
         if {$i == $selectedColNum} {
             if {$reverseSort} {
                 append url "&reversesort=0"
@@ -2866,10 +3852,12 @@ proc _ns_stats.results {
     foreach row $rows {
         set i 1
         append html "<tr class='data'>"
+        #ns_log notice DEBUG BODY row $row
 
         foreach column $row title $colTitles {
             set colAlign "left"
             set cssAlign ""
+            #ns_log notice DEBUG BODY col $i
 
             if {[llength $colAlignment]} {
                 set align [lindex $colAlignment $i-1]
