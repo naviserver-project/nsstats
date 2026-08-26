@@ -444,12 +444,32 @@ table.data-table td td.subtitle {
 table.data-table td table td {font-size:smaller !important; padding: 2px !important; border-width: 0px !important;}
 table.data-table td.right, table.data-table th.right { text-align: right;}
 
+table.utilization-pools { table-layout: auto; }
+/* Visually join Threads → Busy and Connections → Busy. */
+table.utilization-pools th:nth-child(5),
+table.utilization-pools td:nth-child(5),
+table.utilization-pools th:nth-child(7),
+table.utilization-pools td:nth-child(7) {
+    border-right: 0;
+    padding-right: 3px;
+}
+
+table.utilization-pools th:nth-child(6),
+table.utilization-pools td:nth-child(6),
+table.utilization-pools th:nth-child(8),
+table.utilization-pools td:nth-child(8) {
+    border-left: 0;
+    padding-left: 3px;
+}
+
+
 /* Styling for defaulted/unread/notneed parameters */
 td.defaulted {color: #aaa;}
 td.unread {color: red;}
 td.notneeded {color: orange;}
 table.config {font-size: 0.9rem;}
 
+.nowrap {white-space: nowrap;}
   </style>
   <%= $::extraHeadEntries %>
 </head>

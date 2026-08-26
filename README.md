@@ -1,6 +1,6 @@
 # Statistics Module for NaviServer 4.99.27 or Newer
 
-**Release:** 1.14  
+**Release:** 1.15  
 
 ## Overview
 
@@ -20,7 +20,8 @@
 
 ## Changes Since Version 1.0
 
-- Improved reporting of actual configuration parameters
+- Separate utilization page including including driver and server/pool
+  specific diagnostics
 - Added per-server and per-pool process statistics
 - Introduced queueing and spooling metrics
 - Included queuing time and filter time measurements per pool
