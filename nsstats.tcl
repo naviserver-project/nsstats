@@ -1186,36 +1186,43 @@ proc _ns_stats.utilization.linuxRows {current previous elapsed severityVar reaso
         set tcpAlerts  {}
         set tcpDetails {}
 
-        foreach {delta rate label tooltip} [list \
-                                                $tcpListenDropsDelta \
-                                                $tcpListenDropsRate \
-                                                "listen drop" \
-                                                "TCP packets discarded while being processed by listening sockets. Drops without listen overflows can indicate SYN-queue or kernel-memory pressure." \
-                                                \
-                                                $tcpListenOverflowsDelta \
-                                                $tcpListenOverflowsRate \
-                                                "listen overflow" \
-                                                "Connections discarded because a TCP accept queue was full. Check the NaviServer driver backlog and net.core.somaxconn." \
-                                                \
-                                                $tcpBacklogDropsDelta \
-                                                $tcpBacklogDropsRate \
-                                                "backlog drop" \
-                                                "TCP packets discarded from an established socket's processing backlog." \
-                                                \
-                                                $tcpReceiveDropsDelta \
-                                                $tcpReceiveDropsRate \
-                                                "receive-queue drop" \
-                                                "TCP packets discarded because receive-queue resources were unavailable."] {
+        foreach {delta rate label tooltip alert} \
+            [list \
+                 $tcpListenDropsDelta \
+                 $tcpListenDropsRate \
+                 "listen drop" \
+                 "TCP packets discarded while being processed by listening sockets. Interpret this counter together with listen overflows, request-queue drops, queue occupancy, and memory-pressure indicators." \
+                 false \
+                 \
+                 $tcpListenOverflowsDelta \
+                 $tcpListenOverflowsRate \
+                 "listen overflow" \
+                 "Connections discarded because a TCP accept queue was full. Check the NaviServer driver backlog and net.core.somaxconn." \
+                 true \
+                 \
+                 $tcpBacklogDropsDelta \
+                 $tcpBacklogDropsRate \
+                 "backlog drop" \
+                 "TCP packets discarded from an established socket's processing backlog." \
+                 true \
+                 \
+                 $tcpReceiveDropsDelta \
+                 $tcpReceiveDropsRate \
+                 "receive-queue drop" \
+                 "TCP packets discarded because receive-queue resources were unavailable." \
+                 true \
+                ] \
+            {
 
-            set text [_ns_stats.utilization.displayIntervalCounter $delta $rate $label]
-            set display [_ns_stats.utilization.tooltip $text $tooltip]
+                set text [_ns_stats.utilization.displayIntervalCounter $delta $rate $label]
+                set display [_ns_stats.utilization.tooltip $text $tooltip]
 
-            if {$delta > 0} {
-                lappend tcpAlerts [_ns_stats.utilization.colorize warning $display 1]
-            } elseif {$delta >= 0} {
-                lappend tcpDetails $display
+                if {$delta > 0 && $alert} {
+                    lappend tcpAlerts [_ns_stats.utilization.colorize warning $display 1]
+                } elseif {$delta >= 0} {
+                    lappend tcpDetails $display
+                }
             }
-        }
 
         if {[dict size $gauges] > 0} {
             set listeners          [_ns_stats.dictGetDef $gauges tcpListeners 0]
@@ -1240,7 +1247,6 @@ proc _ns_stats.utilization.linuxRows {current previous elapsed severityVar reaso
         set tcpDisplay  [join [concat $tcpAlerts $tcpDetails] {; }]
 
         foreach {delta rate label} [list \
-                                        $tcpListenDropsDelta     $tcpListenDropsRate     "TCP listen drop" \
                                         $tcpListenOverflowsDelta $tcpListenOverflowsRate "TCP listen overflow" \
                                         $tcpBacklogDropsDelta    $tcpBacklogDropsRate    "TCP backlog drop" \
                                         $tcpReceiveDropsDelta    $tcpReceiveDropsRate    "TCP receive-queue drop"] {
