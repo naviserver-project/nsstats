@@ -1654,10 +1654,11 @@ proc _ns_stats.utilization.driverRows {sample threadCpu} {
         # Obtain interval rates when a previous sample for the same
         # driver instance exists.
         #
-        set receivedRate -1.0
-        set partialRate  -1.0
-        set spooledRate  -1.0
-        set errorRate    -1.0
+        set receivedRate  -1.0
+        set partialRate   -1.0
+        set spooledRate   -1.0
+        set errorRate     -1.0
+        set receivedDelta -1.0
 
         if {$elapsed > 0.0
             && [dict exists $previous drivers $driverThread]} {
@@ -1667,6 +1668,10 @@ proc _ns_stats.utilization.driverRows {sample threadCpu} {
                                   [dict get $stats received] \
                                   [dict get $old received] \
                                   $elapsed]
+
+            set receivedDelta [_ns_stats.intervalDelta \
+                                   [dict get $stats received] \
+                                   [dict get $old received] ]
 
             set partialRate [_ns_stats.intervalRate \
                                  [dict get $stats partial] \
@@ -1686,6 +1691,14 @@ proc _ns_stats.utilization.driverRows {sample threadCpu} {
 
         set cpuInfo [_ns_stats.utilization.driverCpuInfo $threadCpu $driverThread]
         set driverCpu [dict get $cpuInfo driverCpu]
+
+        set measuredCpuSeconds [expr {$elapsed * $driverCpu / 100.0}]
+        set estimatedCapacity [expr {$receivedDelta >= 20 && $measuredCpuSeconds >= 0.05
+                                     ? $receivedDelta / $measuredCpuSeconds
+                                     : -1}]
+        set capacityDisplay [expr {$estimatedCapacity > 0
+                                   ? [_ns_stats.utilization.displayRate $estimatedCapacity]
+                                   : "\u2014"}]
 
         set writerCount     [_ns_stats.dictGetDef $cpuInfo writerCount 0]
         set writerMeasured  [_ns_stats.dictGetDef $cpuInfo writerMeasured 0]
@@ -1773,12 +1786,12 @@ proc _ns_stats.utilization.driverRows {sample threadCpu} {
 
         lappend rows [list \
                           $driverDisplay \
-                          $module \
                           $driverCpuDisplay \
                           [_ns_stats.utilization.displayRate $receivedRate] \
                           [_ns_stats.utilization.displayRate $partialRate] \
                           [_ns_stats.utilization.displayRate $spooledRate] \
                           $errorDisplay \
+                          $capacityDisplay \
                           $reading \
                           $waitingDisplay \
                           $closing \
@@ -2225,6 +2238,42 @@ proc _ns_stats.utilization.chart {args} {
     }]]
 }
 
+#
+# Return a display label with a native browser tooltip.
+#
+proc _ns_stats.tooltip {label tooltip {noquote 0} {class ""}} {
+    if {$tooltip ne ""} {
+        set spanClass "nsstats-tooltip $class"
+        set title [subst {title="[ns_quotehtml $tooltip]"}]
+    } else {
+        set spanClass "$class"
+        set title ""
+    }
+    set label [expr {$noquote ? $label : [ns_quotehtml $label]}]
+    return [subst {<span class="$spanClass" $title">$label</span>}]
+}
+
+#
+# Provide lists for titles and alignments for ns_stats.results tables
+#
+proc _ns_stats.columnLists {columnSpecs} {
+    set titles {}
+    set alignments {}
+
+    foreach {title spec} $columnSpecs {
+        set tooltip [string trim [_ns_stats.dictGetDef $spec tooltip ""]]
+        set title [_ns_stats.tooltip \
+                       $title \
+                       $tooltip \
+                       [_ns_stats.dictGetDef $spec noquote 0] \
+                       [_ns_stats.dictGetDef $spec class ""]]
+        lappend titles $title
+        lappend alignments [dict get $spec align]
+    }
+
+    return [list $titles $alignments]
+}
+
 proc _ns_stats.utilization {} {
     set sample        [_ns_stats.utilizationSample]
 
@@ -2238,43 +2287,162 @@ proc _ns_stats.utilization {} {
 
     set globalSummary [_ns_stats.utilization.globalSummary $sample $threadCpu]
 
-    set driverTitles {
-        "Driver Thread" Module "CPU %"
-        "<span title='Attempts to submit parsed requests to connection pools'>Received/s</span>"
-        "<span title='Receive attempts that left the request incomplete'>Partial/s</span>"
-        "<span title='Requests handed to upload spooler threads'>Upload-spooled/s</span>"
-        "<span class='nowrap'>Errors/s</span>"
-        "<span title='Sockets with incomplete requests or keep-alive sockets awaiting the next request'>Reading</span>"
-        "<span title='Requests ready for processing but still retained by the driver'>Pending</span>"
-        "<span title='Sockets retained temporarily for graceful shutdown'>Closing</span>"
-        "<span title='Sockets currently retained by this driver thread (reading, waiting, or closing), relative to its configured maxqueuesize.'>Sockets (used/max)</span>"
-        "<span title='Live threads / combined CPU percentage'>Writers</span>"
-        "<span title='Live threads / combined CPU percentage'>Spoolers</span>"
-        Status
-    }
-    set driverAlign {
-        left left right
-        right
-        right
-        right right
-        right right right right
-        right right
-        left
+    set driverColumnSpecs {
+        "Driver Thread" {
+            align left
+        }
+        "CPU %" {
+            align right
+        }
+        "Received/s" {
+            align right
+            tooltip {
+                Attempts to submit parsed requests to connection pools
+            }
+        }
+        "Partial/s" {
+            align right
+            tooltip {
+                Receive attempts that left the request incomplete
+            }
+        }
+        "Upload-spooled/s" {
+            align right
+            tooltip {
+                Requests handed to upload spooler threads
+            }
+        }
+        "Errors/s" {
+            align right
+        }
+        "Est. capacity" {
+            align right
+            tooltip {
+                Observed completed receives extrapolated to 100% utilization
+                of one logical CPU. This is a workload-dependent CPU-capacity
+                estimate, not a configured or guaranteed limit. Omitted when
+                the sample contains insufficient activity.
+            }
+        }
+        "Reading" {
+            align right
+            tooltip {
+                Sockets with incomplete requests or keep-alive sockets awaiting
+                the next request
+            }
+        }
+        "Pending" {
+            align right
+            tooltip {
+                Requests ready for processing but still retained by the driver
+            }
+        }
+        "Closing" {
+            align right
+            tooltip {
+                Sockets retained temporarily for graceful shutdown
+            }
+        }
+        "Sockets <span class='nowrap'>(used/max)</span>" {
+            align right
+            noquote true
+            tooltip {
+                Sockets currently retained by this driver thread
+                (reading, pending, or closing),
+                relative to its configured maxqueuesize.
+            }
+        }
+        "Writers" {
+            align right
+            tooltip {
+                Live threads / combined CPU percentage
+            }
+        }
+        "Spoolers" {
+            align right
+            tooltip {
+                Live threads / combined CPU percentage
+            }
+        }
+        "Status" {
+            align left
+        }
     }
 
-    set poolTitles {
-        Server Pool Req/s "Global Share" "Threads <span class='nowrap'>(busy/current/max)</span>" Busy
-        "<span title='Running requests plus requests waiting for a connection thread, relative to the pool''s maxconnections limit.'>Connections <span class='nowrap'>(active + waiting)/max</span></span>" Busy
-        "Avg Queue" "Avg Service"
-        {<span title="Estimated maximum request rate, calculated as maximum connection threads divided by average service time.">Est. Capacity</span>}
-        {<span title="Observed request rate divided by estimated capacity. This interval-based estimate may not reflect short bursts or current queueing.">Est. Load</span>}
-        "<span class='nowrap'>Queued/s</span>" "<span class='nowrap'>Writer Jobs/s</span>" "<span class='nowrap'>Dropped/s</span>" Status
+    set poolColumnSpecs {
+        Server {
+            align left
+        }
+        Pool {
+            align left
+        }
+        Req/s {
+            align right
+        }
+        "Global Share" {
+            align right
+        }
+        "Threads <span class='nowrap'>(busy/current/max)</span>" {
+            align right
+            noquote true
+        }
+        Busy {
+            align left
+        }
+        "Connections <span class='nowrap'>(active + waiting)/max</span>" {
+            align right
+            noquote true
+            tooltip {
+                Running requests plus requests waiting for a connection thread,
+                relative to the pool's maxconnections limit.
+            }
+        }
+        Busy {
+            align left
+        }
+        "Avg Queue" {
+            align right
+        }
+        "Avg Service" {
+            align right
+        }
+        "Est. Capacity" {
+            align right
+            tooltip {
+                Estimated maximum request rate, calculated as maximum connection
+                threads divided by average service time.
+            }
+        }
+        "Est. Load" {
+            align right
+            tooltip {
+                Observed request rate divided by estimated capacity. This
+                interval-based estimate may not reflect short bursts or current
+                queueing.
+            }
+        }
+        Queued/s {
+            align right
+            class nowrap
+        }
+        "Writer Jobs" {
+            align right
+        }
+        Dropped/s {
+            align right
+            class nowrap
+        }
+        Status {
+            align left
+        }
     }
-    set poolAlign {
-        left left right right right left
-        right left right right right right
-        right right right left
-    }
+
+    lassign [_ns_stats.columnLists $driverColumnSpecs] \
+        driverTitles driverAlign
+
+    lassign [_ns_stats.columnLists $poolColumnSpecs] \
+        poolTitles poolAlign
+
 
     set ::extraHeadEntries [ns_trim -delimiter | {
         |<style>
@@ -2286,6 +2454,13 @@ proc _ns_stats.utilization {} {
         |.utilization-chart {
         |   min-height: 280px;
         | }
+        |.nsstats-tooltip {
+        |   text-decoration-line: underline;
+        |   text-decoration-style: dashed;
+        |   text-decoration-color: currentColor;
+        |   text-underline-offset: 3px;
+        |   cursor: help;
+        |}
         |</style>
         |<script src="https://code.highcharts.com/highcharts.js"></script>
         |<script src="https://code.highcharts.com/modules/exporting.js"></script>
@@ -4550,10 +4725,8 @@ proc _ns_stats.threads {} {
     set col         [ns_queryget col 1]
     set reverseSort [ns_queryget reversesort 1]
 
-    set cpuData \
-        [_ns_stats.threadCpuPercentages threadCpuSample]
-
-    set osInfo    [dict get $cpuData available]
+    set cpuData    [_ns_stats.threadCpuPercentages threadCpuSample]
+    set osInfo     [dict get $cpuData available]
     set threadInfo [dict get $cpuData rows]
 
     if {$osInfo} {
