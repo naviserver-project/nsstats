@@ -1672,6 +1672,7 @@ proc _ns_stats.utilization.driverRows {sample threadCpu} {
             set receivedDelta [_ns_stats.intervalDelta \
                                    [dict get $stats received] \
                                    [dict get $old received] ]
+            set receivedTotal [dict get $stats received]
 
             set partialRate [_ns_stats.intervalRate \
                                  [dict get $stats partial] \
@@ -1761,6 +1762,16 @@ proc _ns_stats.utilization.driverRows {sample threadCpu} {
             set status "[string toupper $severity]: [join $reasons {; }]"
         }
 
+        if {$receivedTotal > 0} {
+            set receivedDisplay [_ns_stats.utilization.displayRate $receivedRate]
+            set partialDisplay  [_ns_stats.utilization.displayRate $partialRate]
+            set spooledDisplay  [_ns_stats.utilization.displayRate $spooledRate]
+        } else {
+            set receivedDisplay "\u2014"
+            set partialDisplay  "\u2014"
+            set spooledDisplay  "\u2014"
+        }
+
         set driverDisplay [_ns_stats.utilization.colorize $severity $driverThread]
         set statusDisplay [_ns_stats.utilization.colorize $severity $status 1]
 
@@ -1787,9 +1798,9 @@ proc _ns_stats.utilization.driverRows {sample threadCpu} {
         lappend rows [list \
                           $driverDisplay \
                           $driverCpuDisplay \
-                          [_ns_stats.utilization.displayRate $receivedRate] \
-                          [_ns_stats.utilization.displayRate $partialRate] \
-                          [_ns_stats.utilization.displayRate $spooledRate] \
+                          $receivedDisplay \
+                          $partialDisplay \
+                          $spooledDisplay \
                           $errorDisplay \
                           $capacityDisplay \
                           $reading \
