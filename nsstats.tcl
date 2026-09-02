@@ -946,17 +946,21 @@ proc _ns_stats.linuxReadSocketQueues {} {
     }
 
     set result [dict create \
-                    tcpListenQueued    0 \
-                    tcpListenMax       0 \
-                    tcpListeners       0 \
-                    tcpReceiveBytes    0 \
-                    tcpReceiveMax      0 \
-                    tcpSendBytes       0 \
-                    tcpSendMax         0 \
-                    udpReceiveBytes    0 \
-                    udpReceiveMax      0 \
-                    udpSendBytes       0 \
-                    udpSendMax         0]
+                    tcpListenQueued     0 \
+                    tcpListenMax        0 \
+                    tcpListeners        0 \
+                    tcpReceiveBytes     0 \
+                    tcpReceiveMax       0 \
+                    tcpSendBytes        0 \
+                    tcpSendMax          0 \
+                    udpReceiveBytes     0 \
+                    udpReceiveMax       0 \
+                    udpSendBytes        0 \
+                    udpSendMax          0 \
+                    udpSocketDrops      0 \
+                    udpSocketsWithDrops 0 \
+                    udpSocketDropMax    0
+               ]
 
     set tablesRead 0
 
@@ -1027,6 +1031,22 @@ proc _ns_stats.linuxReadSocketQueues {} {
                     if {$txQueue > [dict get $result udpSendMax]} {
                         dict set result udpSendMax $txQueue
                     }
+
+                    #
+                    # Linux exposes the cumulative socket drop counter
+                    # as the final field in /proc/net/udp{,6}.
+                    #
+                    set drops [lindex $fields end]
+                    if {[string is integer -strict $drops]} {
+                        dict incr result udpSocketDrops $drops
+
+                        if {$drops > 0} {
+                            dict incr result udpSocketsWithDrops
+                        }
+                        if {$drops > [dict get $result udpSocketDropMax]} {
+                            dict set result udpSocketDropMax $drops
+                        }
+                    }
                 }
             }
         }
@@ -1037,7 +1057,7 @@ proc _ns_stats.linuxReadSocketQueues {} {
 
 proc _ns_stats.linuxNetworkSnapshot {} {
 
-    if {![string match -nocase *linux* [ns_info platform]]} {
+    if {![string match -nocase *linux*$::tcl_platform(platform)]} {
         return {}
     }
 
@@ -1109,6 +1129,11 @@ proc _ns_stats.linuxNetworkSnapshot {} {
         return {}
     }
 
+    if {[dict exists $queues udpSocketDrops]} {
+        dict set counters udpSocketDrops [dict get $queues udpSocketDrops]
+        dict unset queues udpSocketDrops
+    }
+
     return [dict create \
                 counters $counters \
                 gauges   $queues]
@@ -1156,6 +1181,7 @@ proc _ns_stats.utilization.linuxRows {current previous elapsed severityVar reaso
             tcpBacklogDrops    tcpBacklogDropsDelta    tcpBacklogDropsRate
             tcpReceiveDrops    tcpReceiveDropsDelta    tcpReceiveDropsRate
             udpReceiveDrops    udpReceiveDropsDelta    udpReceiveDropsRate
+            udpSocketDrops     udpSocketDropsDelta     udpSocketDropsRate
             udpSendDrops       udpSendDropsDelta       udpSendDropsRate
             interfaceRxDrops   interfaceRxDropsDelta   interfaceRxDropsRate
             interfaceTxDrops   interfaceTxDropsDelta   interfaceTxDropsRate
@@ -1264,28 +1290,52 @@ proc _ns_stats.utilization.linuxRows {current previous elapsed severityVar reaso
         set udpAlerts  {}
         set udpQueues  {}
         set udpDetails {}
-
-        foreach {rate label} [list \
-                                  $udpReceiveDropsRate "receive-buffer drops" \
-                                  $udpSendDropsRate    "send-buffer drops"] {
-
-            set text "[_ns_stats.utilization.displayRate $rate] $label"
-            if {$rate > 0.0} {
-                lappend udpAlerts [_ns_stats.utilization.colorize warning $text 1]
-            } elseif {$rate >= 0.0} {
-                lappend udpDetails $text
-            }
-        }
+        set udpSocketsWithDrops 0
+        set udpSocketDropMax    0
 
         if {[dict size $gauges] > 0} {
             set udpReceiveBytes [_ns_stats.dictGetDef $gauges udpReceiveBytes 0]
             set udpReceiveMax   [_ns_stats.dictGetDef $gauges udpReceiveMax 0]
             set udpSendBytes    [_ns_stats.dictGetDef $gauges udpSendBytes 0]
             set udpSendMax      [_ns_stats.dictGetDef $gauges udpSendMax 0]
+            set udpSocketsWithDrops [_ns_stats.dictGetDef $gauges udpSocketsWithDrops 0]
+            set udpSocketDropMax    [_ns_stats.dictGetDef $gauges udpSocketDropMax 0]
 
             lappend udpQueues \
                 "RX queue [_ns_stats.hr $udpReceiveBytes]B total, [_ns_stats.hr $udpReceiveMax]B largest" \
                 "TX queue [_ns_stats.hr $udpSendBytes]B total, [_ns_stats.hr $udpSendMax]B largest"
+        }
+
+       #
+        # Namespace-wide receive-buffer drops, supplemented with the
+        # subset attributable to UDP sockets owned by NaviServer.
+        #
+        set receiveText "[_ns_stats.utilization.displayRate $udpReceiveDropsRate] receive-buffer drops"
+        if {($udpReceiveDropsDelta > 0 || $udpSocketDropsDelta > 0)
+            && $udpSocketDropsDelta >= 0
+        } {
+            append receiveText " ($udpSocketDropsDelta on NaviServer sockets"
+
+            if {$udpSocketsWithDrops > 0} {
+                append receiveText "; $udpSocketsWithDrops " \
+                    [expr {$udpSocketsWithDrops == 1
+                           ? "socket with prior drops"
+                           : "sockets with prior drops"}] \
+                    ", largest cumulative $udpSocketDropMax"
+            }
+
+            append receiveText ")"
+        }
+
+        set sendText "[_ns_stats.utilization.displayRate $udpSendDropsRate] send-buffer drops"
+        foreach {rate text} [list \
+                                 $udpReceiveDropsRate $receiveText \
+                                 $udpSendDropsRate    $sendText] {
+            if {$rate > 0.0} {
+                lappend udpAlerts [_ns_stats.utilization.colorize warning $text 1]
+            } elseif {$rate >= 0.0} {
+                lappend udpDetails $text
+            }
         }
 
         set udpSeverity [expr {[llength $udpAlerts] > 0 ? "warning" : "ok"}]
@@ -1659,6 +1709,7 @@ proc _ns_stats.utilization.driverRows {sample threadCpu} {
         set spooledRate   -1.0
         set errorRate     -1.0
         set receivedDelta -1.0
+        set receivedTotal  0
 
         if {$elapsed > 0.0
             && [dict exists $previous drivers $driverThread]} {
