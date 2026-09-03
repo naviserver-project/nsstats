@@ -52,8 +52,7 @@ if { ![nsv_exists _ns_stats threads_0] } {
 }
 set severity [expr {$debug ? "notice" : "debug"}]
 
-
-set ::navLinks {
+set ::navLinks [subst {
     background        "Background"
     background.jobs   "Jobs"
     background.sched  "Scheduled Procedures"
@@ -73,10 +72,10 @@ set ::navLinks {
     mem.tcl           "Allocated Memory"
     mem.cache         "Cache (ns_cache)"
     mem.nsvsize       "Shared Variables (nsv)"
-    utilization       "Utilization"
+    [expr {[info commands ns_json] ne "" ?  {utilization Utilization} : ""}]
     process           "Process"
     threads           "Threads"
-}
+}]
 
 # The following entries have no counter parts in the navLinks
 # (we could add some of these to sub menus).
@@ -3252,7 +3251,7 @@ proc _ns_stats.mem.tcl {} {
     # The following works just on Linux. The output is optional.
     #
     set meminfo [_ns_stats.memsizes [ns_info pid] 1]
-    set html [_ns_stats.header Memory]
+    set html    [_ns_stats.header Memory]
     try {
         ns_info meminfo {*}[expr {[ns_queryget release 0] ? "-release" : ""}]
     } on ok {result} {
@@ -3270,6 +3269,8 @@ proc _ns_stats.mem.tcl {} {
             }]] [_ns_stats.footer]
             return $html
         }
+    } on error {errorMsg} {
+        # ignore
     }
 
     set talloc 0
