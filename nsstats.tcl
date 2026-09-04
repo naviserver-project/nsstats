@@ -3726,6 +3726,8 @@ proc _ns_stats.process {} {
     set t [clock milliseconds]; set F [open "|cat" w]; puts $F "timing-pipe-open+puts"; close $F
     dict set processInfo fork-time [expr {[clock milliseconds] - $t}]ms
     set values [list \
+                    Version              "[ns_info patchlevel] (tag $tag) $buildinfo" \
+                    "Build Date"          [ns_info builddate] \
                     Host                 "[ns_info hostname] ([ns_info address], Tcl $::tcl_patchLevel, $version_info)" \
                     "Boot Time"           [clock format [ns_info boottime] -format %c] \
                     Uptime                [_ns_stats.fmtSeconds [ns_info uptime]] \
@@ -3735,8 +3737,6 @@ proc _ns_stats.process {} {
                     Configuration         [ns_info config] \
                     "System Log"          [ns_info log] \
                     "Log Statistics"      [_ns_stats.pretty {Notice Warning Debug(sql)} [ns_logctl stats] %.0f] \
-                    Version              "[ns_info patchlevel] (tag $tag) $buildinfo" \
-                    "Build Date"          [ns_info builddate] \
                     Servers               [join [lmap s [ns_info servers] {string cat "<a href='#$s'>$s</a>: [ns_config ns/servers $s]"}] <br>] \
                     {*}${driverInfo} \
                     {*}${certInfo} \
