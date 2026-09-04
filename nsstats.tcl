@@ -4616,7 +4616,6 @@ proc _ns_stats.threadCpuPercentages {sampleKey} {
                     rows      $rawThreads \
                     byThread  {}]
     }
-
     set cpuAvailable 1
 
     #
@@ -4806,6 +4805,17 @@ proc _ns_stats.threads {} {
         set colNumSort {. 0 0 1 1 1 0}
         set colTitles {Thread Parent ID Flags "Create Time" Args}
         set align     {left left right left left left}
+    }
+
+    #
+    # The available columns depend on whether per-thread CPU information
+    # could be obtained. A bookmarked or manually supplied column number
+    # might therefore refer to a column not present in the current layout.
+    #
+    if {![string is integer -strict $col]
+        || $col < 1
+        || $col > [llength $colTitles]} {
+        set col 1
     }
 
     set rows {}
