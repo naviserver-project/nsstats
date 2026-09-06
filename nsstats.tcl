@@ -2927,10 +2927,13 @@ proc _ns_stats.log.logfile {} {
             }]
         }
     } else {
-        try {
-            set log_to_stderr [expr {"-f" in [ns_info argv]}]
-        } on error {errorMsg} {
-            set log_to_stderr [expr {![file exists $system_log]}]
+        set log_to_stderr [expr {"-f" in [ns_info argv]}]
+        if {!$log_to_stderr && ![file exists $system_log]} {
+            #
+            # Older version of NaviServer do not provide a working
+            # "ns_info argv"
+            #
+            set log_to_stderr 1
         }
         if {$log_to_stderr} {
             set content [ns_trim -delimiter | [subst {
@@ -2949,6 +2952,10 @@ proc _ns_stats.log.logfile {} {
                 # read the first partial line
                 gets $f
                 set system_content [string map $colorcodemap [read $f]]
+            } on error {errorMsg} {
+                # probably, output to console
+                ns_log notice nsstats: $errorMsg
+                set system_content ""
             } finally {
                 if {[info exists f]} {
                     close $f
@@ -2958,7 +2965,14 @@ proc _ns_stats.log.logfile {} {
         }
     }
 
-    set tails [lmap file [lsort -decreasing [glob [ns_info log].*]] {
+    try {
+        set errorLogFiles [lsort -decreasing [glob [ns_info log].*]]
+    } on error {errorMsg} {
+        ns_log notice nsstats: $errorMsg
+        set errorLogFiles {}
+    }
+
+    set tails [lmap file $errorLogFiles {
         if {[file size $file] < 10} continue
         file tail $file
     }]
