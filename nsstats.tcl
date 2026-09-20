@@ -455,7 +455,7 @@ proc _ns_stats.mem.cache {} {
         array set t {saved ""}
         set totalSaved 0
         foreach cache [ns_cache_names] {
-            array set t {commit 0 rollback 0}
+            array set t {commit 0 rollback 0 collisions 0 waits 0 rewaits 0 timeouts 0}
             array set t [ns_cache_stats $cache]
             set avgSize [expr {$t(entries) > 0 ? $t(size)/$t(entries) : 0}]
             lappend results [list $cache $t(maxsize) $t(size) \
@@ -466,6 +466,7 @@ proc _ns_stats.mem.cache {} {
                                  [format %.f [expr {$t(entries)>0 ? $t(hits)*1.0/$t(entries) : 0}]] \
                                  $t(missed) $t(hitrate) $t(expired) $t(pruned) \
                                  $t(commit) $t(rollback) \
+                                 $t(collisions) $t(waits) $t(rewaits) $t(timeouts) \
                                  [expr {$t(hits) > 0 ? $t(saved)*1.0/$t(hits) : 0}] \
                                  [expr {$totalRequests > 0 ? $t(saved)/$totalRequests : 0}] \
                                 ]
@@ -474,7 +475,8 @@ proc _ns_stats.mem.cache {} {
 
         set colTitles   {
             Cache Max Current Utilization Entries "Avg Size" Flushes Hits Hits/Req Reuse Misses
-            "Hit Rate" Expired Pruned Commit Rollback "Saved/Hit" "Saved/Req"
+            "Hit Rate" Expired Pruned Commit Rollback Collisions Waits Rewaits Timeouts
+            "Saved/Hit" "Saved/Req"
         }
         set rows [_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
 
@@ -493,8 +495,12 @@ proc _ns_stats.mem.cache {} {
             lset row 11 [format %.2f [lindex $row 11]]%
             lset row 12 [_ns_stats.hr [lindex $row 12]]
             lset row 13 [_ns_stats.hr [lindex $row 13]]
-            lset row 16 [_ns_stats.hr [lindex $row 16]]s
-            lset row 17 [_ns_stats.hr [lindex $row 17]]s
+            lset row 16 [_ns_stats.hr [lindex $row 16]]
+            lset row 17 [_ns_stats.hr [lindex $row 17]]
+            lset row 18 [_ns_stats.hr [lindex $row 18]]
+            lset row 19 [_ns_stats.hr [lindex $row 19]]
+            lset row 20 [_ns_stats.hr [lindex $row 20]]s
+            lset row 21 [_ns_stats.hr [lindex $row 21]]s
             lappend table $row
         }
 
@@ -503,7 +509,12 @@ proc _ns_stats.mem.cache {} {
             "<p class='summary'>ns_cache operations saved since the start of the server [_ns_stats.fmtSeconds $totalSaved] on [_ns_stats.hr $totalRequests] requests " \
             "([_ns_stats.hr [expr {$totalSaved/$totalRequests}]]s per request on average)</p>" \n \
             [_ns_stats.results cache $col $colTitles ?@page=mem.cache $table $reverseSort {
-                left right right right right right right right right right right right right right right right right right
+                left
+                right right right right right
+                right right right right right
+                right right right right right
+                right right right right right
+                right
             }] \
             [_ns_stats.footer]
     }
