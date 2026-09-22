@@ -3616,7 +3616,8 @@ proc _ns_stats.process {} {
 
         foreach entry [ns_driver info] {
             dict unset entry extraheaders
-            lappend driverInfo $entry
+            lappend driverInfo [_ns_stats.pretty {recvbufsize sendbufsize} $entry %.2f]
+
             set module [dict get $entry module]
             if {[dict get $entry type] eq "nsssl"} {
                 #
