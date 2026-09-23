@@ -502,6 +502,14 @@ table.config {font-size: 0.9rem;}
         lappend linkLines "[string repeat {  } $level]$item"
         incr level $postincr
     }
+    set now [ns_time get]
+    if {$::raw} {
+        set seconds [ns_time seconds $now]
+        set timestamp [clock format $seconds -format "%Y-%m-%dT%H:%M:%S"]
+        append timestamp [format ".%06d" [ns_time microseconds $now]] [clock format $seconds -format "%z"]
+    } else {
+        set timestamp [_ns_stats.fmtTime [ns_time seconds $now]]
+    }
 %>
 
 <!-- Header -->
@@ -509,7 +517,7 @@ table.config {font-size: 0.9rem;}
   <h1><a href="<%=[ns_conn url]%>"><strong>NaviServer</strong></a><span class="tagline">Monitoring and Statistics</span></h1>
   <div class="header-right">
     <p><strong><%=[ns_info hostname]%></strong></p>
-    <p><%=[_ns_stats.fmtTime [ns_time]]%></p>
+    <p><%=$timestamp%></p>
   </div>
   <div style="clear: both;"></div>
 </header>
