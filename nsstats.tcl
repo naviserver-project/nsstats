@@ -66,6 +66,7 @@ set ::navLinks [subst {
     log.logfile       "System Log"
     log.httpclient    "HTTP Client Log"
     log.smtpsent      "SMTP Sent Log"
+    log.smtpevents    "SMTP Events"
     log.levels        "Log Severities"
     mem               "Memory"
     mem.adp           "ADP"
@@ -98,6 +99,7 @@ set ::titles {
     log.levels        "Log Severities"
     log.logfile       "System Logfile"
     log.smtpsent      "SMTP Sent Logfile Analysis"
+    log.smtpevents    "SMTP Event Logfile Analysis"
     mapped            "Connection Pool Mappings"
     mem.adp           "ADP"
     mem.cache         "Cache Statistics (ns_cache)"
@@ -4519,11 +4521,7 @@ proc _ns_stats.log.chart {path section param title} {
             </tr>
         }]
     }
-    set options [join [lmap logfile $logfiles {
-        set selected [expr {$logfile eq $path ? "selected" : ""}]
-        set tail [file tail $logfile]
-        set _ "<option value='$tail' $selected>$tail</option>"
-    }] \n]
+    set fileform [_ns_stats.log.fileform $logfiles $path [ns_queryget @page ""]]
     set t2 [clock milliseconds]
     ns_log notice "nsstats: parse data [expr {$t1-$t0}]ms, graph and table built [expr {$t2-$t1}]ms"
 
@@ -4543,11 +4541,7 @@ proc _ns_stats.log.chart {path section param title} {
         </table>
         $errorLines
         <h4>Show other logfile</h4>
-        <form action="nsstats.tcl" class="row g-1">
-        <div class="col"><select class="form-select" name="logfile">$options</select></div>
-        <div class="col"><button type="submit" class="btn btn-outline-secondary">Show</button></div>
-        <input type="hidden" name="@page" value="[ns_queryget @page]">
-        </form>
+        $fileform
         <p>
         </div>
     }]
@@ -4573,8 +4567,151 @@ proc _ns_stats.log.httpclient {} {
 proc _ns_stats.log.smtpsent {} {
     return [_ns_stats.log.mkchart module/nssmtpd logfile "SMTP Sent Log"]
 }
+proc _ns_stats.log.smtpevents {} {
+    return [_ns_stats.log.mkchart module/nssmtpd eventlogfile "SMTP Events" \
+                _ns_stats.log.smtpevents.chart]
+}
 
-proc _ns_stats.log.mkchart {section param title} {
+proc _ns_stats.log.chart.parse-smtpevents {line} {
+    set fields [split $line " "]
+    lassign $fields date zone thread code event peer session transaction server sender recipient action reason targets
+    if {[llength $fields] < 14 || [regexp {[\r\n]} $line]
+        || ![regexp {^(-|[1-5][0-9]{2})$} $code]
+        || ![regexp {^[a-z0-9_-]+$} $event]
+        || ![string is integer -strict $transaction]} {
+        error {invalid event record}
+    }
+    set timestamp [expr {1000 * [clock scan [string range "$date $zone" 1 end-1] \
+                                   -format {%d/%b/%Y:%H:%M:%S %z}]}]
+    foreach name {server sender recipient action reason targets code} {
+        if {[set $name] eq "-"} {set $name ""}
+    }
+    return [dict create timestamp $timestamp thread $thread server $server \
+        session $session transaction $transaction peer [string range $peer 1 end-1] \
+        sender $sender event $event recipient $recipient action $action reason $reason \
+        code $code targets [expr {$targets eq "" ? {} : [split $targets ,]}]]
+}
+
+proc _ns_stats.log.smtpevents.read {path filter} {
+    set rows {}
+    set counts {}
+    set buckets {}
+    set total 0
+    set invalid 0
+    set filter [string tolower $filter]
+    set channel [open $path r]
+    fconfigure $channel -encoding utf-8
+    try {
+        while {[gets $channel line] >= 0} {
+            if {$line eq ""} {continue}
+            try {
+                set record [_ns_stats.log.chart.parse-smtpevents $line]
+            } on error {message options} {
+                incr invalid
+                continue
+            }
+            set searchable {}
+            foreach key {server session transaction peer sender event recipient action reason targets} {
+                lappend searchable [dict get $record $key]
+            }
+            if {$filter ne "" && [string first $filter [string tolower [join $searchable " "]]] < 0} {continue}
+            incr total
+            set event [dict get $record event]
+            set action [dict get $record action]
+            set reason [dict get $record reason]
+            dict incr counts [list $event $action $reason]
+            set minute [expr {[dict get $record timestamp] / 60000 * 60000}]
+            # Separate denominators: policies and alias events are not RCPT attempts.
+            if {$event eq "recipient" && $action in {accept defer reject}} {
+                dict incr buckets [list recipient $action $minute]
+            } elseif {$event eq "greylist"} {
+                if {$reason ni {new early retry known expired capacity}} {set reason other}
+                dict incr buckets [list greylist $reason $minute]
+            }
+            lappend rows $record
+            if {[llength $rows] > 200} {set rows [lrange $rows end-199 end]}
+        }
+    } finally {close $channel}
+    return [dict create rows $rows counts $counts buckets $buckets total $total invalid $invalid]
+}
+
+proc _ns_stats.log.smtpevents.series {buckets event categories} {
+    set series {}
+    foreach category $categories {
+        set points {}
+        dict for {key count} $buckets {
+            lassign $key kind label minute
+            if {$kind eq $event && $label eq $category} {
+                lappend points [list $minute $count]
+            }
+        }
+        set data {}
+        foreach point [lsort -integer -index 0 $points] {
+            lassign $point minute count
+            lappend data "\[$minute,$count\]"
+        }
+        # Categories are fixed literals; only integers enter the JavaScript data.
+        lappend series "{name:'$category',data:\[[join $data ,]\]}"
+    }
+    return [join $series ,]
+}
+
+proc _ns_stats.log.smtpevents.chart {path section param title} {
+    set files [_ns_stats.log.logfiles $section $param]
+    set filter [ns_queryget filter ""]
+    set report [_ns_stats.log.smtpevents.read $path $filter]
+    set html [_ns_stats.log.fileform $files $path log.smtpevents [dict create filter $filter]]
+    append html {<p>Recipient counts describe SMTP RCPT attempts, not delivered messages.
+        Greylisting deferrals are not spam classifications. Filter matches peer, sender,
+        original recipient, targets, session, transaction, event, action, or reason.</p>}
+    set recipientSeries [_ns_stats.log.smtpevents.series [dict get $report buckets] recipient {accept defer reject}]
+    set greySeries [_ns_stats.log.smtpevents.series [dict get $report buckets] greylist {new early retry known expired capacity other}]
+    append html "<div id=\"smtp-recipient-events\"></div><div id=\"smtp-greylist-events\"></div><script>\
+        Highcharts.chart('smtp-recipient-events', {chart:{type:'column'}, title:{text:'Recipient decisions per minute'},\
+        xAxis:{type:'datetime'}, yAxis:{title:{text:'RCPT attempts'},allowDecimals:false}, series:\[$recipientSeries\]});\
+        Highcharts.chart('smtp-greylist-events', {chart:{type:'column'}, title:{text:'Greylisting events per minute'},\
+        xAxis:{type:'datetime'}, yAxis:{title:{text:'Events'},allowDecimals:false}, series:\[$greySeries\]});</script>"
+    append html {<h4>Event totals</h4><table class="table"><tr><th>Event</th><th>Action</th><th>Reason</th><th>Count</th></tr>}
+    dict for {key count} [dict get $report counts] {
+        append html <tr>
+        foreach value [list {*}$key $count] {append html "<td>[ns_quotehtml $value]</td>"}
+        append html </tr>
+    }
+    append html "</table><p>[dict get $report total] matching events; showing the last 200 at most. \
+        [dict get $report invalid] malformed or unsupported records skipped.</p>"
+    append html {<table class="table"><tr><th>Time</th><th>Server</th><th>Session / transaction</th><th>Peer</th><th>Sender</th><th>Recipient</th><th>Event</th><th>Action</th><th>Reason</th><th>SMTP code</th><th>Targets</th></tr>}
+    foreach row [lreverse [dict get $report rows]] {
+        set time [clock format [expr {[dict get $row timestamp] / 1000}] -format {%Y-%m-%d %H:%M:%S %z}]
+        set values [list $time [dict get $row server] "[dict get $row session] / [dict get $row transaction]"]
+        foreach key {peer sender recipient event action reason code targets} {lappend values [dict get $row $key]}
+        append html <tr>
+        foreach value $values {append html "<td>[ns_quotehtml $value]</td>"}
+        append html </tr>
+    }
+    append html </table>
+    return $html
+}
+
+# Shared selector for request logs and event logs. Full paths distinguish logs
+# from different servers; mkchart also accepts legacy basename query values.
+proc _ns_stats.log.fileform {files selected page {filters {}}} {
+    set options {}
+    foreach path $files {
+        set attribute [expr {$path eq $selected ? "selected" : ""}]
+        append options "<option value=\"[ns_quotehtml $path]\" $attribute>[ns_quotehtml $path]</option>"
+    }
+    set html "<form action=\"nsstats.tcl\" class=\"row g-1\">\
+        <input type=\"hidden\" name=\"@page\" value=\"[ns_quotehtml $page]\">\
+        <div class=\"col\"><label>Log <select class=\"form-select\" name=\"logfile\">$options</select></label></div>"
+    dict for {name value} $filters {
+        append html "<div class=\"col\"><label>[ns_quotehtml [string totitle $name]] \
+            <input class=\"form-control\" name=\"[ns_quotehtml $name]\" value=\"[ns_quotehtml $value]\"></label></div>"
+    }
+    append html {<div class="col"><button type="submit" class="btn btn-outline-secondary">Show</button></div></form>}
+    return $html
+}
+
+proc _ns_stats.log.mkchart {section param title {renderer _ns_stats.log.chart}} {
     set ::extraHeadEntries {
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
         <script src="https://code.highcharts.com/highcharts.js"></script>
@@ -4589,13 +4726,27 @@ proc _ns_stats.log.mkchart {section param title} {
     if {$configured_logfile eq ""} {
         set HTML "<p>No $section $param logfiles configured</p>"
     } else {
+        set files [_ns_stats.log.logfiles $section $param]
         set selected_logfile [ns_queryget logfile ""]
         if {$selected_logfile eq ""} {
             set logfile $configured_logfile
+            if {$logfile ni $files} {set logfile [lindex $files 0]}
         } else {
-            set logfile [file join {*}[lreplace [file split $configured_logfile] end end $selected_logfile]]
+            set logfile $selected_logfile
+            if {[file tail $selected_logfile] eq $selected_logfile} {
+                set logfile [file join [file dirname $configured_logfile] $selected_logfile]
+            }
         }
-        set HTML [_ns_stats.log.chart $logfile $section $param $title]
+        # Restrict all renderers to configured log files and discovered rotations.
+        if {$logfile eq "" || $logfile ni $files} {
+            set HTML {<p>No matching log file available.</p>}
+        } else {
+            try {
+                set HTML [{*}$renderer $logfile $section $param $title]
+            } on error {message options} {
+                set HTML "<p>Cannot read log: [ns_quotehtml $message]</p>"
+            }
+        }
     }
     append html \
         [_ns_stats.header $title] \
