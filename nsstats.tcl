@@ -4624,6 +4624,12 @@ proc _ns_stats.log.smtpevents.read {path filter} {
             # Separate denominators: policies and alias events are not RCPT attempts.
             if {$event eq "recipient" && $action in {accept defer reject}} {
                 dict incr buckets [list recipient $action $minute]
+            }
+            # Consolidated recipient events and historical greylist records.
+            if {$event eq "recipient" && [string match greylist-* $reason]} {
+                set reason [string range $reason 9 end]
+                if {$reason ni {new early retry known expired capacity}} {set reason other}
+                dict incr buckets [list greylist $reason $minute]
             } elseif {$event eq "greylist"} {
                 if {$reason ni {new early retry known expired capacity}} {set reason other}
                 dict incr buckets [list greylist $reason $minute]
@@ -4679,7 +4685,7 @@ proc _ns_stats.log.smtpevents.chart {path section param title} {
     }
     append html "</table><p>[dict get $report total] matching events; showing the last 200 at most. \
         [dict get $report invalid] malformed or unsupported records skipped.</p>"
-    append html {<table class="table"><tr><th>Time</th><th>Server</th><th>Session / transaction</th><th>Peer</th><th>Sender</th><th>Recipient</th><th>Event</th><th>Action</th><th>Reason</th><th>SMTP code</th><th>Targets</th></tr>}
+    append html {<div class="table-responsive"><table class="table table-sm text-nowrap"><tr><th>Time</th><th>Server</th><th>Session / transaction</th><th>Peer</th><th>Sender</th><th>Recipient</th><th>Event</th><th>Action</th><th>Reason</th><th>SMTP code</th><th>Targets</th></tr>}
     foreach row [lreverse [dict get $report rows]] {
         set time [clock format [expr {[dict get $row timestamp] / 1000}] -format {%Y-%m-%d %H:%M:%S %z}]
         set values [list $time [dict get $row server] "[dict get $row session] / [dict get $row transaction]"]
@@ -4688,7 +4694,7 @@ proc _ns_stats.log.smtpevents.chart {path section param title} {
         foreach value $values {append html "<td>[ns_quotehtml $value]</td>"}
         append html </tr>
     }
-    append html </table>
+    append html </table></div>
     return $html
 }
 
