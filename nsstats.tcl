@@ -1160,14 +1160,17 @@ proc _ns_stats.utilization.displayIntervalCounter {delta rate label} {
         return "\u2014"
     }
 
-    set noun [_ns_stats.utilization.pluralize $delta $label]
+    set noun [expr {$delta == 1 ? $label : "${label}s"}]
 
     if {$delta == 0} {
         return "0 $noun"
     }
 
     if {$rate >= 0.0} {
-        return "$delta $noun in interval ([_ns_stats.utilization.displayRate $rate])"
+        set rateDisplay [expr {$rate > 0.0 && $rate < 0.001
+                              ? "<0.001/s"
+                              : [_ns_stats.utilization.displayRate $rate]}]
+        return "$delta $noun in interval ($rateDisplay)"
     }
 
     return "$delta $noun in interval"
@@ -1322,7 +1325,7 @@ proc _ns_stats.utilization.linuxRows {current previous elapsed severityVar reaso
         # Namespace-wide receive-buffer drops, supplemented with the
         # subset attributable to UDP sockets owned by NaviServer.
         #
-        set receiveText "[_ns_stats.utilization.displayRate $udpReceiveDropsRate] receive-buffer drops"
+        set receiveText [_ns_stats.utilization.displayIntervalCounter $udpReceiveDropsDelta $udpReceiveDropsRate "receive-buffer drop"]
         if {($udpReceiveDropsDelta > 0 || $udpSocketDropsDelta > 0)
             && $udpSocketDropsDelta >= 0
         } {
@@ -1339,7 +1342,7 @@ proc _ns_stats.utilization.linuxRows {current previous elapsed severityVar reaso
             append receiveText ")"
         }
 
-        set sendText "[_ns_stats.utilization.displayRate $udpSendDropsRate] send-buffer drops"
+        set sendText [_ns_stats.utilization.displayIntervalCounter $udpSendDropsDelta $udpSendDropsRate "send-buffer drop"]
         foreach {rate text} [list \
                                  $udpReceiveDropsRate $receiveText \
                                  $udpSendDropsRate    $sendText] {
@@ -1478,6 +1481,8 @@ proc _ns_stats.utilization.globalSummary {sample threadCpu} {
     set queuedRate       [_ns_stats.intervalRate $currentQueued $previousQueued $elapsed]
     set spooledRate      [_ns_stats.intervalRate $currentSpooled $previousSpooled $elapsed]
     set droppedRate      [_ns_stats.intervalRate $currentDropped $previousDropped $elapsed]
+    set droppedDelta     [_ns_stats.intervalDelta $currentDropped $previousDropped]
+    set droppedText      [_ns_stats.utilization.displayIntervalCounter $droppedDelta $droppedRate "dropped request"]
 
     #
     # Interval-average request timing.
@@ -1549,7 +1554,7 @@ proc _ns_stats.utilization.globalSummary {sample threadCpu} {
     if {$droppedRate > 0.0} {
         set severity critical
         lappend reasons \
-            "[_ns_stats.utilization.displayRate $droppedRate] dropped"
+            $droppedText
     }
 
     if {$driverCpuMax >= 90.0} {
@@ -1596,7 +1601,7 @@ proc _ns_stats.utilization.globalSummary {sample threadCpu} {
 
     set droppedSeverity    [expr {$droppedRate > 0.0 ? "critical" : "ok"}]
     set droppedRateDisplay [_ns_stats.utilization.colorize $droppedSeverity \
-                                "[_ns_stats.utilization.displayRate $droppedRate] dropped"]
+                                $droppedText]
 
     set status [expr {[llength $reasons] == 0 ? "OK" : "[string toupper $severity]: [join $reasons {; }]"}]
     set statusDisplay [_ns_stats.utilization.colorize $severity $status 1]
@@ -1720,6 +1725,7 @@ proc _ns_stats.utilization.driverRows {sample threadCpu} {
         set partialRate   -1.0
         set spooledRate   -1.0
         set errorRate     -1.0
+        set errorDelta    -1.0
         set receivedDelta -1.0
         set receivedTotal  0
 
@@ -1747,6 +1753,7 @@ proc _ns_stats.utilization.driverRows {sample threadCpu} {
                                  [dict get $old spooled] \
                                  $elapsed]
 
+            set errorDelta [_ns_stats.intervalDelta [dict get $stats errors] [dict get $old errors]]
             set errorRate [_ns_stats.intervalRate \
                                [dict get $stats errors] \
                                [dict get $old errors] \
@@ -1814,9 +1821,10 @@ proc _ns_stats.utilization.driverRows {sample threadCpu} {
         # so report them without automatically calling the driver
         # saturated.
         #
+        set errorText [_ns_stats.utilization.displayIntervalCounter $errorDelta $errorRate error]
         if {$errorRate > 0.0} {
             lappend reasons \
-                "[_ns_stats.utilization.displayRate $errorRate] errors"
+                $errorText
         }
 
         if {[llength $reasons] == 0} {
@@ -1846,7 +1854,7 @@ proc _ns_stats.utilization.driverRows {sample threadCpu} {
         set waitingDisplay  [_ns_stats.utilization.colorize $waitingSeverity $waiting]
 
         set errorSeverity  [expr {$errorRate > 0.0 ? "warning" : "ok"}]
-        set errorDisplay   [_ns_stats.utilization.colorize $errorSeverity [_ns_stats.utilization.displayRate $errorRate]]
+        set errorDisplay   [_ns_stats.utilization.colorize $errorSeverity $errorText]
 
         set socketsPercentage [expr {$localSockets * 100.0 / $maxQueueSize}]
         set socketsSeverity   [expr {$socketsPercentage >= 90.0 ? "critical" : $socketsPercentage >= 75.0 ? "warning" : "ok" }]
@@ -1949,6 +1957,10 @@ proc _ns_stats.utilization.poolRows {sample} {
                                   [_ns_stats.dictGetDef $stats dropped 0] \
                                   [_ns_stats.dictGetDef $oldStats dropped 0] \
                                   $elapsed]
+            set droppedDelta [_ns_stats.intervalDelta \
+                                  [_ns_stats.dictGetDef $stats dropped 0] \
+                                  [_ns_stats.dictGetDef $oldStats dropped 0]]
+            set droppedText [_ns_stats.utilization.displayIntervalCounter $droppedDelta $droppedRate "dropped request"]
 
             #
             # Share of the total process-wide request rate.
@@ -2024,7 +2036,7 @@ proc _ns_stats.utilization.poolRows {sample} {
 
             if {$droppedRate > 0.0} {
                 set severity critical
-                lappend reasons  "[_ns_stats.utilization.displayRate $droppedRate] dropped"
+                lappend reasons  $droppedText
             }
 
             if {$waiting > 0} {
@@ -2070,7 +2082,7 @@ proc _ns_stats.utilization.poolRows {sample} {
             set busyDisplay    [_ns_stats.utilization.colorize $threadSeverity [format %.1f%% $threadBusyPercentage]]
 
             set droppedSeverity [expr {$droppedRate > 0.0 ? "critical" : "ok"}]
-            set droppedDisplay [_ns_stats.utilization.colorize $droppedSeverity [_ns_stats.utilization.displayRate $droppedRate]]
+            set droppedDisplay [_ns_stats.utilization.colorize $droppedSeverity $droppedText]
 
             set waitingSeverity       [expr {$waiting > 0 ? "warning" : "ok"}]
             set currentConnections    [expr {$waiting + $active}]
@@ -2386,7 +2398,7 @@ proc _ns_stats.utilization {} {
                 Requests handed to upload spooler threads
             }
         }
-        "Errors/s" {
+        "Errors (interval)" {
             align right
         }
         "Est. capacity" {
@@ -2502,7 +2514,7 @@ proc _ns_stats.utilization {} {
         "Writer Jobs" {
             align right
         }
-        Dropped/s {
+        "Dropped (interval)" {
             align right
             class nowrap
         }
