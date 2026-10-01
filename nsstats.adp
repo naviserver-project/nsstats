@@ -280,6 +280,8 @@ a {
     /* Content */
     .content {
       flex: 1;
+      /* Let wide tables scroll inside their wrappers instead of widening the page. */
+      min-width: 0;
     }
     .content h2 {
       color: var(--color-h2-text); /*was #004080;*/

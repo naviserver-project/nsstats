@@ -4697,16 +4697,49 @@ proc _ns_stats.log.smtpevents.chart {path section param title} {
     }
     append html "</table><p>[dict get $report total] matching events; showing the last 200 at most. \
         [dict get $report invalid] malformed or unsupported records skipped.</p>"
-    append html {<div class="table-responsive"><table class="table table-sm text-nowrap"><tr><th>Time</th><th>Server</th><th>Session / transaction</th><th>Peer</th><th>Sender</th><th>Recipient</th><th>Event</th><th>Action</th><th>Reason</th><th>SMTP code</th><th>Targets</th></tr>}
-    foreach row [lreverse [dict get $report rows]] {
-        set time [clock format [expr {[dict get $row timestamp] / 1000}] -format {%Y-%m-%d %H:%M:%S %z}]
-        set values [list $time [dict get $row server] "[dict get $row session] / [dict get $row transaction]"]
-        foreach key {peer sender recipient event action reason code targets} {lappend values [dict get $row $key]}
-        append html <tr>
-        foreach value $values {append html "<td>[ns_quotehtml $value]</td>"}
-        append html </tr>
+    set rows [lreverse [dict get $report rows]]
+    set servers [lsort -unique [lmap row $rows {dict get $row server}]]
+    if {[llength $servers] == 1} {
+        append html "<p>Server: [ns_quotehtml [lindex $servers 0]]</p>"
     }
-    append html </table></div>
+    append html {<div class="table-responsive"><table class="table table-sm text-nowrap"><thead><tr><th>Time</th><th>Peer</th><th>Sender</th><th>Recipient</th><th>Event</th><th>Action</th><th>Reason</th><th>Code</th><th>Details</th></tr></thead><tbody>}
+    set previousDate ""
+    foreach row $rows {
+        set seconds [expr {[dict get $row timestamp] / 1000}]
+        set date [clock format $seconds -format {%Y-%m-%d %z}]
+        set timestamp [clock format $seconds -format {%Y-%m-%d %H:%M:%S %z}]
+        if {$date ne $previousDate} {
+            append html "<tr class=\"table-light\"><th colspan=\"9\" scope=\"rowgroup\">[ns_quotehtml $date]</th></tr>"
+            set previousDate $date
+        }
+        append html "<tr><td title=\"[ns_quotehtml $timestamp]\">[clock format $seconds -format {%H:%M:%S}]</td>"
+        foreach key {peer sender recipient event action reason code} {
+            set value [ns_quotehtml [dict get $row $key]]
+            if {$key in {peer sender recipient reason}} {
+                # Keep the full value in the DOM for copying, and in the
+                # disclosure below for keyboard/touch access without hovering.
+                append html "<td><span class=\"d-inline-block text-truncate align-middle\" style=\"max-width: 24ch\" title=\"$value\">$value</span>"
+                if {$key eq "recipient" && [dict get $row event] eq "alias"
+                    && [dict get $row action] eq "expand"} {
+                    foreach target [dict get $row targets] {
+                        append html "<div class=\"text-wrap\" style=\"width: 24ch; overflow-wrap: anywhere\">&#8594; [ns_quotehtml $target]</div>"
+                    }
+                }
+                append html </td>
+            } else {
+                append html "<td>$value</td>"
+            }
+        }
+        append html {<td><details><summary>Details</summary><dl class="mb-0 text-wrap" style="width: 24rem; max-width: 60vw; overflow-wrap: anywhere">}
+        append html "<dt>Time</dt><dd>[ns_quotehtml $timestamp]</dd>"
+        foreach {key label} {server Server session Session transaction Transaction peer Peer sender Sender recipient Recipient reason Reason targets Targets} {
+            set value [dict get $row $key]
+            if {$key eq "targets"} {set value [join $value {, }]}
+            append html "<dt>$label</dt><dd>[ns_quotehtml $value]</dd>"
+        }
+        append html </dl></details></td></tr>
+    }
+    append html </tbody></table></div>
     return $html
 }
 
