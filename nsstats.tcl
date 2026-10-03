@@ -4598,10 +4598,25 @@ proc _ns_stats.log.chart.parse-smtpevents {line} {
     foreach name {server sender recipient action reason targets code} {
         if {[set $name] eq "-"} {set $name ""}
     }
+    set metadata {}
+    foreach field [lrange $fields 14 end] {
+        if {[regexp {^([a-z-]+)=(.*)$} $field -> key value]
+            && $key in {last-command message-bytes relay-accepted relay-reply}} {
+            # Decode the writer's byte escapes without evaluating log content.
+            set decoded ""
+            while {[regexp -indices {\\x[0-9a-fA-F]{2}} $value match]} {
+                lassign $match first last
+                append decoded [string range $value 0 $first-1] \
+                    [format %c [scan [string range $value $first+2 $last] %x]]
+                set value [string range $value $last+1 end]
+            }
+            dict set metadata $key $decoded$value
+        }
+    }
     return [dict create timestamp $timestamp thread $thread server $server \
         session $session transaction $transaction peer [string range $peer 1 end-1] \
         sender $sender event $event recipient $recipient action $action reason $reason \
-        code $code targets [expr {$targets eq "" ? {} : [split $targets ,]}]]
+        code $code targets [expr {$targets eq "" ? {} : [split $targets ,]}] metadata $metadata]
 }
 
 proc _ns_stats.log.smtpevents.read {path filter} {
@@ -4620,6 +4635,21 @@ proc _ns_stats.log.smtpevents.read {path filter} {
                 set record [_ns_stats.log.chart.parse-smtpevents $line]
             } on error {message options} {
                 incr invalid
+                continue
+            }
+            if {[dict get $record event] eq "transaction"} {
+                # Fold into retained rows before filtering: the end record has
+                # no original recipient and must still join an alias search.
+                set joined {}
+                foreach row $rows {
+                    if {[dict get $row server] eq [dict get $record server]
+                        && [dict get $row session] eq [dict get $record session]
+                        && [dict get $row transaction] eq [dict get $record transaction]} {
+                        dict set row outcome $record
+                    }
+                    lappend joined $row
+                }
+                set rows $joined
                 continue
             }
             set searchable {}
@@ -4736,6 +4766,18 @@ proc _ns_stats.log.smtpevents.chart {path section param title} {
             set value [dict get $row $key]
             if {$key eq "targets"} {set value [join $value {, }]}
             append html "<dt>$label</dt><dd>[ns_quotehtml $value]</dd>"
+        }
+        if {[dict exists $row outcome]} {
+            set outcome [dict get $row outcome]
+            append html "<dt>Transaction outcome</dt><dd>[ns_quotehtml [dict get $outcome reason]]</dd>"
+            append html "<dt>Ended</dt><dd>[ns_quotehtml [clock format [expr {[dict get $outcome timestamp] / 1000}] -format {%Y-%m-%d %H:%M:%S %z}]]</dd>"
+            foreach {key label} {last-command {Last SMTP command} message-bytes {Message bytes (wire DATA)} relay-accepted {Relay accepted} relay-reply {Relay reply}} {
+                if {[dict exists $outcome metadata $key]} {
+                    append html "<dt>$label</dt><dd>[ns_quotehtml [dict get $outcome metadata $key]]</dd>"
+                }
+            }
+        } else {
+            append html {<dt>Transaction outcome</dt><dd>Not recorded in this log</dd>}
         }
         append html </dl></details></td></tr>
     }
