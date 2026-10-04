@@ -4600,8 +4600,10 @@ proc _ns_stats.log.chart.parse-smtpevents {line} {
     }
     set metadata {}
     foreach field [lrange $fields 14 end] {
-        if {[regexp {^([a-z-]+)=(.*)$} $field -> key value]
-            && $key in {last-command message-bytes relay-accepted relay-reply}} {
+        if {[regexp {^([a-z0-9-]+)=(.*)$} $field -> key value]
+            && ($key in {last-command message-bytes relay-accepted relay-reply
+                         spf-result spf-peer spf-helo spf-errorcode dkim-signatures dkim-status dkim-limit}
+                || [regexp {^dkim-[1-8]-(domain|selector|key|verification)$} $key])} {
             # Decode the writer's byte escapes without evaluating log content.
             set decoded ""
             while {[regexp -indices {\\x[0-9a-fA-F]{2}} $value match]} {
@@ -4637,15 +4639,16 @@ proc _ns_stats.log.smtpevents.read {path filter} {
                 incr invalid
                 continue
             }
-            if {[dict get $record event] eq "transaction"} {
-                # Fold into retained rows before filtering: the end record has
-                # no original recipient and must still join an alias search.
+            if {[dict get $record event] in {transaction authentication}} {
+                # Fold transaction-wide details into retained rows before
+                # filtering: they have no recipient but must join alias searches.
                 set joined {}
                 foreach row $rows {
                     if {[dict get $row server] eq [dict get $record server]
                         && [dict get $row session] eq [dict get $record session]
                         && [dict get $row transaction] eq [dict get $record transaction]} {
-                        dict set row outcome $record
+                        set field [expr {[dict get $record event] eq "transaction" ? "outcome" : "authentication"}]
+                        dict set row $field $record
                     }
                     lappend joined $row
                 }
@@ -4766,6 +4769,12 @@ proc _ns_stats.log.smtpevents.chart {path section param title} {
             set value [dict get $row $key]
             if {$key eq "targets"} {set value [join $value {, }]}
             append html "<dt>$label</dt><dd>[ns_quotehtml $value]</dd>"
+        }
+        if {[dict exists $row authentication]} {
+            append html {<dt>Authentication diagnostics</dt><dd>Informational; DKIM signatures are not cryptographically verified.</dd>}
+            dict for {key value} [dict get $row authentication metadata] {
+                append html "<dt>[ns_quotehtml $key]</dt><dd>[ns_quotehtml $value]</dd>"
+            }
         }
         if {[dict exists $row outcome]} {
             set outcome [dict get $row outcome]
