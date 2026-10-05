@@ -4602,7 +4602,7 @@ proc _ns_stats.log.chart.parse-smtpevents {line} {
     foreach field [lrange $fields 14 end] {
         if {[regexp {^([a-z0-9-]+)=(.*)$} $field -> key value]
             && ($key in {last-command message-bytes relay-accepted relay-reply
-                         spf-result spf-peer spf-helo spf-errorcode dkim-signatures dkim-status dkim-limit}
+                         link-status link-limit link-host-mismatch link-embedded-redirect spf-result spf-peer spf-helo spf-errorcode dkim-signatures dkim-status dkim-limit}
                 || [regexp {^dkim-[1-8]-(domain|selector|key|verification)$} $key])} {
             # Decode the writer's byte escapes without evaluating log content.
             set decoded ""
@@ -4771,7 +4771,7 @@ proc _ns_stats.log.smtpevents.chart {path section param title} {
             append html "<dt>$label</dt><dd>[ns_quotehtml $value]</dd>"
         }
         if {[dict exists $row authentication]} {
-            append html {<dt>Authentication diagnostics</dt><dd>Informational; DKIM signatures are not cryptographically verified.</dd>}
+            append html {<dt>Authentication and link diagnostics</dt><dd>Informational; DKIM signatures are not cryptographically verified.</dd>}
             dict for {key value} [dict get $row authentication metadata] {
                 append html "<dt>[ns_quotehtml $key]</dt><dd>[ns_quotehtml $value]</dd>"
             }
