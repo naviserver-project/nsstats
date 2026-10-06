@@ -4601,9 +4601,9 @@ proc _ns_stats.log.chart.parse-smtpevents {line} {
     set metadata {}
     foreach field [lrange $fields 14 end] {
         if {[regexp {^([a-z0-9-]+)=(.*)$} $field -> key value]
-            && ($key in {last-command message-bytes relay-accepted relay-reply
-                         link-status link-limit link-host-mismatch link-embedded-redirect spf-result spf-peer spf-helo spf-errorcode dkim-signatures dkim-status dkim-limit}
-                || [regexp {^dkim-[1-8]-(domain|selector|key|verification)$} $key])} {
+            && ($key in {last-command message-bytes relay-accepted relay-reply recipients findings policy-rule
+                         link-status link-limit link-host-mismatch link-embedded-redirect link-destination-hosts link-destination-limit dkim-obsolete-algorithm spf-result spf-peer spf-helo spf-errorcode dkim-signatures dkim-status dkim-limit}
+                || [regexp {^dkim-[1-8]-(domain|selector|key|verification|algorithm|algorithm-status)$} $key])} {
             # Decode the writer's byte escapes without evaluating log content.
             set decoded ""
             while {[regexp -indices {\\x[0-9a-fA-F]{2}} $value match]} {
@@ -4769,6 +4769,18 @@ proc _ns_stats.log.smtpevents.chart {path section param title} {
             set value [dict get $row $key]
             if {$key eq "targets"} {set value [join $value {, }]}
             append html "<dt>$label</dt><dd>[ns_quotehtml $value]</dd>"
+        }
+        if {[dict exists $row metadata recipients] && ![catch {llength [dict get $row metadata recipients]}]} {
+            append html "<dt>Expanded recipients</dt><dd>[ns_quotehtml [join [dict get $row metadata recipients] {, }]]</dd>"
+        }
+        if {[dict exists $row metadata findings]} {
+            set findings [dict get $row metadata findings]
+            if {![catch {dict size $findings}] && [dict size $findings] > 0} {
+                append html {<dt>Policy findings</dt><dd>Observations used or collected by the policy chain.</dd>}
+                dict for {key value} $findings {
+                    append html "<dt>[ns_quotehtml $key]</dt><dd>[ns_quotehtml $value]</dd>"
+                }
+            }
         }
         if {[dict exists $row authentication]} {
             append html {<dt>Authentication and link diagnostics</dt><dd>Informational; DKIM signatures are not cryptographically verified.</dd>}
