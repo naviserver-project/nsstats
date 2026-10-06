@@ -97,3 +97,16 @@ Access control for the default user can be managed using the `nsperm` module or,
 
 - **Vlad Seryakov** (<vlad@crystalballinc.com>)
 - **Gustaf Neumann** (<neumann@wu-wien.ac.at>)
+
+## Database versions
+
+The main Process page shows client and database versions beside each pool's
+statistics when the driver implements `ns_db info` version reporting. SQLite
+versions are shown as dotted release numbers; PostgreSQL 10 and later use
+`major.minor`. Other encodings are shown numerically.
+
+Collection briefly borrows a handle with a 1 ms pool wait timeout and releases
+it even if version lookup fails. Busy or inaccessible pools and drivers without
+version support show `Versions: unavailable`; their statistics remain visible.
+This timeout bounds waiting for a free handle, not connecting to a database or
+executing a driver's version query.

@@ -3457,6 +3457,53 @@ proc _ns_stats.process.table {values} {
     return $html
 }
 
+proc _ns_stats.process.dbversion.format {type version} {
+    if {![string is entier -strict $version] || $version <= 0} {
+        return unknown
+    }
+    switch -- [string tolower $type] {
+        sqlite {
+            return [format %d.%d.%d [expr {$version / 1000000}] \
+                        [expr {$version / 1000 % 1000}] [expr {$version % 1000}]]
+        }
+        postgresql - postgres {
+            if {$version >= 100000} {
+                return [format %d.%d [expr {$version / 10000}] [expr {$version % 10000}]]
+            }
+        }
+    }
+    # Other drivers and older PostgreSQL versions may use different encodings.
+    return $version
+}
+
+proc _ns_stats.process.dbversion {pool} {
+    set handle ""
+    set result "Versions: unavailable"
+    # Do not query or reset a handle already owned by this request.
+    if {![catch {ns_db currenthandles} current] && [dict exists $current $pool]} {
+        return $result
+    }
+    try {
+        # Zero means an unlimited wait in ns_db; use a small positive timeout.
+        set handle [ns_db gethandle -timeout 1ms -- $pool]
+        set info [ns_db info $handle]
+        if {[dict exists $info clientversion] && [dict exists $info serverversion]} {
+            set type [dict get $info type]
+            set client [_ns_stats.process.dbversion.format $type [dict get $info clientversion]]
+            set server [_ns_stats.process.dbversion.format $type [dict get $info serverversion]]
+            set result "[ns_quotehtml $type]: client [ns_quotehtml $client], database [ns_quotehtml $server]"
+        }
+    } on error {message} {
+        # Unsupported drivers, unavailable pools and old ns_db interfaces
+        # must not prevent the process page from displaying its statistics.
+    } finally {
+        if {$handle ne ""} {
+            catch {ns_db releasehandle $handle}
+        }
+    }
+    return $result
+}
+
 proc _ns_stats.process.dbpools {} {
     set lines ""
     if {![catch {set poolStats [ns_db stats]}]} {
@@ -3472,7 +3519,8 @@ proc _ns_stats.process.dbpools {} {
                 lappend stats avgsqltime $avgSQLTime
             }
             set stats [_ns_stats.pretty {statements gethandles {avgwaittime s} {avgsqltime s}} $stats %.1f]
-            lappend lines "<tr><td class='subtitle'>$pool:</td><td width='100%'>$stats</td>"
+            set versions [_ns_stats.process.dbversion $pool]
+            lappend lines "<tr><td class='subtitle'>[ns_quotehtml $pool]:</td><td width='100%'>$versions<br>$stats</td></tr>"
         }
     }
     return $lines
