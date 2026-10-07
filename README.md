@@ -110,3 +110,8 @@ it even if version lookup fails. Busy or inaccessible pools and drivers without
 version support show `Versions: unavailable`; their statistics remain visible.
 This timeout bounds waiting for a free handle, not connecting to a database or
 executing a driver's version query.
+
+When the rendering request already owns a pool handle (as OpenACS commonly
+owns a pool1 handle), version collection runs in a separate NaviServer thread
+and borrows its own connection. It does not query, release, or reset the
+request-owned handle. The 1 ms pool wait and unavailable fallback still apply.

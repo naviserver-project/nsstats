@@ -3477,16 +3477,33 @@ proc _ns_stats.process.dbversion.format {type version} {
 }
 
 proc _ns_stats.process.dbversion {pool} {
-    set handle ""
     set result "Versions: unavailable"
-    # Do not query or reset a handle already owned by this request.
-    if {![catch {ns_db currenthandles} current] && [dict exists $current $pool]} {
-        return $result
-    }
+    # Pass a self-contained reader to worker interpreters, where this page's
+    # helper procedures are not necessarily defined.
+    set reader {{pool} {
+        set handle ""
+        try {
+            # Zero means unlimited waiting in ns_db.
+            set handle [ns_db gethandle -timeout 1ms -- $pool]
+            return [ns_db info $handle]
+        } on error {message} {
+            return {}
+        } finally {
+            if {$handle ne ""} {
+                catch {ns_db releasehandle $handle}
+            }
+        }
+    }}
     try {
-        # Zero means an unlimited wait in ns_db; use a small positive timeout.
-        set handle [ns_db gethandle -timeout 1ms -- $pool]
-        set info [ns_db info $handle]
+        if {![catch {ns_db currenthandles} current] && [dict exists $current $pool]} {
+            # nsdb limits pool acquisition per thread. Use another thread's
+            # own connection; querying a request-owned handle could overwrite
+            # its pending result (notably with nsdbpg's version query).
+            set thread [ns_thread create [list apply $reader $pool]]
+            set info [ns_thread wait $thread]
+        } else {
+            set info [apply $reader $pool]
+        }
         if {[dict exists $info clientversion] && [dict exists $info serverversion]} {
             set type [dict get $info type]
             set client [_ns_stats.process.dbversion.format $type [dict get $info clientversion]]
@@ -3494,12 +3511,7 @@ proc _ns_stats.process.dbversion {pool} {
             set result "[ns_quotehtml $type]: client [ns_quotehtml $client], database [ns_quotehtml $server]"
         }
     } on error {message} {
-        # Unsupported drivers, unavailable pools and old ns_db interfaces
-        # must not prevent the process page from displaying its statistics.
-    } finally {
-        if {$handle ne ""} {
-            catch {ns_db releasehandle $handle}
-        }
+        # Thread creation and unsupported interfaces must not break the page.
     }
     return $result
 }
