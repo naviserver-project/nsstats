@@ -310,6 +310,25 @@ a {
       }
     }
 
+    .data-table.modules {
+      margin-top: 0;
+      table-layout: auto;
+    }
+    .data-table.modules th,
+    .data-table.modules td {
+      width: 1%;
+      white-space: nowrap;
+    }
+    /* Override the compact padding used for other nested tables. */
+    table.data-table td table.modules th,
+    table.data-table td table.modules td {
+      padding: 5px 12px !important;
+    }
+    .data-table.modules th:last-child,
+    .data-table.modules td:last-child {
+      width: auto;
+    }
+
    .data-table.sched th,
    .data-table.sched td {
        word-break: break-word;

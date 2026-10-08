@@ -115,3 +115,25 @@ When the rendering request already owns a pool handle (as OpenACS commonly
 owns a pool1 handle), version collection runs in a separate NaviServer thread
 and borrows its own connection. It does not query, release, or reset the
 request-owned handle. The 1 ms pool wait and unavailable fallback still apply.
+
+Unavailable version lookups include an HTML-escaped diagnostic distinguishing
+pool wait timeouts, connection/lookup failures, and missing driver support.
+For SQLite open failures, the server log records the actual datasource path and
+SQLite error. Relative datasources require the `<home>/data/sqlite` directory
+(and any subdirectories) to exist and be writable by the NaviServer account.
+
+The main page's `Available DB-Pools` row identifies the current virtual server
+and lists its effective accessible pools from `ns_db pools`. The `DB-Pools`
+statistics table remains global and can include pools unavailable to that
+server. This distinction helps diagnose duplicate or incorrect server `pools`
+configuration entries; the access row reports runtime access, not configuration
+text or the OpenACS `pools_main` application mapping.
+
+For each virtual server, `Loaded Modules` displays a metadata table from
+`ns_server -server <server> modules` when supported. It includes registration
+names, module names and types, versions, build tags, scopes, and files. Missing optional metadata leaves blank cells. Earlier
+NaviServer versions retain the sorted module-name list from `ns_ictl getmodules`.
+
+Recognized Git build tags for core modules and nsdbpg, nsdbsqlite, nsdns, and
+nssmtpd link to commits in their GitHub repositories. Unknown modules or tags
+without a commit hash remain plain text.

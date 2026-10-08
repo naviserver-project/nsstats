@@ -3485,9 +3485,12 @@ proc _ns_stats.process.dbversion {pool} {
         try {
             # Zero means unlimited waiting in ns_db.
             set handle [ns_db gethandle -timeout 1ms -- $pool]
+            if {$handle eq ""} {
+                error "no free database handle within 1ms"
+            }
             return [ns_db info $handle]
         } on error {message} {
-            return {}
+            return [dict create _nsstats_error $message]
         } finally {
             if {$handle ne ""} {
                 catch {ns_db releasehandle $handle}
@@ -3504,16 +3507,89 @@ proc _ns_stats.process.dbversion {pool} {
         } else {
             set info [apply $reader $pool]
         }
-        if {[dict exists $info clientversion] && [dict exists $info serverversion]} {
+        if {[dict exists $info _nsstats_error]} {
+            set result "Versions: unavailable ([ns_quotehtml [dict get $info _nsstats_error]])"
+        } elseif {[dict exists $info clientversion] && [dict exists $info serverversion]} {
             set type [dict get $info type]
             set client [_ns_stats.process.dbversion.format $type [dict get $info clientversion]]
             set server [_ns_stats.process.dbversion.format $type [dict get $info serverversion]]
             set result "[ns_quotehtml $type]: client [ns_quotehtml $client], database [ns_quotehtml $server]"
+        } else {
+            set result "Versions: unavailable (driver does not expose version information)"
         }
     } on error {message} {
         # Thread creation and unsupported interfaces must not break the page.
+        set result "Versions: unavailable ([ns_quotehtml $message])"
     }
     return $result
+}
+
+proc _ns_stats.process.modules {server} {
+    if {[catch {ns_server -server $server modules} modules]} {
+        # Older NaviServer releases only provide the registered module names.
+        if {[catch {ns_ictl getmodules -server $server} names]} {
+            return {}
+        }
+        return [list "Loaded Modules" [ns_quotehtml [lsort $names]]]
+    }
+    set columns {
+        {} Module name Name type Type version Version tag Tag scope Scope
+        file File
+    }
+    set html {<div class="w3-responsive"><table class="data-table modules w3-table w3-hoverable"><thead><tr>}
+    foreach {key title} $columns {
+        append html "<th>[ns_quotehtml $title]</th>"
+    }
+    append html {</tr></thead><tbody>}
+    foreach module [lsort [dict keys $modules]] {
+        set info [dict get $modules $module]
+        append html <tr>
+        foreach {key title} $columns {
+            set value ""
+            if {$key eq ""} {
+                set value $module
+            } elseif {[dict exists $info $key]} {
+                set value [dict get $info $key]
+            }
+            set cell [ns_quotehtml $value]
+            if {$key eq "tag" && [dict exists $info name]} {
+                # Metadata has no repository URL; only link known modules.
+                set name [dict get $info name]
+                set repository ""
+                switch -- $name {
+                    quic - nssock - nsssl - nscp - nsdb - nslog - nsproxy {
+                        set repository naviserver
+                    }
+                    nsdbpg - nsdbsqlite - nsdns - nssmtpd {
+                        set repository $name
+                    }
+                }
+                set hash ""
+                if {[regexp -- {-[0-9]+-g([0-9a-f]+)(?:[+]|-dirty)?$} $value . hash]
+                    || [regexp {^([0-9a-f]{7,40})(?:[+]|-dirty)?$} $value . hash]} {
+                    if {$repository ne ""} {
+                        set cell "<a href='https://github.com/naviserver-project/$repository/commit/$hash'>$cell</a>"
+                    }
+                }
+            }
+            append html "<td>$cell</td>"
+        }
+        append html </tr>
+    }
+    append html {</tbody></table></div>}
+    return [list "Loaded Modules" $html]
+}
+
+proc _ns_stats.process.dbaccess {} {
+    set server [ns_quotehtml [ns_info server]]
+    if {[catch {ns_db pools} pools]} {
+        return "$server: unavailable"
+    }
+    if {[llength $pools] == 0} {
+        return "$server: none"
+    }
+    set names [lmap pool [lsort $pools] {ns_quotehtml $pool}]
+    return "$server: [join $names {, }]"
 }
 
 proc _ns_stats.process.dbpools {} {
@@ -3840,6 +3916,7 @@ proc _ns_stats.process {} {
                     Servers               [join [lmap s [ns_info servers] {string cat "<a href='#$s'>$s</a>: [ns_config ns/servers $s]"}] <br>] \
                     {*}${driverInfo} \
                     {*}${certInfo} \
+                    "Available DB-Pools"  [_ns_stats.process.dbaccess] \
                     DB-Pools             "<table>[join [_ns_stats.process.dbpools]]</table>" \
                     Callbacks            "<table>[join [_ns_stats.process.callbacks]]</table>" \
                     {*}$proxyItems \
@@ -3988,11 +4065,7 @@ proc _ns_stats.process {} {
             set serverlogdirEntry {}
         }
 
-        try {
-            set modulesEntry [list "Loaded Modules" [lsort [ns_ictl getmodules -server $s]]]
-        } on error {errorMsg} {
-            set modulesEntry {}
-        }
+        set modulesEntry [_ns_stats.process.modules $s]
 
         set values [list \
                         "Address"            [join [lsort -unique $addresses] <br>] \
