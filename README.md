@@ -122,12 +122,12 @@ For SQLite open failures, the server log records the actual datasource path and
 SQLite error. Relative datasources require the `<home>/data/sqlite` directory
 (and any subdirectories) to exist and be writable by the NaviServer account.
 
-The main page's `Available DB-Pools` row identifies the current virtual server
-and lists its effective accessible pools from `ns_db pools`. The `DB-Pools`
-statistics table remains global and can include pools unavailable to that
-server. This distinction helps diagnose duplicate or incorrect server `pools`
-configuration entries; the access row reports runtime access, not configuration
-text or the OpenACS `pools_main` application mapping.
+Each virtual server section has an `Available DB-Pools` row. For the current
+server it uses runtime access from `ns_db pools`; for other servers it resolves
+the first configured `pools` value, expanding `*` or filtering comma-separated
+names against known global pools, following NaviServer's initialization rules.
+The `DB-Pools` statistics table remains global. This helps diagnose duplicate or
+incorrect server `pools` entries independently of OpenACS `pools_main` mappings.
 
 For each virtual server, `Loaded Modules` displays a metadata table from
 `ns_server -server <server> modules` when supported. It includes registration
@@ -137,3 +137,7 @@ NaviServer versions retain the sorted module-name list from `ns_ictl getmodules`
 Recognized Git build tags for core modules and nsdbpg, nsdbsqlite, nsdns, and
 nssmtpd link to commits in their GitHub repositories. Unknown modules or tags
 without a commit hash remain plain text.
+
+Servers without available database pools display `{}`. Module tables include
+only database drivers used by pools available to that server; globally loaded
+drivers used exclusively by other servers are omitted.

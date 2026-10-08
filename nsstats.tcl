@@ -3532,6 +3532,13 @@ proc _ns_stats.process.modules {server} {
         }
         return [list "Loaded Modules" [ns_quotehtml [lsort $names]]]
     }
+    set poolDrivers {}
+    if {![catch {_ns_stats.process.dbpoolnames $server} pools]} {
+        foreach pool $pools {
+            set driver [ns_config ns/db/pool/$pool driver ""]
+            if {$driver ne ""} {lappend poolDrivers $driver}
+        }
+    }
     set columns {
         {} Module name Name type Type version Version tag Tag scope Scope
         file File
@@ -3543,6 +3550,11 @@ proc _ns_stats.process.modules {server} {
     append html {</tr></thead><tbody>}
     foreach module [lsort [dict keys $modules]] {
         set info [dict get $modules $module]
+        if {[dict exists $info type] && [dict get $info type] eq "db-driver"} {
+            if {![dict exists $info driver] || [dict get $info driver] ni $poolDrivers} {
+                continue
+            }
+        }
         append html <tr>
         foreach {key title} $columns {
             set value ""
@@ -3580,16 +3592,32 @@ proc _ns_stats.process.modules {server} {
     return [list "Loaded Modules" $html]
 }
 
-proc _ns_stats.process.dbaccess {} {
-    set server [ns_quotehtml [ns_info server]]
-    if {[catch {ns_db pools} pools]} {
-        return "$server: unavailable"
+proc _ns_stats.process.dbpoolnames {server} {
+    if {$server eq ""} {set server [ns_info server]}
+    if {$server eq [ns_info server]} {
+        set pools [ns_db pools]
+    } else {
+        # ns_db pools has no cross-server interface. Match dbinit's rules:
+        # first configured value, wildcard or comma-separated known pools.
+        set configured [ns_config ns/server/$server/db pools ""]
+        set known [dict keys [ns_db stats]]
+        set pools {}
+        if {$configured eq "*"} {
+            set pools $known
+        } else {
+            foreach pool [split $configured ,] {
+                if {$pool in $known} {lappend pools $pool}
+            }
+        }
     }
-    if {[llength $pools] == 0} {
-        return "$server: none"
-    }
-    set names [lmap pool [lsort $pools] {ns_quotehtml $pool}]
-    return "$server: [join $names {, }]"
+    return [lsort -unique $pools]
+}
+
+proc _ns_stats.process.dbaccess {{server ""}} {
+    if {$server eq ""} {set server [ns_info server]}
+    if {[catch {_ns_stats.process.dbpoolnames $server} pools]} {return unavailable}
+    if {[llength $pools] == 0} {return "{}"}
+    return [join [lmap pool $pools {ns_quotehtml $pool}] {, }]
 }
 
 proc _ns_stats.process.dbpools {} {
@@ -3916,7 +3944,6 @@ proc _ns_stats.process {} {
                     Servers               [join [lmap s [ns_info servers] {string cat "<a href='#$s'>$s</a>: [ns_config ns/servers $s]"}] <br>] \
                     {*}${driverInfo} \
                     {*}${certInfo} \
-                    "Available DB-Pools"  [_ns_stats.process.dbaccess] \
                     DB-Pools             "<table>[join [_ns_stats.process.dbpools]]</table>" \
                     Callbacks            "<table>[join [_ns_stats.process.callbacks]]</table>" \
                     {*}$proxyItems \
@@ -4075,6 +4102,7 @@ proc _ns_stats.process {} {
                         "Tcl Library"        [ns_server -server $s tcllib] \
                         "Access Log"         [ns_config ns/server/$s/module/nslog file] \
                         {*}$modulesEntry \
+                        "Available DB-Pools"  [_ns_stats.process.dbaccess $s] \
                         "Writer Threads"     $writerThreads \
                         "Spooler Threads"    $spoolerThreads \
                         "Handlers"           $requestHandlers \
