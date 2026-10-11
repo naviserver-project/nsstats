@@ -74,6 +74,7 @@ set ::navLinks [subst {
     mem.cache         "Cache (ns_cache)"
     mem.nsvsize       "Shared Variables (nsv)"
     [expr {[info commands ns_json] ne "" ?  {utilization Utilization} : ""}]
+    [expr {[info commands ::nsmcp::ToolRegistry] ne "" ? {mcp MCP} : ""}]
     process           "Process"
     threads           "Threads"
 }]
@@ -105,6 +106,7 @@ set ::titles {
     mem.cache         "Cache Statistics (ns_cache)"
     mem.nsvsize       "Shared Variable Statistics (nsv)"
     mem.tcl           "Allocated Memory"
+    mcp               "MCP configuration and tools"
     process           "Process Information"
     proxy-workers     "nsproxy Workers"
     requestprocs      "Request Handlers"
@@ -299,6 +301,169 @@ proc _ns_stats.index {} {
         </ul> \n \
         [_ns_stats.footer]
 
+    return $html
+}
+
+#
+# MCP administration is read-only and uses the normal nsstats access checks.
+# Configuration and credential fields are explicitly selected so secret values
+# and token digests never enter the rendered page.
+#
+proc _ns_stats.mcp.table {heading columns rows} {
+    set html "<h3>[ns_quotehtml $heading]</h3><table class='data'><thead><tr>"
+    foreach column $columns {
+        append html "<th>[ns_quotehtml $column]</th>"
+    }
+    append html "</tr></thead><tbody>"
+    foreach row $rows {
+        append html "<tr>"
+        foreach value $row {
+            append html "<td><pre>[ns_quotehtml $value]</pre></td>"
+        }
+        append html "</tr>"
+    }
+    append html "</tbody></table>"
+    return $html
+}
+
+proc _ns_stats.mcp {} {
+    if {[info commands ::nsmcp::ToolRegistry] eq ""} {
+        return "[_ns_stats.header MCP]<p>The nsmcp module is not active.</p>[_ns_stats.footer]"
+    }
+    set html [_ns_stats.header "MCP"]
+    set server [ns_info server]
+    set section ns/server/$server/module/nsmcp
+    append html "<p>Server: <strong>[ns_quotehtml $server]</strong>. Read-only status; tools are not executed. Configuration changes require the usual module initialization or restart.</p>"
+
+    set objects {
+        auth Authentication
+        credentials Credentials
+        server {HTTP endpoint}
+        database {SQLite cache}
+        logService {Log service}
+        accessAnalytics {Access analytics}
+        topology {Topology tool}
+        runtime {Runtime tool}
+        history {History tool}
+    }
+    set rows {}
+    foreach {name label} $objects {
+        set present [expr {[info commands ::nsmcp::$name] ne ""}]
+        lappend rows [list $label [expr {$present ? "Initialized" : "Not initialized"}]]
+    }
+    append html [_ns_stats.mcp.table "Services" {Service Status} $rows]
+    append html "<p>Initialized means the service object exists; it is not a health or coverage guarantee.</p>"
+
+    foreach {heading options} {
+        {HTTP and authentication} {
+            enableHttp false path /mcp allowedOrigins {} credentials {}
+        }
+        {Log tools} {
+            enableLogTools false systemLog {} accessLog {} cacheDirectory {}
+        }
+        {Access analytics and database} {
+            enableAccessAnalytics false databasePool {} databaseMaxBytes 1GiB
+            accessIngestInterval 5s accessMaxRows 2000000 accessRetention 24h
+            accessTimingColumn -1
+        }
+        {Runtime diagnostics and history} {
+            enableStatsTools true statsSamplingInterval 0
+            statsHistoryPool {} statsHistoryRetention 24h statsHistoryMaxBytes 64MiB
+        }
+    } {
+        set rows {}
+        foreach {key default} $options {
+            set configured [ns_config $section $key ""]
+            if {$configured eq ""} {
+                lappend rows [list $key $default "Default / unset"]
+            } else {
+                lappend rows [list $key $configured "Configured"]
+            }
+        }
+        append html [_ns_stats.mcp.table $heading {Parameter Value Source} $rows]
+    }
+
+    set rows {}
+    foreach {object properties} {
+        server {path}
+        http {allowedOrigins maxBodyBytes}
+        database {pool maxBytes}
+        logService {queue lifetime maxJobs}
+        accessAnalytics {path maxRows retentionSeconds maxReadBytes maxLineBytes maxSeconds}
+    } {
+        set command ::nsmcp::$object
+        if {[info commands $command] eq ""} {
+            continue
+        }
+        foreach property $properties {
+            if {![catch {$command cget -$property} value]} {
+                lappend rows [list $object $property $value]
+            }
+        }
+    }
+    append html [_ns_stats.mcp.table "Active service settings" {Service Setting Value} $rows]
+    append html "<p>Active settings reflect initialized objects; configuration tables above show startup values and defaults.</p>"
+
+    if {[info commands ::nsmcp::logDiscovery] ne ""} {
+        if {[catch {::nsmcp::logDiscovery discover} discovery]} {
+            append html "<p>Log discovery unavailable.</p>"
+        } else {
+            set rows {}
+            foreach kind {system access} {
+                set entry [dict get $discovery $kind]
+                lappend rows [list $kind [dict get $entry path] [dict get $entry origin] \
+                    [dict get $entry exists] [dict get $entry readable]]
+            }
+            append html [_ns_stats.mcp.table "Discovered logs" {Log Path Origin Exists Readable} $rows]
+        }
+    }
+
+    if {[info commands ::nsmcp::credentials] ne ""} {
+        if {[catch {::nsmcp::credentials describe} credentials]} {
+            append html "<p>Credential policy status unavailable.</p>"
+        } else {
+            set rows {}
+            dict for {name entry} $credentials {
+                set row [list $name]
+                foreach key {principal permissions targets expires status tokenFile} {
+                    lappend row [expr {[dict exists $entry $key] ? [dict get $entry $key] : "unknown"}]
+                }
+                lappend rows $row
+            }
+            append html [_ns_stats.mcp.table "Credential policies" \
+                {Name Principal Permissions Servers {Expiry epoch (0: none)} Status {Token file path}} $rows]
+            append html "<p>Token contents and digests are omitted. Tool visibility depends on each credential's permissions.</p>"
+        }
+    }
+
+    if {[info commands ::nsmcp::tools] ne ""} {
+        if {[catch {::nsmcp::tools describe} tools]} {
+            append html "<p>Tool inspection unavailable; update nsmcp to provide registry describe.</p>"
+        } else {
+            set rows {}
+            foreach tool $tools {
+                lappend rows [list [dict get $tool name] "Registered" [dict get $tool permission] \
+                    [dict get $tool description] [dict get $tool inputSchema]]
+            }
+            append html [_ns_stats.mcp.table "Available tools" \
+                {Tool Status {Required permission} Description {Argument schema}} $rows]
+        }
+    }
+
+    if {[info commands ::ns_stats] ne ""} {
+        foreach {command heading} {sampling Sampling history {History persistence}} {
+            if {[catch {ns_stats $command status} status]} {
+                append html "<p>[ns_quotehtml $heading] status unavailable.</p>"
+            } else {
+                set rows {}
+                dict for {key value} $status {
+                    lappend rows [list $key $value]
+                }
+                append html [_ns_stats.mcp.table $heading {Metric Value} $rows]
+            }
+        }
+    }
+    append html [_ns_stats.footer]
     return $html
 }
 
