@@ -141,3 +141,21 @@ without a commit hash remain plain text.
 Servers without available database pools display `{}`. Module tables include
 only database drivers used by pools available to that server; globally loaded
 drivers used exclusively by other servers are omitted.
+
+### MCP tool inspection
+
+When nsmcp is active, Administration → MCP lists its tools and configuration.
+Each tool's Details dialog offers **Inspect result** when the MCP protocol is
+initialized. Edit its JSON arguments and click Run to view the JSON-RPC response,
+including errors, coverage and redacted output. Page loading does not execute tools.
+
+Inspection uses the existing nsstats admin access and the current virtual server.
+It passes calls through nsmcp's protocol validation and authorization with an admin
+identity, including peer-read permission. No bearer token is required or exposed.
+Job, result and window handles belong to that admin identity; handles issued to a
+bearer-token client cannot be reused here. Follow-up buttons poll jobs, read result
+pages and follow history paging. Each call requires an explicit click.
+
+Responses are shown in a scrollable panel and can be copied or downloaded as JSON.
+Tool limits and paging still apply; a displayed page is not necessarily the complete
+result. Reset arguments returns to the original tool without executing a call.

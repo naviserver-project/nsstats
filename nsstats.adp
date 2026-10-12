@@ -493,36 +493,11 @@ table.config {font-size: 0.9rem;}
 .nowrap {white-space: nowrap;}
   </style>
   <%= $::extraHeadEntries %>
+<%= [_ns_stats.navigation.style] %>
 </head>
 
 <body>
 <%
-    set linkLines {}
-    set level 0
-    foreach {name label} $::navLinks {
-        if {$name eq "process"} continue
-        set dropdown [expr {[info procs _ns_stats.$name] eq ""}]
-        set postincr 0
-
-        if {$dropdown} {
-            set item [subst [ns_trim -delimiter | {
-                |<div class="dropdown">
-                | <button class="dropdown-btn">$label<span class="dropdown-marker">▼</span></button>
-                | <div class="dropdown-content">}]]
-            set postincr 1
-        } else {
-            set item "<a href='?@page=$name$::rawparam'>$label</a>"
-        }
-        if {$level == 1 && ![string match *.* $name]} {
-            #
-            # End pulldown before outputting next item.
-            #
-            lappend linkLines </div></div>
-            incr level -1
-        }
-        lappend linkLines "[string repeat {  } $level]$item"
-        incr level $postincr
-    }
     set now [ns_time get]
     if {$::raw} {
         set seconds [ns_time seconds $now]
@@ -543,22 +518,9 @@ table.config {font-size: 0.9rem;}
   <div style="clear: both;"></div>
 </header>
 
-<!-- Menubar -->
-<div class="menu-bar">
-  <div class="menu-left">
-  <%=[join $linkLines \n]%>
-  </div>
-  <div class="raw-toggle">
-    <span class="raw-label">Raw:</span> <span class="raw-value"><%=$::rawLabel%></span>
-  </div>
-</div>
-
-<!-- Breadcrumbs -->
-<div class="breadcrumbs">
-  <a href="/">Home</a> &gt; <a href="<%=[ns_conn url]%>">nsstats</a>
-  &gt; <%=[expr {[dict exists $::navLinks $page]?[dict get $::navLinks $page]:[dict get $::titles $page]}]%>
-  <!-- <%= $::nav %> -->
-</div>
+<!-- Navigation and current location -->
+<%= [_ns_stats.navigation] %>
+<div class="breadcrumbs"><%= [_ns_stats.navigation.breadcrumb] %><span style="float:right">Raw: <a href="<%= [ns_quotehtml $::rawUrl] %>"><%= $::rawLabel %></a></span></div>
 
 <!-- Main Container -->
 <div class="main-container">

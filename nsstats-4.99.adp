@@ -191,57 +191,13 @@ div.methodfilter label {
 
 </style>
 <%= $::extraHeadEntries %>
+<%= [_ns_stats.navigation.style] %>
 </head>
 
 <body>
-<%
-    set w3color black ;#blue-grey
-    lappend linkLines [subst [ns_trim -delimiter | {
-      |<a href="https://naviserver.sourceforge.io/[ns_info version]/toc.html">
-      | <img class='w3-bar-item' src='https://naviserver.sourceforge.io/ns-icon-16.png'>
-      |</a>}]]
-    set level 0
-    foreach {name label} $::navLinks {
-        set dropdown [expr {[info procs _ns_stats.$name] eq ""}]
-        set postincr 0
-        
-        if {$dropdown} {
-            set item [subst [ns_trim -delimiter | {
-                |<div class="w3-dropdown-hover">
-                | <button class="w3-button dropdown-toggle w3-$w3color">$label</button>
-                | <div class="w3-dropdown-content w3-bar-block w3-card-4">}]]
-            set postincr 1
-        } else {
-            set item \
-                "<a href='?@page=$name$::rawparam' class='w3-bar-item w3-button w3-mobile'>$label</a>"
-        }
-        if {$level == 1 && ![string match *.* $name]} {
-            #
-            # End pulldown before outputting next item.
-            #
-            lappend linkLines </div></div>       
-            incr level -1
-        }
-        lappend linkLines "[string repeat {  } $level]$item"
-        incr level $postincr
-    }
-    lappend linkLines \
-            [subst [ns_trim -delimiter | {
-              |<div class='w3-bar-item w3-right'>
-              |  Raw: <a class='current w3-text-amber' href='$::rawUrl'>$::rawLabel</a> &middot; 
-              | <strong>[_ns_stats.fmtTime [ns_time]]</strong>
-              |</div>}]]
-%>
-
 <div class="w3-container">
-<div class="w3-bar w3-border w3-<%= $w3color %>">
-<%= [join $linkLines \n] %>
-</div>
-<!-- Breadcrumbs -->
-<div class="w3-container breadcrumbs">
-  <a href="/">Home</a> &gt; <a href="<%=[ns_conn url]%>">nsstats</a>  &gt; <%=[dict get $::navLinks $::page]%>
-  <!-- <%= $::nav %> -->
-</div>
+<%= [_ns_stats.navigation] %>
+<div class="w3-container breadcrumbs"><%= [_ns_stats.navigation.breadcrumb] %><span style="float:right">Raw: <a href="<%= [ns_quotehtml $::rawUrl] %>"><%= $::rawLabel %></a></span></div>
 
 <!-- Main Content -->
 <div class="main-container">  
