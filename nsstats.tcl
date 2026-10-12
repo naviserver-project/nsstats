@@ -4304,6 +4304,36 @@ proc _ns_stats.process.dbaccess {{server ""}} {
     return [join [lmap pool $pools {ns_quotehtml $pool}] {, }]
 }
 
+# Report local SQLite files without opening a database connection. The driver
+# publishes the resolved datasource in the configuration; do not guess paths
+# for older drivers or interpret SQLite URI and in-memory datasources as files.
+proc _ns_stats.process.dbfilesize {pool} {
+    set section ns/db/pool/$pool
+    set driver [ns_config $section driver ""]
+    set library [ns_config ns/db/drivers $driver ""]
+    if {[file rootname [file tail $library]] ne "nsdbsqlite"} {
+        return ""
+    }
+    set path [ns_config $section datasource ""]
+    if {$path eq ":memory:"} {
+        return "Database size: in-memory"
+    }
+    if {$path eq "" || [string match "file:*" $path] || [file pathtype $path] ne "absolute"} {
+        return "Database file size: unavailable"
+    }
+    if {[catch {file size $path} bytes] || ![file isfile $path]} {
+        return "Database file size: unavailable"
+    }
+    set result "Database file: [_ns_stats.hr $bytes]B ($bytes bytes)"
+    foreach {suffix label} {-wal WAL -shm {shared memory}} {
+        set auxiliary $path$suffix
+        if {[file isfile $auxiliary] && ![catch {file size $auxiliary} bytes]} {
+            append result ", $label: [_ns_stats.hr $bytes]B ($bytes bytes)"
+        }
+    }
+    return $result
+}
+
 proc _ns_stats.process.dbpools {} {
     set lines ""
     if {![catch {set poolStats [ns_db stats]}]} {
@@ -4320,6 +4350,10 @@ proc _ns_stats.process.dbpools {} {
             }
             set stats [_ns_stats.pretty {statements gethandles {avgwaittime s} {avgsqltime s}} $stats %.1f]
             set versions [_ns_stats.process.dbversion $pool]
+            set size [_ns_stats.process.dbfilesize $pool]
+            if {$size ne ""} {
+                append versions "<br>$size"
+            }
             lappend lines "<tr><td class='subtitle'>[ns_quotehtml $pool]:</td><td width='100%'>$versions<br>$stats</td></tr>"
         }
     }
