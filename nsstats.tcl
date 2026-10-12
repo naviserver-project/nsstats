@@ -509,6 +509,7 @@ proc _ns_stats.mcp.toolSummary {tool} {
         server_topology {return "Versions, loaded modules and server configuration."}
         server_runtime {return "Current gauges or sampled rates, timings and CPU usage."}
         server_history {return "Persisted runtime samples and their coverage."}
+        smtp_logs {return "Inspect recent SMTP send results and session events."}
         log_errors {return "Search the system log for errors."}
         log_request_context {return "Correlate log entries by request or thread identifier."}
         log_results {return "Check a search job or read a redacted result page."}
@@ -523,6 +524,7 @@ proc _ns_stats.mcp.toolExample {name} {
         server_topology {return "Use server_topology to report NaviServer, Tcl, platform and loaded module versions."}
         server_runtime {return "Use server_topology and server_runtime with mode snapshot. Show pool limits, active and waiting requests, and cumulative counters."}
         server_history {return "Use server_history for the last five completed minutes. Follow all pages using nextArguments and report coverage, gaps, restarts and write failures."}
+        smtp_logs {return "Use smtp_logs with log event for the last 15 minutes. Show SMTP deferrals, rejections, TLS failures and transaction outcomes; include coverage."}
         log_errors {return "Use log_errors to search for errors, then poll log_results with the returned jobHandle and read the result pages."}
         log_request_context {return "Use log_request_context with the identifier from the selected log entry. Retrieve the correlated system and access records using log_results."}
         log_results {return "Use log_results with the jobHandle from the preceding search. When complete, use its resultHandle to retrieve a result page."}
@@ -870,6 +872,9 @@ proc _ns_stats.mcp {} {
         }
         {Log tools} {
             enableLogTools false systemLog {} accessLog {} cacheDirectory {}
+        }
+        {SMTP log tools} {
+            enableSmtpTools false smtpLogReadBytes 1MiB
         }
         {Access analytics and database} {
             enableAccessAnalytics false databasePool {} databaseMaxBytes 1GiB
