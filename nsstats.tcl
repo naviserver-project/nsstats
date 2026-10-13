@@ -5445,8 +5445,8 @@ proc _ns_stats.log.logfiles {section param} {
             continue
         }
         lmap file [glob $logfile*] {
-            if {[file size $file] < 10} continue
-            #ns_log notice "file size <$file> [file size $file]"
+            # An empty active log must remain selectable after rotation.
+            if {![file isfile $file] || ![file readable $file]} continue
             set file
         }
     }]]]
