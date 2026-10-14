@@ -506,6 +506,7 @@ proc _ns_stats.mcp.toolSummary {tool} {
     # Short admin summaries; full MCP discovery descriptions remain available.
     switch -- [dict get $tool name] {
         server_describe {return "Basic runtime and package versions."}
+        configuration {return "Inspect configuration, policy scripts, limits and pool settings; redact credentials."}
         server_topology {return "Versions, loaded modules and server configuration."}
         server_runtime {return "Current gauges or sampled rates, timings and CPU usage."}
         server_history {return "Persisted runtime samples and their coverage."}
@@ -521,6 +522,7 @@ proc _ns_stats.mcp.toolSummary {tool} {
 proc _ns_stats.mcp.toolExample {name} {
     switch -- $name {
         server_describe {return "Use server_describe to report runtime and package versions."}
+        configuration {return "Use configuration with scope process and follow nextArguments to inspect current settings across all virtual servers. Pair with server_topology and server_runtime for configuration and scaling advice."}
         server_topology {return "Use server_topology to report NaviServer, Tcl, platform and loaded module versions."}
         server_runtime {return "Use server_topology and server_runtime with mode snapshot. Show pool limits, active and waiting requests, and cumulative counters."}
         server_history {return "Use server_history for the last five completed minutes. Follow all pages using nextArguments and report coverage, gaps, restarts and write failures."}
@@ -590,7 +592,7 @@ proc _ns_stats.mcp.inspect {} {
         return ""
     }
     set server [ns_info server]
-    set permissions {diagnostics.logs.peers.read}
+    set permissions {diagnostics.logs.peers.read diagnostics.configuration.process.read}
     foreach tool [::nsmcp::tools describe] {
         lappend permissions [dict get $tool permission]
     }
@@ -882,8 +884,7 @@ proc _ns_stats.mcp {} {
             accessTimingColumn -1
         }
         {Runtime diagnostics and history} {
-            enableStatsTools true statsSamplingInterval 0
-            statsHistoryPool {} statsHistoryRetention 24h statsHistoryMaxBytes 64MiB
+            enableStatsTools true
         }
     } {
         set rows {}
@@ -897,6 +898,16 @@ proc _ns_stats.mcp {} {
         }
         append html [_ns_stats.mcp.table $heading {Parameter Value Source} $rows]
     }
+
+    set rows {}
+    foreach {key default} [list server [lindex [ns_info servers] 0] \
+                              sampling false samplingInterval 10s \
+                              historyPool {} historyRetention 24h historyMaxBytes 64MiB] {
+        set value [ns_config ns/stats $key $default]
+        lappend rows [list $key $value]
+    }
+    append html [_ns_stats.mcp.table "Core diagnostics startup settings (ns/stats)" {Parameter Value} $rows]
+    append html "<p>Sampling and persistence are configured by ns_stats, independently of MCP. Runtime status below may differ from startup settings.</p>"
 
     set rows {}
     foreach {object properties} {
@@ -1189,24 +1200,349 @@ proc _ns_stats.mem.cache {} {
     return $html
 }
 
-proc _ns_stats.requestRates {sampleKey} {
-    set total        0
-    set serverCounts {}
-
-    foreach server [ns_info servers] {
-        set requests 0
-
-        foreach pool [ns_server -server $server pools] {
-            incr requests \
-                [dict get [ns_server -server $server -pool $pool stats] requests]
-        }
-
-        dict set serverCounts $server $requests
-        incr total $requests
+# Prefer a ready shared sample while sampling runs; allow an explicit snapshot.
+# Neither read changes sampling. An absent command selects the legacy collector.
+proc _ns_stats.runtimeSnapshot {} {
+    if {[info commands ::ns_stats] eq ""} {
+        return {}
     }
+    set mode auto
+    if {[info commands ns_queryget] ne ""} {
+        set mode [ns_queryget statsMode auto]
+    }
+    if {$mode ni {auto snapshot}} {
+        set mode auto
+    }
+    set status [ns_stats sampling status]
+    if {$mode eq "auto" && [dict get $status running]} {
+        set sample [ns_stats sample]
+        if {[dict get $sample sampling ready]} {
+            dict set sample collectorMode sample
+            dict set sample samplingStatus $status
+            return $sample
+        }
+    }
+    set snapshot [ns_stats snapshot]
+    dict set snapshot collectorMode snapshot
+    dict set snapshot samplingStatus $status
+    return $snapshot
+}
 
+proc _ns_stats.sampled {snapshot} {
+    return [expr {[dict exists $snapshot collectorMode] && [dict get $snapshot collectorMode] eq "sample"}]
+}
+
+# Reconstruct only the preceding counter values needed by the existing tables.
+# Unknown/reset deltas produce decreased counters and remain unknown in renderers.
+proc _ns_stats.utilization.samplePrevious {current snapshot} {
+    set previous $current
+    dict for {thread data} [dict get $snapshot drivers] {
+        dict for {key value} [dict get $data counters] {
+            set delta [_ns_stats.dictGetDef $data deltas $key {}]
+            dict set previous drivers $thread $key [expr {$delta eq "" ? $value+1 : $value-$delta}]
+        }
+    }
+    dict for {server data} [dict get $snapshot servers] {
+        dict for {pool entry} [dict get $data pools] {
+            dict for {key value} [dict get $entry counters] {
+                if {![string is double -strict $value]} continue
+                set delta [_ns_stats.dictGetDef $entry deltas $key {}]
+                dict set previous servers $server pools $pool stats $key [expr {$delta eq "" ? $value+1 : $value-$delta}]
+            }
+        }
+    }
+    dict set previous timestamp [expr {[dict get $snapshot timestamp]-int([dict get $snapshot sampling elapsedSeconds]*1000000)}]
+    return $previous
+}
+
+proc _ns_stats.utilization.sampleTotal {snapshot role key} {
+    set total 0.0
+    dict for {server data} [dict get $snapshot servers] {
+        dict for {pool entry} [dict get $data pools] {
+            set value [_ns_stats.dictGetDef $entry $role $key {}]
+            if {$value eq ""} {return -1.0}
+            set total [expr {$total+$value}]
+        }
+    }
+    return $total
+}
+
+# Source controls do not start/stop sampling or configure persistence.
+proc _ns_stats.utilization.sourcePanel {sample {page utilization}} {
+    set snapshot [_ns_stats.dictGetDef $sample coreSnapshot {}]
+    if {$snapshot eq ""} {return {}}
+    set status [_ns_stats.dictGetDef $snapshot samplingStatus {}]
+    set sampled [_ns_stats.sampled $snapshot]
+    set label [expr {$sampled ? "Shared interval sample" : "Live snapshot"}]
+    set details "Gauges are observations at collection time."
+    if {$sampled} {
+        set age [dict get $snapshot sampling ageSeconds]
+        set interval [dict get $snapshot sampling elapsedSeconds]
+        set details "Sample age: [format %.2f $age]s; measured interval: [format %.3f $interval]s. Rates and CPU use this interval, independently of page refreshes."
+        if {$age>2*[dict get $status interval]} {
+            append details " <strong>Sample is stale.</strong>"
+        }
+    } elseif {[_ns_stats.dictGetDef $status running false]} {
+        append details " Sampling is running; the first usable interval is not ready, or live snapshot was selected."
+    } else {
+        append details " Sampling is stopped; rates use page observations."
+    }
+    set selectedAuto [expr {$sampled || [ns_queryget statsMode auto] ne "snapshot" ? " selected" : ""}]
+    set selectedSnapshot [expr {$selectedAuto eq "" ? " selected" : ""}]
+    return "<p><strong>$label.</strong> $details Collection time: [clock format [expr {[dict get $snapshot timestamp]/1000000}] -format {%Y-%m-%d %H:%M:%S %Z}].</p><form method='get'><input type='hidden' name='@page' value='[ns_quotehtml $page]'><label>Measurements <select name='statsMode'><option value='auto'$selectedAuto>Use shared sampling when running</option><option value='snapshot'$selectedSnapshot>Live snapshot / page interval</option></select></label> <button type='submit'>Apply</button></form>"
+}
+
+# Reduce stored records to plot/table data while paging, rather than retaining
+# thousands of complete thread/driver snapshots in the page interpreter.
+proc _ns_stats.utilization.historyPoint {record} {
+    set ready [dict get $record sampling ready]
+    set requests -1.0
+    set poolRates {}
+    dict for {server data} [dict get $record servers] {
+        dict for {pool entry} [dict get $data pools] {
+            set rate [_ns_stats.dictGetDef $entry rates requests {}]
+            dict set poolRates $server/$pool $rate
+        }
+    }
+    if {$ready} {set requests [_ns_stats.utilization.sampleTotal $record rates requests]}
+    set n [_ns_stats.utilization.sampleTotal $record deltas requests]
+    set timings {}
+    foreach key {queuetime filtertime runtime tracetime} {
+        set total [_ns_stats.utilization.sampleTotal $record deltas $key]
+        dict set timings $key [expr {$ready && $n>0 && $total>=0 ? 1000.0*$total/$n : -1.0}]
+    }
+    set groups [_ns_stats.dictGetDef $record cpuPercent groups {}]
+    set cpu -1.0
+    if {$ready && $groups ne ""} {
+        set cpu 0.0
+        dict for {group value} $groups {set cpu [expr {$cpu+$value}]}
+    }
+    return [dict create timestamp [dict get $record timestamp] instance [dict get $record instance] \
+        sampling [dict get $record sampling] requests $requests pools $poolRates timings $timings cpu $cpu groups $groups]
+}
+
+proc _ns_stats.utilization.readHistory {minutes} {
+    set to [clock seconds]
+    set from [expr {$to-$minutes*60}]
+    set status [ns_stats history status]
+    set source memory
+    if {[_ns_stats.dictGetDef $status pool {}] ne ""} {
+        if {[dict get $status owner] ne [ns_info server]} {
+            return [dict create available false reason "Persistent history belongs to virtual server '[dict get $status owner]'; open nsstats there."]
+        }
+        set source sqlite
+    }
+    set points {}
+    set cursor 0
+    set coverage {}
+    set gaps {}
+    set restarts {}
+    set events {}
+    set resets 0
+    set overlap false
+    set more true
+    set pages 0
+    # Bound request work; at ten-second cadence this covers a full day.
+    while {$more && [llength $points]<10000} {
+        if {$source eq "sqlite"} {
+            set page [ns_stats history query -from $from -to $to -limit 1000 -cursor $cursor]
+        } else {
+            set page [ns_stats sampling history -from $from -to $to -limit 180 -cursor $cursor]
+        }
+        incr pages
+        foreach record [dict get $page records] {
+            lappend points [_ns_stats.utilization.historyPoint $record]
+        }
+        set current [dict get $page coverage]
+        set gaps [concat $gaps [_ns_stats.dictGetDef $current gaps {}]]
+        set restarts [concat $restarts [_ns_stats.dictGetDef $current restartBoundaries {}]]
+        set events [concat $events [_ns_stats.dictGetDef $current events {}]]
+        incr resets [_ns_stats.dictGetDef $current resetSamples 0]
+        set overlap [expr {$overlap || [_ns_stats.dictGetDef $current evictionOrFailureOverlap false]}]
+        set coverage $current
+        set more [dict get $page more]
+        if {$more} {
+            set next [dict get $page nextCursor]
+            if {$next eq "" || $next<=$cursor} {error "History paging did not advance"}
+            set cursor $next
+        }
+    }
+    dict set coverage gaps [lsort -unique $gaps]
+    dict set coverage restartBoundaries [lsort -unique $restarts]
+    dict set coverage events [lsort -unique $events]
+    dict set coverage resetSamples $resets
+    dict set coverage evictionOrFailureOverlap $overlap
+    if {$pages>1 || $more} {dict set coverage complete false}
+    return [dict create available true source $source persistence $status points $points from $from to $to \
+        coverage $coverage truncated $more pages $pages]
+}
+
+# Produce literal JSON, including nulls for unknown observations and gaps.
+proc _ns_stats.utilization.historyChart {id title unit points kind} {
+    set names {Total}
+    if {$kind eq "pools"} {
+        set names {}
+        foreach point $points {set names [concat $names [dict keys [dict get $point pools]]]}
+        set names [lsort -unique $names]
+    } elseif {$kind eq "cpu"} {
+        set names {connection driver writer spooler other}
+    }
+    set series {}
+    set seriesIndex 0
+    foreach name $names {
+        set data {}
+        set index 0
+        set previous {}
+        foreach point $points {
+            set stamp [expr {[dict get $point timestamp]/1000}]
+            set sampling [dict get $point sampling]
+            if {$previous ne ""} {
+                set elapsed [expr {([dict get $point timestamp]-[dict get $previous timestamp])/1000000.0}]
+                if {[dict get $point instance] ne [dict get $previous instance]
+                    || $elapsed>1.5*max([dict get $sampling intervalSeconds],[dict get $previous sampling intervalSeconds])} {
+                    lappend data $index array [list 0 number [expr {[dict get $previous timestamp]/1000+1}] 1 null {}]
+                    incr index
+                }
+            }
+            set value {}
+            if {[dict get $sampling ready]} {
+                switch -- $kind {
+                    pools {set value [_ns_stats.dictGetDef $point pools $name {}]}
+                    cpu {set value [_ns_stats.dictGetDef $point groups $name {}]}
+                    default {set value [dict get $point requests]}
+                }
+            }
+            set type number
+            if {$value eq "" || $value<0} {set type null; set value {}}
+            lappend data $index array [list 0 number $stamp 1 $type $value]
+            incr index
+            set previous $point
+        }
+        lappend series $seriesIndex object [list name string $name data array $data]
+        incr seriesIndex
+    }
+    set config [list {} object [list chart object {type string line height number 300} \
+        title object [list text string $title] time object {useUTC boolean false} \
+        xAxis object {type string datetime} yAxis object [list title object [list text string $unit]] \
+        plotOptions object {series object {connectNulls boolean false marker object {enabled boolean false}}} \
+        series array $series]]
+    set json [string map [list < {\u003c} > {\u003e} & {\u0026}] [ns_json value -- $config]]
+    set jsonId [ns_json value -- [list {} string $id]]
+    return "<div id='[ns_quotehtml $id]' class='utilization-chart'></div><script>Highcharts.chart($jsonId,$json);</script>"
+}
+
+proc _ns_stats.utilization.historyPanel {} {
+    if {[info commands ::ns_stats] eq ""} {return {}}
+    set minutes [ns_queryget historyMinutes 15]
+    if {$minutes ni {15 60 360 1440}} {set minutes 15}
+    set options {}
+    foreach {value label} {15 {Last 15 minutes} 60 {Last hour} 360 {Last 6 hours} 1440 {Last 24 hours}} {
+        set selected [expr {$minutes==$value ? " selected" : ""}]
+        append options "<option value='$value'$selected>$label</option>"
+    }
+    set html "<h2>Recent sampled history</h2><form method='get'><input type='hidden' name='@page' value='utilization'><input type='hidden' name='statsMode' value='[ns_quotehtml [ns_queryget statsMode auto]]'><label>Period <select name='historyMinutes'>$options</select></label> <button type='submit'>Show history</button></form>"
+    if {[catch {_ns_stats.utilization.readHistory $minutes} result]} {
+        return "$html<p>History unavailable: [ns_quotehtml $result]</p>"
+    }
+    if {![dict get $result available]} {return "$html<p>[ns_quotehtml [dict get $result reason]]</p>"}
+    set points [dict get $result points]
+    set coverage [dict get $result coverage]
+    set source [dict get $result source]
+    set status [dict get $result persistence]
+    set label [expr {$source eq "sqlite" ? "Persistent SQLite history (including retained samples before restart)" : "Process memory: at most 180 samples / 15 minutes; lost on process restart"}]
+    append html "<p>[ns_quotehtml $label]. [llength $points] samples returned. No sampling or persistence settings are changed by this page.</p>"
+    set rows [list [list Source $label] \
+        [list "Paging complete" [expr {![dict get $result truncated]}]] \
+        [list "Coverage reported complete" [_ns_stats.dictGetDef $coverage complete false]] \
+        [list Gaps [llength [dict get $coverage gaps]]] \
+        [list "Restart boundaries" [llength [dict get $coverage restartBoundaries]]] \
+        [list "Baseline/reset samples" [dict get $coverage resetSamples]] \
+        [list "Eviction or failure overlap" [dict get $coverage evictionOrFailureOverlap]] \
+        [list "Dropped through (epoch microseconds)" [_ns_stats.dictGetDef $coverage droppedThrough {}]]]
+    if {$source eq "sqlite"} {
+        lappend rows [list "Persistence enabled" [dict get $status enabled]] \
+            [list "Write failures since persistence started" [dict get $status failures]]
+    }
+    foreach {key label} {retainedFrom {Oldest retained sample} retainedTo {Newest retained sample}} {
+        set value [_ns_stats.dictGetDef $coverage $key 0]
+        lappend rows [list $label [expr {$value>0 ? [clock format [expr {int($value)}] -format {%Y-%m-%d %H:%M:%S %Z}] : "unknown"}]]
+    }
+    append html [_ns_stats.results history-coverage 0 {Metric Value} {?@page=utilization} $rows 0 {left left}]
+    if {[dict get $result truncated]} {append html "<p><strong>History limited to 10,000 samples; select a shorter period.</strong></p>"}
+    if {$points eq ""} {return "$html<p>No retained samples in this interval. Start sampling to collect observations; enable persistence for longer history and restart survival.</p>"}
+    append html "<p>Rates and timings describe each measured sampling interval. Gauges describe its end. Missing/reset intervals are unknown; chart lines break across gaps and restarts. CPU percentages show measured thread groups relative to one core.</p>"
+    append html "<div class='utilization-charts'>" \
+        [_ns_stats.utilization.historyChart history-requests {Requests per second by server/pool} requests/s $points pools] \
+        [_ns_stats.utilization.historyChart history-cpu {Measured CPU by thread group} {CPU % of one core} $points cpu] "</div>"
+    set rows {}
+    foreach point [lreverse [lrange $points end-19 end]] {
+        set row [list [clock format [expr {[dict get $point timestamp]/1000000}] -format {%Y-%m-%d %H:%M:%S %Z}] \
+            [_ns_stats.dictGetDef $point sampling elapsedSeconds {}] \
+            [_ns_stats.utilization.displayRate [dict get $point requests]]]
+        foreach key {queuetime filtertime runtime tracetime} {
+            set value [dict get $point timings $key]
+            lappend row [expr {$value>=0 ? [format %.3f $value] : "unknown"}]
+        }
+        set cpu [dict get $point cpu]
+        lappend row [expr {$cpu>=0 ? [format %.1f $cpu] : "unknown"}]
+        lappend rows $row
+    }
+    append html "<h3>Latest 20 retained intervals</h3>" \
+        [_ns_stats.results history-intervals 0 {{Interval ending} {Seconds} {Requests/s} {Queue ms} {Filter ms} {Run ms} {Trace ms} {Measured CPU %}} {?@page=utilization} $rows 0 {left right right right right right right right}]
+    return $html
+}
+
+proc _ns_stats.requestCounts {} {
+    set snapshot [_ns_stats.runtimeSnapshot]
+    set total 0
+    set servers {}
+    if {$snapshot ne ""} {
+        dict for {server data} [dict get $snapshot servers] {
+            set count 0
+            dict for {pool entry} [dict get $data pools] {
+                incr count [dict get $entry counters requests]
+            }
+            dict set servers $server $count
+            incr total $count
+        }
+        set timestamp [dict get $snapshot timestamp]
+    } else {
+        foreach server [ns_info servers] {
+            set count 0
+            foreach pool [ns_server -server $server pools] {
+                incr count [dict get [ns_server -server $server -pool $pool stats] requests]
+            }
+            dict set servers $server $count
+            incr total $count
+        }
+        set timestamp [clock microseconds]
+    }
+    return [dict create timestamp $timestamp total $total servers $servers coreSnapshot $snapshot]
+}
+
+proc _ns_stats.requestRates {sampleKey} {
+    set counts       [_ns_stats.requestCounts]
+    set total        [dict get $counts total]
+    set serverCounts [dict get $counts servers]
     set linuxNetwork [_ns_stats.linuxNetworkSnapshot]
-    set now          [clock microseconds]
+    set now          [dict get $counts timestamp]
+
+    set snapshot [dict get $counts coreSnapshot]
+    if {[_ns_stats.sampled $snapshot]} {
+        set rates {}
+        dict for {server data} [dict get $snapshot servers] {
+            set totalRate 0.0
+            dict for {pool entry} [dict get $data pools] {
+                set value [_ns_stats.dictGetDef $entry rates requests {}]
+                if {$value eq ""} {set totalRate -1.0; break}
+                set totalRate [expr {$totalRate+$value}]
+            }
+            dict set rates $server $totalRate
+        }
+        return [dict create available 1 elapsed [dict get $snapshot sampling elapsedSeconds] \
+            total [_ns_stats.utilization.sampleTotal $snapshot rates requests] servers $rates \
+            linuxNetwork $linuxNetwork previousLinuxNetwork {}]
+    }
 
     set sample [dict create \
                     timestamp    $now \
@@ -1271,12 +1607,7 @@ proc _ns_stats.requestRates {sampleKey} {
 }
 
 proc _ns_stats.totalRequests {} {
-    set totalRequests 0
-    foreach s [ns_info servers] {
-        foreach pool [ns_server -server $s pools] {
-            incr totalRequests [dict get [ns_server -server $s -pool $pool stats] requests]
-        }
-    }
+    set totalRequests [dict get [_ns_stats.requestCounts] total]
     if {$totalRequests == 0} {
         # avoid division by 0
         incr totalRequests
@@ -1290,10 +1621,33 @@ proc _ns_stats.utilizationSample {} {
     set queues  {}
     set servers {}
 
-    foreach stats [ns_driver stats] {
-        dict set drivers [dict get $stats thread] $stats
+    set snapshot [_ns_stats.runtimeSnapshot]
+    set collector legacy
+    if {$snapshot ne ""} {
+        set collector [expr {[_ns_stats.sampled $snapshot] ? "ns_stats-sample" : "ns_stats"}]
+        dict for {thread entry} [dict get $snapshot drivers] {
+            set stats [dict merge [dict get $entry counters] \
+                [dict create thread $thread module [dict get $entry module]]]
+            foreach {source target} {reading reading waitingForConnection waiting closing closing} {
+                dict set stats $target [dict get $entry socketStates $source]
+            }
+            dict set drivers $thread $stats
+        }
+        dict for {server data} [dict get $snapshot servers] {
+            dict for {pool entry} [dict get $data pools] {
+                set gauges [dict get $entry gauges]
+                dict set servers $server pools $pool [dict create \
+                    stats [dict get $entry counters] threads [dict get $gauges threads] \
+                    waiting [dict get $gauges waitingRequests] active [dict get $gauges activeRequests]]
+            }
+        }
+    } else {
+        foreach stats [ns_driver stats] {
+            dict set drivers [dict get $stats thread] $stats
+        }
     }
 
+    # Queue diagnostics are not currently exposed by ns_stats.
     foreach kind {driver writer spooler} {
         if {![catch {ns_driver queues $kind} entries]} {
             foreach entry $entries {
@@ -1302,33 +1656,42 @@ proc _ns_stats.utilizationSample {} {
         }
     }
 
-    foreach server [ns_info servers] {
-        foreach pool [ns_server -server $server pools] {
-            set stats   [ns_server -server $server -pool $pool stats]
-            set threads [ns_server -server $server -pool $pool threads]
+    if {$snapshot eq ""} {
+        foreach server [ns_info servers] {
+            foreach pool [ns_server -server $server pools] {
+                set stats   [ns_server -server $server -pool $pool stats]
+                set threads [ns_server -server $server -pool $pool threads]
 
-            dict set servers $server pools $pool \
-                [dict create \
-                     stats   $stats \
-                     threads $threads \
-                     waiting [ns_server -server $server -pool $pool waiting] \
-                     active  [llength \
-                                  [ns_server -server $server \
-                                       -pool $pool all]]]
+                dict set servers $server pools $pool \
+                    [dict create \
+                         stats   $stats \
+                         threads $threads \
+                         waiting [ns_server -server $server -pool $pool waiting] \
+                         active  [llength \
+                                      [ns_server -server $server \
+                                           -pool $pool all]]]
+            }
         }
     }
 
     set linuxNetwork [_ns_stats.linuxNetworkSnapshot]
-    set now          [clock microseconds]
+    set now          [expr {$snapshot eq "" ? [clock microseconds] : [dict get $snapshot timestamp]}]
 
     set sample [dict create \
                     timestamp    $now \
+                    collector    $collector \
                     drivers      $drivers \
                     queues       $queues \
                     servers      $servers \
-                    linuxNetwork $linuxNetwork]
+                    linuxNetwork $linuxNetwork \
+                    supplementalTimestamp [clock microseconds]]
     set previous \
         [nsv_set -reset _ns_stats utilizationSample $sample]
+
+    # Do not compare differently shaped pool keys when the collector changes.
+    if {$previous ne "" && [_ns_stats.dictGetDef $previous collector legacy] ne $collector} {
+        set previous {}
+    }
 
     #
     # The stored sample may predate the linuxNetwork addition.
@@ -1342,10 +1705,23 @@ proc _ns_stats.utilizationSample {} {
         set elapsed [expr {($now - [dict get $previous timestamp]) / 1000000.0}]
     }
 
+    set supplementalElapsed 0.0
+    if {[dict exists $previous supplementalTimestamp]} {
+        set supplementalElapsed [expr {([dict get $sample supplementalTimestamp]-[dict get $previous supplementalTimestamp])/1000000.0}]
+    }
+    set supplementalPrevious $previous
+    if {[_ns_stats.sampled $snapshot]} {
+        set previous [_ns_stats.utilization.samplePrevious $sample $snapshot]
+        set elapsed [dict get $snapshot sampling elapsedSeconds]
+    }
+
     return [dict create \
                 current  $sample \
                 previous $previous \
-                elapsed  $elapsed]
+                elapsed  $elapsed \
+                coreSnapshot $snapshot \
+                supplementalPrevious $supplementalPrevious \
+                supplementalElapsed $supplementalElapsed]
 }
 
 #
@@ -2173,6 +2549,24 @@ proc _ns_stats.utilization.globalSummary {sample threadCpu} {
         }
     }
 
+    set snapshot [_ns_stats.dictGetDef $sample coreSnapshot {}]
+    if {[_ns_stats.sampled $snapshot]} {
+        set requestRate [_ns_stats.utilization.sampleTotal $snapshot rates requests]
+        set queuedRate [_ns_stats.utilization.sampleTotal $snapshot rates queued]
+        set spooledRate [_ns_stats.utilization.sampleTotal $snapshot rates spools]
+        set droppedRate [_ns_stats.utilization.sampleTotal $snapshot rates dropped]
+        set droppedDelta [_ns_stats.utilization.sampleTotal $snapshot deltas dropped]
+        set droppedText [_ns_stats.utilization.displayIntervalCounter $droppedDelta $droppedRate "dropped request"]
+        set requests [_ns_stats.utilization.sampleTotal $snapshot deltas requests]
+        set timingValues {}
+        foreach {key label} {queuetime queue filtertime filter runtime run tracetime trace} {
+            set delta [_ns_stats.utilization.sampleTotal $snapshot deltas $key]
+            if {$requests>0 && $delta>=0} {
+                lappend timingValues "$label [_ns_stats.hr [expr {$delta/$requests}]]s"
+            }
+        }
+    }
+
     #
     # CPU percentages. The helper should return dictionaries containing
     # at least "name" and "cpu".
@@ -2182,6 +2576,8 @@ proc _ns_stats.utilization.globalSummary {sample threadCpu} {
     set connCpuTotal   0.0
     set writerCpuTotal 0.0
     set spoolerCpuTotal 0.0
+
+    set measured {}
 
     dict for {threadKey threadData} $threadCpu {
         set name [_ns_stats.dictGetDef $threadData name ""]
@@ -2193,16 +2589,20 @@ proc _ns_stats.utilization.globalSummary {sample threadCpu} {
 
         switch -glob -- $name {
             "-driver:*" {
+                dict set measured driver true
                 set driverCpuTotal [expr {$driverCpuTotal + $cpu}]
                 set driverCpuMax   [expr {max($driverCpuMax, $cpu)}]
             }
             "-conn:*" {
+                dict set measured conn true
                 set connCpuTotal [expr {$connCpuTotal + $cpu}]
             }
             "-writer:*" {
+                dict set measured writer true
                 set writerCpuTotal [expr {$writerCpuTotal + $cpu}]
             }
             "-spooler:*" {
+                dict set measured spooler true
                 set spoolerCpuTotal [expr {$spoolerCpuTotal + $cpu}]
             }
         }
@@ -2215,7 +2615,8 @@ proc _ns_stats.utilization.globalSummary {sample threadCpu} {
     set reasons  {}
 
     set linuxRows [_ns_stats.utilization.linuxRows \
-                       $current $previous $elapsed severity reasons]
+                       $current [_ns_stats.dictGetDef $sample supplementalPrevious $previous] \
+                       [_ns_stats.dictGetDef $sample supplementalElapsed $elapsed] severity reasons]
 
     if {$droppedRate > 0.0} {
         set severity critical
@@ -2265,6 +2666,13 @@ proc _ns_stats.utilization.globalSummary {sample threadCpu} {
     set driverCpuDisplay  [_ns_stats.utilization.colorize $driverCpuSeverity \
                                "[format %.1f $driverCpuTotal]% total, [format %.1f $driverCpuMax]% busiest thread"]
 
+    if {![dict exists $measured driver]} {
+        set driverCpuDisplay "unknown"
+    }
+    set connCpuDisplay [expr {[dict exists $measured conn] ? "[format %.1f $connCpuTotal]%" : "unknown"}]
+    set writerCpuDisplay [expr {[dict exists $measured writer] ? "[format %.1f $writerCpuTotal]%" : "unknown"}]
+    set spoolerCpuDisplay [expr {[dict exists $measured spooler] ? "[format %.1f $spoolerCpuTotal]%" : "unknown"}]
+
     set droppedSeverity    [expr {$droppedRate > 0.0 ? "critical" : "ok"}]
     set droppedRateDisplay [_ns_stats.utilization.colorize $droppedSeverity \
                                 $droppedText]
@@ -2282,8 +2690,8 @@ proc _ns_stats.utilization.globalSummary {sample threadCpu} {
                   [list "Pool Waiting"         $poolWaitingDisplay] \
                   [list "Connection Threads"   $connectionThreadsDisplay] \
                   [list "Driver CPU"           $driverCpuDisplay] \
-                  [list "Connection CPU"       "[format %.1f $connCpuTotal]%"] \
-                  [list "Writer / Spooler CPU" "[format %.1f $writerCpuTotal]% / [format %.1f $spoolerCpuTotal]%"] \
+                  [list "Connection CPU"       $connCpuDisplay] \
+                  [list "Writer / Spooler CPU" "$writerCpuDisplay / $spoolerCpuDisplay"] \
                   [list "Driver Socket States"  "$driverReading reading, $driverWaiting ready but unprocessed, $driverClosing closing"] \
                   {*}$linuxRows \
                   [list "Interval Request Handling" "[_ns_stats.utilization.displayRate $queuedRate] queued, [_ns_stats.utilization.displayRate $spooledRate] spooled, $droppedRateDisplay"] \
@@ -2570,6 +2978,10 @@ proc _ns_stats.utilization.poolRows {sample} {
     set previousTotalRequests [_ns_stats.utilization.sumPoolCounter $previous requests]
     set totalRequestRate      [_ns_stats.intervalRate $currentTotalRequests $previousTotalRequests $elapsed]
 
+    set snapshot [_ns_stats.dictGetDef $sample coreSnapshot {}]
+    if {[_ns_stats.sampled $snapshot]} {
+        set totalRequestRate [_ns_stats.utilization.sampleTotal $snapshot rates requests]
+    }
     set currentServers        [_ns_stats.dictGetDef $current servers {}]
 
     foreach server [lsort [dict keys $currentServers]] {
@@ -2598,7 +3010,7 @@ proc _ns_stats.utilization.poolRows {sample} {
             #
             # Pool-specific configuration.
             #
-            set configPath     [expr {$pool eq "" ? "ns/server/$server" : "ns/server/$server/pool/$pool"}]
+            set configPath     [expr {$pool in {{} default} ? "ns/server/$server" : "ns/server/$server/pool/$pool"}]
             set maxConnections [ns_config $configPath maxconnections 100]
 
             #
@@ -3029,7 +3441,7 @@ proc _ns_stats.columnLists {columnSpecs} {
 proc _ns_stats.utilization {} {
     set sample        [_ns_stats.utilizationSample]
 
-    set cpuData       [_ns_stats.threadCpuPercentages utilizationThreadCpuSample]
+    set cpuData       [_ns_stats.threadCpuPercentages utilizationThreadCpuSample [dict get $sample coreSnapshot]]
     set threadCpu     [_ns_stats.dictGetDef $cpuData byThread {}]
     set driverInfo    [_ns_stats.utilization.driverRows $sample $threadCpu]
     set driverRows    [dict get $driverInfo rows]
@@ -3253,6 +3665,7 @@ proc _ns_stats.utilization {} {
 
     append html \
         [_ns_stats.header "Utilization and Bottlenecks"] \
+        [_ns_stats.utilization.sourcePanel $sample] \
         [_ns_stats.results global-summary 0 {Metric Value} "?@page=utilization" $globalSummary 0 {left left}] \
         "\n<p></p>" \
         "\n<div class='utilization-charts'>$driverChart $poolChart</div>" \
@@ -3260,6 +3673,7 @@ proc _ns_stats.utilization {} {
         [_ns_stats.results drivers 0 $driverTitles "?@page=utilization" $driverRows 0 $driverAlign] \
         "<h2 id='nsstats-pools'>Servers and Connection Pools</h2>" \
         [_ns_stats.results utilization-pools 0 $poolTitles "?@page=utilization" $poolRows 0 $poolAlign] \
+        [_ns_stats.utilization.historyPanel] \
         [_ns_stats.footer]
     return $html
 }
@@ -4501,6 +4915,7 @@ proc _ns_stats.lsof {pid} {
 }
 
 proc _ns_stats.process {} {
+    set runtimeSnapshot [_ns_stats.runtimeSnapshot]
     if {[info commands ns_driver] ne ""} {
         #
         # Get certificates to report expire dates (assumes that the
@@ -4672,6 +5087,7 @@ proc _ns_stats.process {} {
                    ]
 
     set html [_ns_stats.header Process]
+    append html [_ns_stats.utilization.sourcePanel [dict create coreSnapshot $runtimeSnapshot] process]
     append html [_ns_stats.process.table $values]
 
     foreach s [ns_info servers] {
@@ -4701,7 +5117,12 @@ proc _ns_stats.process {} {
         #
         set total_server_requests 0
         foreach pool [lsort [ns_server -server $s pools]] {
-            set rawstats [ns_server -server $s -pool $pool stats]
+            if {$runtimeSnapshot ne ""} {
+                set poolName [expr {$pool eq "" ? "default" : $pool}]
+                set rawstats [dict get $runtimeSnapshot servers $s pools $poolName counters]
+            } else {
+                set rawstats [ns_server -server $s -pool $pool stats]
+            }
             dict set pool_info $s $pool rawstats $rawstats
             incr total_server_requests [dict get $rawstats requests]
         }
@@ -4730,8 +5151,17 @@ proc _ns_stats.process {} {
             #
             #ns_log notice "try to get [list dict get $pool_info $s $pool rawstats]"
             set rawstats [dict get $pool_info $s $pool rawstats]
-            set rawthreads [list {*}[ns_server -server $s -pool $pool threads] \
-                                waiting [ns_server -server $s -pool $pool waiting] \
+            if {$runtimeSnapshot ne ""} {
+                set poolName [expr {$pool eq "" ? "default" : $pool}]
+                set gauges [dict get $runtimeSnapshot servers $s pools $poolName gauges]
+                set threads [dict get $gauges threads]
+                set waiting [dict get $gauges waitingRequests]
+            } else {
+                set threads [ns_server -server $s -pool $pool threads]
+                set waiting [ns_server -server $s -pool $pool waiting]
+            }
+            set rawthreads [list {*}$threads \
+                                waiting $waiting \
                                 started [dict get $rawstats connthreads] \
                                 maxconnections [ns_config $config_path maxconnections] \
                                ]
@@ -5748,13 +6178,16 @@ proc _ns_stats.log.mkchart {section param title {renderer _ns_stats.log.chart}} 
     return $html
 }
 
-proc _ns_stats.threadCpuPercentages {sampleKey} {
+proc _ns_stats.threadCpuPercentages {sampleKey {snapshot {}}} {
+    if {$snapshot eq ""} {
+        set snapshot [_ns_stats.runtimeSnapshot]
+    }
     set pid         [pid]
     set rawThreads  [ns_info threads]
     set cpuSource   none
     set cpuTimes    {}
     set collected   {}
-    set current     [dict create threads {}]
+    set current     [dict create threads {} collectorMode [expr {[_ns_stats.sampled $snapshot] ? "sample" : ($snapshot eq "" ? "legacy" : "snapshot")}]]
     set cpuAvailable 0
 
     #
@@ -5769,13 +6202,19 @@ proc _ns_stats.threadCpuPercentages {sampleKey} {
                     byThread  {}]
     }
 
-    try {
-        set cpuTimes [ns_info threadcputimes]
-        set cpuSource api
-    } on error {errorMsg} {
-        if {[file isdirectory /proc/$pid/task]} {
-            set cpuSource proc
-            set HZ 100
+    if {$snapshot ne ""} {
+        if {[_ns_stats.dictGetDef $snapshot availability cpu false]} {
+            set cpuSource core
+        }
+    } else {
+        try {
+            set cpuTimes [ns_info threadcputimes]
+            set cpuSource api
+        } on error {errorMsg} {
+            if {[file isdirectory /proc/$pid/task]} {
+                set cpuSource proc
+                set HZ 100
+            }
         }
     }
 
@@ -5801,7 +6240,16 @@ proc _ns_stats.threadCpuPercentages {sampleKey} {
         set stime      0.0
         set valid      0
 
-        if {$cpuSource eq "api"} {
+        if {$cpuSource eq "core"} {
+            set identity [list $tid $createTime]
+            if {[dict exists $snapshot cpu $identity]} {
+                set times [dict get $snapshot cpu $identity]
+                set utime [expr {[dict get $times user] / 1000000.0}]
+                set stime [expr {[dict get $times system] / 1000000.0}]
+                set state [_ns_stats.dictGetDef $times state 0]
+                set valid 1
+            }
+        } elseif {$cpuSource eq "api"} {
             if {[dict exists $cpuTimes $tid]} {
                 set times [dict get $cpuTimes $tid]
 
@@ -5867,10 +6315,19 @@ proc _ns_stats.threadCpuPercentages {sampleKey} {
                                valid      $valid]
     }
 
-    set sampledAt [clock microseconds]
+    set sampledAt [expr {$snapshot eq "" ? [clock microseconds] : [dict get $snapshot timestamp]}]
     dict set current sampled_at $sampledAt
 
-    set previous [nsv_set -reset _ns_stats $sampleKey $current]
+    set sampled [_ns_stats.sampled $snapshot]
+    set previous {}
+    if {$sampled} {
+        nsv_set _ns_stats $sampleKey [dict create collectorMode sample]
+    } else {
+        set previous [nsv_set -reset _ns_stats $sampleKey $current]
+        if {[_ns_stats.dictGetDef $previous collectorMode legacy] ne [dict get $current collectorMode]} {
+            set previous {}
+        }
+    }
 
     set elapsed 0.0
     if {$previous ne ""
@@ -5879,6 +6336,10 @@ proc _ns_stats.threadCpuPercentages {sampleKey} {
             ($sampledAt - [dict get $previous sampled_at])
             / 1000000.0
         }]
+    }
+
+    if {$sampled} {
+        set elapsed [dict get $snapshot sampling elapsedSeconds]
     }
 
     #
@@ -5899,7 +6360,10 @@ proc _ns_stats.threadCpuPercentages {sampleKey} {
         set valid      [dict get $entry valid]
         set cpu        -1.0
 
-        if {$valid
+        if {$sampled} {
+            set measured [_ns_stats.dictGetDef $snapshot cpuPercent threads $threadKey percent {}]
+            if {$measured ne ""} {set cpu $measured}
+        } elseif {$valid
             && $elapsed > 0.0
             && [dict exists $previous threads $threadKey]} {
             set old [dict get $previous threads $threadKey]

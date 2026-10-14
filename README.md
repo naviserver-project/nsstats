@@ -18,6 +18,39 @@
   - The current configuration file
   - Recent error log entries
 
+## Core diagnostics integration
+
+When `ns_stats` is available and sampling is running with a ready interval,
+nsstats reads the shared sample. Request/driver rates, timing averages and CPU
+percentages use the measured sampling interval and remain stable across page
+refreshes. The utilization page shows collection time, sample age, measured
+interval and stale-sample warnings. Its selector can request a fresh snapshot
+instead. Before the first interval is ready, or when sampling is stopped,
+nsstats uses fresh snapshots and page-observation intervals.
+
+The utilization page also shows recent request-rate and measured CPU charts,
+the latest 20 intervals (including queue/filter/run/trace averages), and coverage.
+Without persistence it uses the core's bounded memory buffer (180 samples,
+at most 15 minutes at publication). With configured SQLite history it follows
+all pages up to 10,000 samples and includes retained records from earlier
+process instances. Choose 15 minutes, one hour, six hours or 24 hours.
+Chart lines break across gaps/restarts; absent/reset measurements remain unknown.
+Coverage includes retained bounds, baseline/reset records, gaps, restarts,
+eviction/failure overlap, paging limits and persistence write failures.
+Persistent history is queried from its configured owner virtual server.
+
+Viewing nsstats does not start sampling, change its baseline, enable persistence
+or write SQLite history. Configure those through `ns_stats`. The new memory
+history command requires the updated core `ns_stats.tcl`; older command versions
+can still show persisted history and live samples.
+
+On installations without `ns_stats`, the existing collectors remain in use,
+including Linux `/proc` CPU fallback. Linux network diagnostics and queue details
+not exposed by the core remain supplemental, using their own observation interval.
+Changing collector backend resets the page baseline. An unavailable core CPU
+measurement stays unavailable; collector errors are not silently replaced by
+legacy results.
+
 ## Changes Since Version 1.0
 
 - Separate utilization page including including driver and server/pool
