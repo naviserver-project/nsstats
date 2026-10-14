@@ -2,6 +2,8 @@ ifndef NAVISERVER
     NAVISERVER  = /usr/local/ns
 endif
 
+MODNAME = nsstats
+
 include  $(NAVISERVER)/include/Makefile.module
 
 install:

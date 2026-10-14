@@ -1372,9 +1372,16 @@ proc _ns_stats.utilization.readHistory {minutes} {
     dict set coverage events [lsort -unique $events]
     dict set coverage resetSamples $resets
     dict set coverage evictionOrFailureOverlap $overlap
-    if {$pages>1 || $more} {dict set coverage complete false}
+    # Current core final-page coverage supersedes page-local diagnostics.
+    # Older cores still require conservative aggregation across pages.
+    if {[_ns_stats.dictGetDef $current windowExamined false]} {
+        set coverage $current
+    } elseif {$pages>1} {
+        dict set coverage complete false
+    }
+    if {$more} {dict set coverage complete false}
     return [dict create available true source $source persistence $status points $points from $from to $to \
-        coverage $coverage truncated $more pages $pages]
+        coverage $coverage storage [_ns_stats.dictGetDef $page storage {}] truncated $more pages $pages]
 }
 
 # Produce literal JSON, including nulls for unknown observations and gaps.
@@ -1462,6 +1469,13 @@ proc _ns_stats.utilization.historyPanel {} {
     if {$source eq "sqlite"} {
         lappend rows [list "Persistence enabled" [dict get $status enabled]] \
             [list "Write failures since persistence started" [dict get $status failures]]
+    }
+    foreach {key label} {sampleCount {Retained samples} retainedSeconds {Retained seconds}
+                         allocatedBytes {SQLite allocated bytes} usedBytes {SQLite used bytes}
+                         databaseLimitBytes {SQLite database cap (bytes)} bytesPerSample {Bytes per retained sample}} {
+        if {[dict exists $result storage $key]} {
+            lappend rows [list $label [dict get $result storage $key]]
+        }
     }
     foreach {key label} {retainedFrom {Oldest retained sample} retainedTo {Newest retained sample}} {
         set value [_ns_stats.dictGetDef $coverage $key 0]
@@ -4177,14 +4191,38 @@ proc _ns_stats.skipConfigSection {sectionName} {
 }
 
 
+proc _ns_stats.config.loadDocs {coreFile moduleRoots} {
+    # Load the core reference first, then repository-owned installed dictionaries.
+    # Missing optional documentation must not prevent displaying configuration.
+    namespace eval ::ns_configdoc {}
+    set ::ns_configdoc::data {}
+    set loaded {}
+    if {[file readable $coreFile]} {
+        source $coreFile
+        lappend loaded [file normalize $coreFile]
+    }
+    foreach root [lsort -unique $moduleRoots] {
+        if {![file isdirectory $root]} {continue}
+        foreach path [lsort [glob -nocomplain -directory $root */doc/tcl/config-parameters.tcl]] {
+            set path [file normalize $path]
+            if {$path in $loaded} {continue}
+            set before $::ns_configdoc::data
+            if {[catch {source $path} message]} {
+                set ::ns_configdoc::data $before
+                ns_log warning "nsstats: could not load parameter documentation $path: $message"
+                continue
+            }
+            lappend loaded $path
+        }
+    }
+    return $loaded
+}
+
 proc _ns_stats.config.params {} {
     set paramDocFile [file join [ns_info home] modules tcl config-parameters.tcl]
-    ns_log notice paramDocFile [file readable $paramDocFile] $paramDocFile
-    if {[file readable $paramDocFile]} {
-        source $paramDocFile
-    } else {
-        set ::configParamDoc {}
-    }
+    _ns_stats.config.loadDocs $paramDocFile [list \
+        [ns_library shared] [ns_library private] \
+        [file join [ns_info home] tcl] [file join [ns_info home] modules tcl]]
 
     set out [list]
     foreach section [lsort [ns_configsections]] {

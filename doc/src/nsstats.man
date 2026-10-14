@@ -1,0 +1,42 @@
+[manpage_begin nsstats n 1.15]
+[moddesc {NaviServer External Modules}]
+[titledesc {Monitoring and statistics web interface}]
+[description]
+The nsstats module provides an administrative web interface for NaviServer.
+It displays process information, virtual-server configuration, connection pools,
+network drivers, background jobs, memory, caches, shared variables and logs.
+Features are detected at runtime so older supported NaviServer releases remain usable.
+
+[section INSTALLATION]
+Place [file nsstats.tcl] and [file nsstats.adp] in an administrative page directory.
+Configure access control before exposing these pages. OpenACS installations can
+use their protected administration directory. The module Makefile installs the
+pages and its parameter dictionary; no documentation rendering is required by
+an ordinary installation.
+
+[section DIAGNOSTICS]
+When the core [cmd ns_stats] command is available, ready shared samples provide
+interval rates and timing averages. The utilization page shows sampling age and
+interval and permits selecting a live snapshot. History uses SQLite persistence
+when configured, or the bounded in-memory sample buffer. Charts break across gaps
+and restarts; missing values remain unknown. Sampling and persistence are configured
+in the process-wide [const ns/stats] section, independently of this web interface.
+Older installations retain the original collectors.
+
+[para]
+The parameter reference loads the core dictionary and available installed module
+dictionaries. The MCP administration page appears when nsmcp is active; inspection
+calls require an explicit administrator action and use the normal protocol checks.
+
+[section CONFIGURATION]
+[include include/parameters.man]
+
+[section DOCUMENTATION]
+The repository-local [file doc/tcl/config-parameters.tcl] is authoritative for the
+parameters below. Generate the committed include with [const {make regen-config-parameters-includes}].
+[const {make check-doc}] checks freshness and validates the complete manual.
+[const {make build-doc}] creates standalone HTML and nroff documentation.
+For the complete web-interface guide, see
+[uri https://github.com/naviserver-project/nsstats/blob/main/README.md {the repository README}].
+[keywords monitoring statistics configuration ns_stats]
+[manpage_end]

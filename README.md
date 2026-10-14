@@ -192,3 +192,25 @@ pages and follow history paging. Each call requires an explicit click.
 Responses are shown in a scrollable panel and can be copied or downloaded as JSON.
 Tool limits and paging still apply; a displayed page is not necessarily the complete
 result. Reset arguments returns to the original tool without executing a call.
+
+## Parameter documentation
+
+This repository owns `doc/tcl/config-parameters.tcl`; its committed generated
+reference is `doc/src/include/parameters.man`. The complete module manual is
+`doc/src/nsstats.man`. With the updated NaviServer development tools:
+
+```sh
+make regen-config-parameters-includes
+make check-doc
+make build-doc
+```
+
+HTML is written to `doc/html`, nroff to `doc/man`. Ordinary builds and installation
+use the committed fragment without running the documentation generator.
+`DOC_TOOLS=/path/to/naviserver/doc/tools` selects source-checkout tools.
+For combined documentation, run NaviServer's `make build-doc` with
+`EXTERNAL_MODULE_DOCS` listing the selected local module repository directories.
+
+The configuration page loads the core dictionary and installed module dictionaries
+from the shared/private Tcl library locations. Missing optional dictionaries are
+ignored; malformed dictionaries are reported without breaking the page.
