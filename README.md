@@ -23,10 +23,15 @@
 When `ns_stats` is available and sampling is running with a ready interval,
 nsstats reads the shared sample. Request/driver rates, timing averages and CPU
 percentages use the measured sampling interval and remain stable across page
-refreshes. The utilization page shows collection time, sample age, measured
-interval and stale-sample warnings. Its selector can request a fresh snapshot
-instead. Before the first interval is ready, or when sampling is stopped,
-nsstats uses fresh snapshots and page-observation intervals.
+refreshes. The utilization page distinguishes sample freshness from the measured
+period and warns about stale samples. Beside Raw, select shared sampling or a
+live snapshot. The Display window field (for example `60s`) compares a fresh snapshot with the retained endpoint nearest that age; it does not change the sampling cadence. The
+actual measured period is shown in the table. This requires the updated core
+`ns_stats sample -window` support and uses bounded memory history, up to 15
+minutes, without SQLite. Insufficient history or a gap/restart leaves interval
+measurements unknown while current gauges remain visible. Ordinary measurements have no extra status
+line; warnings remain visible. When sampling is
+stopped or live snapshot is selected, rates use page-observation intervals.
 
 The utilization page also shows recent request-rate and measured CPU charts,
 the latest 20 intervals (including queue/filter/run/trace averages), and coverage.

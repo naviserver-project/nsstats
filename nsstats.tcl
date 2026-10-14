@@ -61,6 +61,7 @@ set ::navGroups {
     }}
     memory {{Memory & storage} {
         mem.tcl {Allocator memory} dbpools {Database pools}
+        stats.history {Statistics history}
         mem.cache Caches mem.nsvsize {Shared variables} mem.adp ADP
     }}
     background {Background {
@@ -79,7 +80,7 @@ set ::navGroups {
 }
 set ::navScopes {
     process global utilization global threads global list-lsof global
-    mem.tcl global dbpools global mem.cache server mem.nsvsize server mem.adp server
+    stats.history global mem.tcl global dbpools global mem.cache server mem.nsvsize server mem.adp server
     background.jobs global background.sched global proxy-workers global
     config.file global config.params global locks.mutex server locks.nsv server mcp server
     log.logfile global log.httpclient source log.smtpsent source log.smtpevents source
@@ -114,6 +115,9 @@ proc _ns_stats.navigation.groups {} {
         foreach {target title} $entries {
             set page [lindex [split $target #] 0]
             if {[info procs _ns_stats.$page] eq ""} {
+                continue
+            }
+            if {$page eq "stats.history" && [info commands ns_stats] eq ""} {
                 continue
             }
             if {$page eq "mcp" && [info commands ::nsmcp::ToolRegistry] eq ""} {
@@ -226,6 +230,9 @@ proc _ns_stats.navigation.style {} {
 .ns-nav-items a {display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px;color:var(--color-anchor,#004080);text-decoration:none;}
 .ns-nav-items a:hover,.ns-nav-items a[aria-current] {background:var(--color-dropdown-hover-bg,#e6eef7);}
 .ns-nav-mobile {display:none;}
+.mcp-tools {width:100%;table-layout:fixed;}
+.ns-measurement-controls input[name="statsWindow"] {width:6em;box-sizing:border-box;padding:3px 6px;border:1px solid var(--color-border,#888);background:var(--color-body-bg,#fff);color:var(--color-body-text,#000);opacity:1;}
+.mcp-tool-toggle {display:block;margin-top:6px;}
 .mcp-tools th:nth-child(1),.mcp-tools td:nth-child(1) {width:18%;}
 .mcp-tools th:nth-child(2),.mcp-tools td:nth-child(2) {width:10%;}
 .mcp-tools th:nth-child(3),.mcp-tools td:nth-child(3) {width:38%;}
@@ -324,7 +331,7 @@ proc _ns_stats.header {args} {
     set ::rawLabel [expr {$::raw ? "true" : "false"}]
     set s [ns_getform]
     ns_set update $s raw [expr {!$::raw}]
-    set ::rawUrl [ns_conn url]?[join [lmap {k v} [ns_set array $s] {set _ [ns_urlencode $k]=[ns_urlencode $v]}] &]
+    set ::rawUrl [ns_conn url]?[join [lmap {k v} [ns_set array $s] {if {$k in {statsToken statsInterval}} {continue}; set _ [ns_urlencode $k]=[ns_urlencode $v]}] &]
     if {![info exists ::extraHeadEntries]} {
         set ::extraHeadEntries ""
     }
@@ -434,7 +441,7 @@ div.methodfilter label { margin-right: 6px; }
   <table class='navbar table table-responsive w-100 d-block d-md-table'>
     <tr>
       <td valign='middle'><b><%= [_ns_stats.navigation.breadcrumb] %></b></td>
-      <td valign='middle' align='right'>Raw: <a class='current' href='<%= $::rawUrl %>'><%= $::rawLabel %></a>
+      <td valign='middle' align='right'><%= [_ns_stats.measurementControls] %>Raw: <a class='current' href='<%= $::rawUrl %>'><%= $::rawLabel %></a>
        &middot; <b><%= [_ns_stats.fmtTime [ns_time]] %></b></td>
     </tr>
   </table>
@@ -481,6 +488,55 @@ proc _ns_stats.index {} {
  scope.addEventListener('change', filterPages);
 })();
 </script>}
+    _ns_stats.footer
+    return $html
+}
+
+# Process-wide diagnostic history; viewing this page does not configure it.
+proc _ns_stats.stats.history {} {
+    _ns_stats.header "Statistics history"
+    set html "<p>Process-wide sampling history. Age and size limits can both remove older samples; the retention setting does not guarantee that duration is retained.</p>"
+    if {[info commands ns_stats] eq "" || [catch {ns_stats history status} status]} {
+        append html "<p>Statistics history is unavailable.</p>"
+    } else {
+        set rows {}
+        foreach {key label unit} {
+            enabled Persistence text pool {Database pool} text owner {Owner server} text
+            retention {Maximum sample age} duration maxBytes {Configured storage budget} bytes
+            failures {Write failures} text lastFailure {Last write failure} text
+        } {
+            if {![dict exists $status $key]} {continue}
+            set value [dict get $status $key]
+            if {$unit eq "bytes"} {set value [format "%.2f MiB" [expr {$value / 1048576.0}]]}
+            if {$unit eq "duration"} {set value [format "%.2f hours" [expr {$value / 3600.0}]]}
+            lappend rows [list $label $value]
+        }
+        append html [_ns_stats.mcp.table "Persistence and cleanup settings" {Setting Value} $rows]
+        if {[dict get $status enabled] && ![catch {ns_stats history storage} storage]} {
+            set rows {}
+            foreach {key label unit} {
+                retainedFrom {Oldest retained sample} timestamp retainedTo {Newest retained sample} timestamp
+                retainedSeconds {Retained duration} duration sampleCount {Retained samples} text
+                allocatedBytes {Allocated database} bytes usedBytes {Used database} bytes
+                freeBytes {Free database pages} bytes databaseLimitBytes {Effective SQLite size cap} bytes
+                bytesPerSample {Average storage per sample} bytes bytesPerSecond {Observed storage rate} rate
+            } {
+                if {![dict exists $storage $key]} {continue}
+                set value [dict get $storage $key]
+                if {$value eq ""} {set value Unknown} else {
+                    switch $unit {
+                        timestamp {set value [_ns_stats.fmtTime $value]}
+                        duration {set value [format "%.2f hours" [expr {$value / 3600.0}]]}
+                        bytes {set value [format "%.2f KiB" [expr {$value / 1024.0}]]}
+                        rate {set value [format "%.2f KiB/s" [expr {$value / 1024.0}]]}
+                    }
+                }
+                lappend rows [list $label $value]
+            }
+            append html [_ns_stats.mcp.table "Retained history and database usage" {Metric Value} $rows]
+            append html "<p>The effective SQLite cap leaves headroom within the configured budget. Cleanup can prune before that cap is reached. Storage averages describe retained samples and can change with server activity.</p>"
+        }
+    }
     _ns_stats.footer
     return $html
 }
@@ -731,11 +787,11 @@ proc _ns_stats.mcp.table {heading columns rows} {
             if {[lindex $columns $index] eq "Tool name"} {
                 set content "<code>$content</code>"
             }
-            if {[lindex $columns $index] eq "Server availability"} {
-                lassign $value name enabled token
+            if {[lindex $columns $index] eq "Status" && [llength $value] == 4} {
+                lassign $value state name enabled token
                 set label [expr {$enabled ? "Disable" : "Enable"}]
                 set next [expr {!$enabled}]
-                set content "<button type='button' class='mcp-tool-toggle' data-tool='[ns_quotehtml $name]' data-enabled='$next' data-token='[ns_quotehtml $token]'>$label</button> <span class='mcp-tool-state-status' role='status'></span>"
+                set content "[ns_quotehtml $state]<button type='button' class='mcp-tool-toggle' data-tool='[ns_quotehtml $name]' data-enabled='$next' data-token='[ns_quotehtml $token]'>$label</button> <span class='mcp-tool-state-status' role='status'></span>"
             }
             if {[lindex $columns $index] eq "Tool details"} {
                 lassign $value description schema example token
@@ -921,14 +977,13 @@ proc _ns_stats.mcp {} {
                     [list [dict get $tool description] [dict get $tool inputSchema] \
                         [_ns_stats.mcp.toolExample [dict get $tool name]] $inspectToken]]
                 if {$controls} {
-                    lappend row [list [dict get $tool name] $enabled $token]
+                    lset row 1 [list $state [dict get $tool name] $enabled $token]
                 }
                 lappend rows $row
             }
             set columns {{Tool name} Status Purpose {Required permission} {Tool details}}
             append html "<p>Use these exact tool names in client queries. Open Details for arguments and a selectable example query.</p>"
             if {$controls} {
-                lappend columns {Server availability}
                 append html "<p>Tool switches affect all MCP clients on this virtual server. Runtime changes survive reloads but reset on process restart. Disabling a tool prevents new calls; existing jobs and collectors continue. Clients may need to refresh their tool list.</p>"
             }
             append html [_ns_stats.mcp.table "Available tools" $columns $rows]
@@ -1303,6 +1358,26 @@ proc _ns_stats.mem.cache {} {
 
 # Prefer a ready shared sample while sampling runs; allow an explicit snapshot.
 # Neither read changes sampling. An absent command selects the legacy collector.
+# Display-window controls read retained samples; they never reconfigure sampling.
+proc _ns_stats.measurementControls {} {
+    if {$::page ni {utilization threads} || [info commands ns_stats] eq ""} {return ""}
+    set mode [ns_queryget statsMode auto]
+    set options ""
+    foreach {value label} {auto {Shared sampling} snapshot {Live snapshot}} {
+        set selected [expr {$mode eq $value ? " selected" : ""}]
+        append options "<option value='$value'$selected>$label</option>"
+    }
+    set period [ns_queryget statsWindow ""]
+    set status [ns_stats sampling status]
+    if {$period eq ""} {set period "[dict get $status interval]s"}
+    set html "<form class='ns-measurement-controls' method='get' style='display:inline-block;margin-right:12px'><input type='hidden' name='@page' value='$::page'><input type='hidden' name='raw' value='$::raw'><label>Measurements: <select name='statsMode' onchange='this.form.submit()'>$options</select></label>"
+    if {[dict get $status running] && $mode ne "snapshot"} {
+        append html " <label>Display window: <input name='statsWindow' size='5' value='[ns_quotehtml $period]' aria-label='Display window, for example 60s'></label> <button type='submit'>Show</button> <small>Sampling every [ns_quotehtml [dict get $status interval]]s</small>"
+    }
+    append html "</form>"
+    return $html
+}
+
 proc _ns_stats.runtimeSnapshot {} {
     if {[info commands ::ns_stats] eq ""} {
         return {}
@@ -1314,9 +1389,20 @@ proc _ns_stats.runtimeSnapshot {} {
     if {$mode ni {auto snapshot}} {
         set mode auto
     }
+    set displayError ""
     set status [ns_stats sampling status]
     if {$mode eq "auto" && [dict get $status running]} {
-        set sample [ns_stats sample]
+        set window [expr {[info commands ns_queryget] ne "" ? [ns_queryget statsWindow ""] : ""}]
+        if {$window eq ""} {
+            set sample [ns_stats sample]
+        } elseif {[catch {ns_stats sample -window $window} sample]} {
+            set displayError "Display window unavailable: $sample"
+            if {![catch {ns_stats info lookup syntax sample} syntax]
+                && ![string match {*-window*} $syntax]} {
+                set displayError "The loaded ns_stats does not support display windows. Install the updated NaviServer tcl/ns_stats.tcl and restart NaviServer."
+            }
+            set sample {sampling {ready false}}
+        }
         if {[dict get $sample sampling ready]} {
             dict set sample collectorMode sample
             dict set sample samplingStatus $status
@@ -1324,6 +1410,9 @@ proc _ns_stats.runtimeSnapshot {} {
         }
     }
     set snapshot [ns_stats snapshot]
+    dict set snapshot displayError $displayError
+    dict set snapshot requestedWindow [expr {[info commands ns_queryget] ne "" ? [ns_queryget statsWindow ""] : ""}]
+    dict set snapshot samplingPending [expr {$mode eq "auto" && [dict get $status running]}]
     dict set snapshot collectorMode snapshot
     dict set snapshot samplingStatus $status
     return $snapshot
@@ -1368,29 +1457,36 @@ proc _ns_stats.utilization.sampleTotal {snapshot role key} {
     return $total
 }
 
-# Source controls do not start/stop sampling or configure persistence.
+# Describe freshness separately from the period used to calculate rates.
 proc _ns_stats.utilization.sourcePanel {sample {page utilization}} {
     set snapshot [_ns_stats.dictGetDef $sample coreSnapshot {}]
     if {$snapshot eq ""} {return {}}
     set status [_ns_stats.dictGetDef $snapshot samplingStatus {}]
     set sampled [_ns_stats.sampled $snapshot]
-    set label [expr {$sampled ? "Shared interval sample" : "Live snapshot"}]
+    set label "Live snapshot"
     set details "Gauges are observations at collection time."
     if {$sampled} {
         set age [dict get $snapshot sampling ageSeconds]
-        set interval [dict get $snapshot sampling elapsedSeconds]
-        set details "Sample age: [format %.2f $age]s; measured interval: [format %.3f $interval]s. Rates and CPU use this interval, independently of page refreshes."
-        if {$age>2*[dict get $status interval]} {
-            append details " <strong>Sample is stale.</strong>"
+        if {$age <= 2*[dict get $status interval]} {return ""}
+        return "<p><strong>Measurements are stale: collected [format %.2f $age]s ago.</strong></p>"
+    } elseif {[_ns_stats.dictGetDef $snapshot samplingPending false]} {
+        set window [_ns_stats.dictGetDef $snapshot requestedWindow ""]
+        if {$window eq ""} {
+            set label "Shared sampling: waiting for the first measurement period"
+        } else {
+            set label "Shared sampling: display window [ns_quotehtml $window] is not yet available"
         }
-    } elseif {[_ns_stats.dictGetDef $status running false]} {
-        append details " Sampling is running; the first usable interval is not ready, or live snapshot was selected."
+        set details "Sampling every [dict get $status interval]s. Current gauges are shown; rates and CPU require sufficient continuous history."
+        set error [_ns_stats.dictGetDef $snapshot displayError ""]
+        if {$error ne ""} {
+            set label "Shared sampling: display window cannot be calculated"
+            set details "[ns_quotehtml $error] Current gauges are shown; interval measurements are unavailable."
+        }
     } else {
         append details " Sampling is stopped; rates use page observations."
     }
-    set selectedAuto [expr {$sampled || [ns_queryget statsMode auto] ne "snapshot" ? " selected" : ""}]
-    set selectedSnapshot [expr {$selectedAuto eq "" ? " selected" : ""}]
-    return "<p><strong>$label.</strong> $details Collection time: [clock format [expr {[dict get $snapshot timestamp]/1000000}] -format {%Y-%m-%d %H:%M:%S %Z}].</p><form method='get'><input type='hidden' name='@page' value='[ns_quotehtml $page]'><label>Measurements <select name='statsMode'><option value='auto'$selectedAuto>Use shared sampling when running</option><option value='snapshot'$selectedSnapshot>Live snapshot / page interval</option></select></label> <button type='submit'>Apply</button></form>"
+    if {$sampled} {return "<p><strong>$label.</strong> $details</p>"}
+    return "<p><strong>$label.</strong> $details Collection time: [clock format [expr {[dict get $snapshot timestamp]/1000000}] -format {%Y-%m-%d %H:%M:%S %Z}].</p>"
 }
 
 # Reduce stored records to plot/table data while paging, rather than retaining
@@ -1548,7 +1644,7 @@ proc _ns_stats.utilization.historyPanel {} {
         set selected [expr {$minutes==$value ? " selected" : ""}]
         append options "<option value='$value'$selected>$label</option>"
     }
-    set html "<h2>Recent sampled history</h2><form method='get'><input type='hidden' name='@page' value='utilization'><input type='hidden' name='statsMode' value='[ns_quotehtml [ns_queryget statsMode auto]]'><label>Period <select name='historyMinutes'>$options</select></label> <button type='submit'>Show history</button></form>"
+    set html "<h2>Recent sampled history</h2><form method='get'><input type='hidden' name='@page' value='utilization'><input type='hidden' name='statsMode' value='[ns_quotehtml [ns_queryget statsMode auto]]'><input type='hidden' name='statsWindow' value='[ns_quotehtml [ns_queryget statsWindow ""]]'><label>Period <select name='historyMinutes'>$options</select></label> <button type='submit'>Show history</button></form>"
     if {[catch {_ns_stats.utilization.readHistory $minutes} result]} {
         return "$html<p>History unavailable: [ns_quotehtml $result]</p>"
     }
@@ -1829,6 +1925,8 @@ proc _ns_stats.utilizationSample {} {
         set previous [_ns_stats.utilization.samplePrevious $sample $snapshot]
         set elapsed [dict get $snapshot sampling elapsedSeconds]
     }
+
+    if {[_ns_stats.dictGetDef $snapshot samplingPending false]} {set elapsed 0.0}
 
     return [dict create \
                 current  $sample \
@@ -2799,7 +2897,7 @@ proc _ns_stats.utilization.globalSummary {sample threadCpu} {
     # Return the key/value list expected by _ns_stats.process.table.
     #
     set rows [list \
-                  [list "Sample Interval"      [expr {$elapsed > 0.0 ? [_ns_stats.fmtSeconds $elapsed] : "\u2014; refresh to obtain interval values"}]] \
+                  [list "Measurement period"   [expr {$elapsed > 0.0 ? [format "%.3fs" $elapsed] : "\u2014; refresh to obtain interval values"}]] \
                   [list "Request Rate"         [_ns_stats.utilization.displayRate $requestRate]] \
                   [list "Active Requests"      $activeRequests] \
                   [list "Pool Waiting"         $poolWaitingDisplay] \
@@ -6480,6 +6578,8 @@ proc _ns_stats.threadCpuPercentages {sampleKey {snapshot {}}} {
     if {$sampled} {
         set elapsed [dict get $snapshot sampling elapsedSeconds]
     }
+
+    if {[_ns_stats.dictGetDef $snapshot samplingPending false]} {set elapsed 0.0}
 
     #
     # Compute CPU percentages and build both result representations.

@@ -520,7 +520,7 @@ table.config {font-size: 0.9rem;}
 
 <!-- Navigation and current location -->
 <%= [_ns_stats.navigation] %>
-<div class="breadcrumbs"><%= [_ns_stats.navigation.breadcrumb] %><span style="float:right">Raw: <a href="<%= [ns_quotehtml $::rawUrl] %>"><%= $::rawLabel %></a></span></div>
+<div class="breadcrumbs"><%= [_ns_stats.navigation.breadcrumb] %><span style="float:right"><%= [_ns_stats.measurementControls] %>Raw: <a href="<%= [ns_quotehtml $::rawUrl] %>"><%= $::rawLabel %></a></span></div>
 
 <!-- Main Container -->
 <div class="main-container">
