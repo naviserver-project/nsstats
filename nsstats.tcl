@@ -608,6 +608,79 @@ proc _ns_stats.mcp.inspect {} {
     return ""
 }
 
+# Runtime tool switches use the same protected admin identity and page-issued
+# token as inspection. They are intentionally not callable through MCP itself.
+proc _ns_stats.mcp.toolState {} {
+    if {[ns_conn method] ne "POST"} {
+        ns_return 405 text/plain "Use POST to change tool availability."
+        return ""
+    }
+    set key mcp-inspect:[_ns_stats.mcp.identity]
+    set token [ns_set iget [ns_conn headers] X-Nsstats-MCP-Token]
+    if {$token eq "" || ![nsv_exists _ns_stats $key] || $token ne [nsv_get _ns_stats $key]} {
+        ns_return 403 text/plain "Invalid administration token; reload the MCP page."
+        return ""
+    }
+    if {[info commands ::nsmcp::tools] eq ""
+        || [catch {::nsmcp::tools controlsAvailable} available]
+        || ![string is boolean -strict $available] || !$available} {
+        ns_return 503 text/plain "Runtime tool controls are not available."
+        return ""
+    }
+    set name [ns_queryget mcpToolState ""]
+    set enabled [ns_queryget mcpEnabled ""]
+    set known false
+    foreach tool [::nsmcp::tools describe] {
+        if {[dict get $tool name] eq $name} {
+            set known true
+            break
+        }
+    }
+    if {!$known || $enabled ni {0 1}} {
+        ns_return 400 text/plain "Supply a registered tool and mcpEnabled=0 or 1."
+        return ""
+    }
+    if {[catch {::nsmcp::tools setEnabled $name $enabled} result]} {
+        ns_log error "nsstats: tool availability update failed for $name: $result"
+        ns_return 500 text/plain "Tool availability could not be changed; consult the server log."
+        return ""
+    }
+    ns_log notice "nsstats: [_ns_stats.mcp.identity] set tool $name enabled=$result"
+    ns_set iupdate [ns_conn outputheaders] Cache-Control no-store
+    ns_return 200 application/json [ns_json value -- [list {} object \
+        [list server string [ns_info server] tool string $name enabled boolean $result]]]
+    return ""
+}
+
+proc _ns_stats.mcp.toolControlScript {} {
+    return {<script>
+(function () {
+ document.querySelectorAll('.mcp-tool-toggle').forEach(function (button) {
+   const status = button.parentElement.querySelector('.mcp-tool-state-status');
+   button.addEventListener('click', async function () {
+     button.disabled = true; status.textContent = 'Applying…';
+     try {
+       const url = new URL(window.location.href);
+       url.searchParams.set('@page', 'mcp'); url.searchParams.delete('mcpInspect'); url.hash = '';
+       const response = await fetch(url, {
+         method:'POST', credentials:'same-origin', cache:'no-store',
+         headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8', 'X-Nsstats-MCP-Token':button.dataset.token},
+         body:new URLSearchParams({'@page':'mcp', mcpToolState:button.dataset.tool, mcpEnabled:button.dataset.enabled}).toString()
+       });
+       const text = await response.text();
+       if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + text);
+       const result = JSON.parse(text);
+       if (result.tool !== button.dataset.tool || typeof result.enabled !== 'boolean') throw new Error('Unexpected tool-state response.');
+       window.location.reload();
+     } catch (error) {
+       status.textContent = error.message; button.disabled = false;
+     }
+   });
+ });
+})();
+</script>}
+}
+
 proc _ns_stats.mcp.arguments {schema} {
     set rows {}
     set required {}
@@ -657,6 +730,12 @@ proc _ns_stats.mcp.table {heading columns rows} {
             set content [ns_quotehtml $value]
             if {[lindex $columns $index] eq "Tool name"} {
                 set content "<code>$content</code>"
+            }
+            if {[lindex $columns $index] eq "Server availability"} {
+                lassign $value name enabled token
+                set label [expr {$enabled ? "Disable" : "Enable"}]
+                set next [expr {!$enabled}]
+                set content "<button type='button' class='mcp-tool-toggle' data-tool='[ns_quotehtml $name]' data-enabled='$next' data-token='[ns_quotehtml $token]'>$label</button> <span class='mcp-tool-state-status' role='status'></span>"
             }
             if {[lindex $columns $index] eq "Tool details"} {
                 lassign $value description schema example token
@@ -808,13 +887,16 @@ proc _ns_stats.mcp {} {
     if {[info commands ::nsmcp::ToolRegistry] eq ""} {
         return "[_ns_stats.header MCP]<p>The nsmcp module is not active.</p>[_ns_stats.footer]"
     }
+    if {[ns_queryget mcpToolState ""] ne ""} {
+        return [_ns_stats.mcp.toolState]
+    }
     if {[ns_queryget mcpInspect ""] ne ""} {
         return [_ns_stats.mcp.inspect]
     }
     set html [_ns_stats.header "MCP"]
     set server [ns_info server]
     set section ns/server/$server/module/nsmcp
-    append html "<p>Server: <strong>[ns_quotehtml $server]</strong>. Open Inspect result in a tool’s Details to execute it on demand; page loading does not execute tools. Configuration changes require the usual module initialization or restart.</p>"
+    append html "<p>Server: <strong>[ns_quotehtml $server]</strong>. Open Inspect result in a tool’s Details to execute it on demand; page loading does not execute tools. Tool switches take effect at runtime; other configuration changes require module initialization or restart.</p>"
 
     if {[info commands ::nsmcp::tools] ne ""} {
         if {[catch {::nsmcp::tools describe} tools]} {
@@ -825,15 +907,34 @@ proc _ns_stats.mcp {} {
             if {[info commands ::nsmcp::protocol] ne ""} {
                 set token [_ns_stats.mcp.token]
             }
+            set controls false
+            if {$token ne "" && ![catch {::nsmcp::tools controlsAvailable} supported]
+                && [string is boolean -strict $supported] && $supported} {
+                set controls true
+            }
             foreach tool $tools {
-                lappend rows [list [dict get $tool name] "Registered" \
+                set enabled [expr {![dict exists $tool enabled] || [dict get $tool enabled]}]
+                set state [expr {[dict exists $tool enabled] ? ($enabled ? "Enabled" : "Disabled") : "Registered"}]
+                set inspectToken [expr {$enabled ? $token : ""}]
+                set row [list [dict get $tool name] $state \
                     [_ns_stats.mcp.toolSummary $tool] [dict get $tool permission] \
                     [list [dict get $tool description] [dict get $tool inputSchema] \
-                        [_ns_stats.mcp.toolExample [dict get $tool name]] $token]]
+                        [_ns_stats.mcp.toolExample [dict get $tool name]] $inspectToken]]
+                if {$controls} {
+                    lappend row [list [dict get $tool name] $enabled $token]
+                }
+                lappend rows $row
             }
+            set columns {{Tool name} Status Purpose {Required permission} {Tool details}}
             append html "<p>Use these exact tool names in client queries. Open Details for arguments and a selectable example query.</p>"
-            append html [_ns_stats.mcp.table "Available tools" \
-                {{Tool name} Status Purpose {Required permission} {Tool details}} $rows]
+            if {$controls} {
+                lappend columns {Server availability}
+                append html "<p>Tool switches affect all MCP clients on this virtual server. Runtime changes survive reloads but reset on process restart. Disabling a tool prevents new calls; existing jobs and collectors continue. Clients may need to refresh their tool list.</p>"
+            }
+            append html [_ns_stats.mcp.table "Available tools" $columns $rows]
+            if {$controls} {
+                append html [_ns_stats.mcp.toolControlScript]
+            }
         }
     }
 

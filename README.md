@@ -214,3 +214,10 @@ For combined documentation, run NaviServer's `make build-doc` with
 The configuration page loads the core dictionary and installed module dictionaries
 from the shared/private Tcl library locations. Missing optional dictionaries are
 ignored; malformed dictionaries are reported without breaking the page.
+
+The MCP tools table also provides server-wide runtime Enable/Disable switches
+when supported by nsmcp. They affect discovery and invocation for all MCP clients
+on the current virtual server. Disabled tools still have readable descriptions.
+Changes require a protected POST and the admin page token, survive module reloads,
+and reset on process restart. Existing jobs and collectors continue. These are
+server availability controls; a conversational assistant has not yet been added.
