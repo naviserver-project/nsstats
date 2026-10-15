@@ -226,3 +226,41 @@ on the current virtual server. Disabled tools still have readable descriptions.
 Changes require a protected POST and the admin page token, survive module reloads,
 and reset on process restart. Existing jobs and collectors continue. These are
 server availability controls; a conversational assistant has not yet been added.
+
+MCP question answers render Markdown using pinned marked and DOMPurify browser
+scripts from cdnjs, with Subresource Integrity and no-referrer requests. No npm
+installation or build step is required. Only the configured question panel loads
+these scripts. Answers use a restricted set of HTML elements and link protocols;
+raw HTML and images are disabled. If either script is unavailable or blocked by
+Content Security Policy, answers remain plain text. Tool evidence remains JSON.
+
+The MCP question settings show both Codex App Server and native Chat Completions
+options. Default question backend reports the selected model, endpoint, streaming
+and execution limits without reading or displaying credential file contents.
+
+The question backend selector uses the configured adapters reported by nsmcp.
+Changing provider starts a new conversation; active questions cannot be switched.
+Selection is local to the administrator's browser session, and provider-specific
+history remains with its originating backend. No restart is needed to select an
+already configured backend.
+
+### SMTP quarantine inspection and release
+
+When the installed nssmtpd provides `smtpd::quarantine`, the existing **Logs →
+SMTP sent log** page offers **Delivery log** and **Quarantine** views. No additional
+menu entry is added. Older nssmtpd installations keep the existing log page.
+
+Quarantine shows storage/retention settings, a paged message list, policy findings,
+recipient delivery states and audit metadata. Inspection presents escaped plain-text
+source (up to 64KiB), plus a complete `.eml` attachment download. Mail HTML and
+attachments are never rendered in the admin page.
+
+After inspection, tick the confirmation checkbox and select **Release pending
+recipients**. This uses the normal nsstats admin access, a POST and a server/admin-bound
+CSRF token. Delivered or uncertain recipients are not automatically resent.
+Interrupted/uncertain outcomes remain visible; recovery and explicit retry stay in
+nscp after inspecting upstream logs. Deletion and cleanup also remain nscp actions.
+Quarantine pages and downloads are sent with `Cache-Control: no-store`.
+
+Install the updated nssmtpd quarantine support first and configure its persistent
+spool; nsstats does not enable quarantine or change its policy, limits or retention.

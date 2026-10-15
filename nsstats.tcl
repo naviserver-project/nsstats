@@ -24,6 +24,13 @@ set password [ns_config ns/module/nsstats password ""]
 set enabled  [ns_config ns/module/nsstats enabled 1]
 set debug    0
 
+# Browser Markdown dependencies. Update each version and its matching SRI hash
+# together; an integrity mismatch leaves question answers in plain text.
+set ::markedVersion      18.1.1
+set ::markedIntegrity    sha384-7sjOQLpS2mL+qbjUOYVEk350vVNi+nPTKMQFruUWMDTzgcxzTJiwye3rHDJCJ9ZL
+set ::dompurifyVersion   3.4.17
+set ::dompurifyIntegrity sha384-P0JNneQf81HOl9VwNXK76cQ9VMD6Nfsnepxb0cCOg8+UzEdzgPHAPV4wVQrvYQSx
+
 set ::templateFile nsstats
 
 if { ![nsv_exists _ns_stats threads_0] } {
@@ -231,6 +238,13 @@ proc _ns_stats.navigation.style {} {
 .ns-nav-items a:hover,.ns-nav-items a[aria-current] {background:var(--color-dropdown-hover-bg,#e6eef7);}
 .ns-nav-mobile {display:none;}
 .mcp-tools {width:100%;table-layout:fixed;}
+.mcp-conversation article {border-left:3px solid var(--color-border,#ccc);padding:0 12px;margin:16px 0;}
+.mcp-backend {max-width:100%;margin:0 0 .6em;}
+.mcp-answer {overflow-x:auto;overflow-wrap:anywhere;}
+.mcp-answer p {margin:.6em 0;}
+.mcp-answer pre {white-space:pre-wrap;overflow-wrap:anywhere;}
+.mcp-answer table {border-collapse:collapse;margin:.6em 0;}
+.mcp-answer th,.mcp-answer td {border:1px solid var(--color-border,#ccc);padding:4px 8px;text-align:left;}
 .ns-measurement-controls input[name="statsWindow"] {width:6em;box-sizing:border-box;padding:3px 6px;border:1px solid var(--color-border,#888);background:var(--color-body-bg,#fff);color:var(--color-body-text,#000);opacity:1;}
 .mcp-tool-toggle {display:block;margin-top:6px;}
 .mcp-tools th:nth-child(1),.mcp-tools td:nth-child(1) {width:18%;}
@@ -246,6 +260,16 @@ proc _ns_stats.navigation.style {} {
 .mcp-followups button {margin:4px 8px 4px 0;}
 .ns-mcp-dialog .data-table {table-layout:auto;}
 .ns-mcp-dialog .data-table th:first-child,.ns-mcp-dialog .data-table td:first-child {width:auto;}
+.ns-smtp-views {display:flex;gap:12px;flex-wrap:wrap;margin:0 0 16px;}
+.ns-smtp-views a {display:inline-block;padding:8px 12px;border:1px solid var(--color-border,#ccc);border-radius:4px;}
+.ns-smtp-views a[aria-current] {font-weight:bold;background:var(--color-secondary-bg,#eee);}
+.ns-quarantine-scroll {max-width:100%;overflow-x:auto;}
+.ns-quarantine-table {width:100%;table-layout:auto;}
+.ns-quarantine-table th:first-child,.ns-quarantine-table td:first-child {width:auto;}
+.ns-quarantine-table td {vertical-align:top;overflow-wrap:anywhere;}
+.ns-quarantine-preview {max-height:32em;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;}
+.ns-quarantine-release {margin:16px 0;padding:12px;border:1px solid var(--color-border,#ccc);}
+.ns-quarantine-release button {padding:8px 12px;}
 .ns-scope {font-size:11px;white-space:nowrap;opacity:.75;}
 .ns-server-context {padding:8px 15px;font-size:13px;background:var(--color-secondary-bg,#f1f1f1);color:var(--color-body-text,#000);}
 .ns-directory li a {display:flex;justify-content:space-between;gap:12px;}
@@ -331,7 +355,7 @@ proc _ns_stats.header {args} {
     set ::rawLabel [expr {$::raw ? "true" : "false"}]
     set s [ns_getform]
     ns_set update $s raw [expr {!$::raw}]
-    set ::rawUrl [ns_conn url]?[join [lmap {k v} [ns_set array $s] {if {$k in {statsToken statsInterval}} {continue}; set _ [ns_urlencode $k]=[ns_urlencode $v]}] &]
+    set ::rawUrl [ns_conn url]?[join [lmap {k v} [ns_set array $s] {if {$k in {statsToken statsInterval smtpQuarantineToken smtpQuarantineAction smtpQuarantineConfirm}} {continue}; set _ [ns_urlencode $k]=[ns_urlencode $v]}] &]
     if {![info exists ::extraHeadEntries]} {
         set ::extraHeadEntries ""
     }
@@ -939,9 +963,250 @@ proc _ns_stats.mcp.inspectionScript {} {
 </script>}
 }
 
+# The admin identity owns question handles; browser input never supplies a
+# provider thread ID, command, model credential or tool authorization policy.
+proc _ns_stats.mcp.questionAction {} {
+    if {[ns_conn method] ne "POST"} {
+        ns_return 405 text/plain "Use POST for questions."
+        return ""
+    }
+    set key mcp-inspect:[_ns_stats.mcp.identity]
+    set token [ns_set iget [ns_conn headers] X-Nsstats-MCP-Token]
+    if {$token eq "" || ![nsv_exists _ns_stats $key] || $token ne [nsv_get _ns_stats $key]} {
+        ns_return 403 text/plain "Invalid administration token; reload this page."
+        return ""
+    }
+    if {[info commands ::nsmcp::questions] eq ""} {
+        ns_return 503 text/plain "Question answering is not configured."
+        return ""
+    }
+    ns_set iupdate [ns_conn outputheaders] Cache-Control no-store
+    set server [ns_info server]
+    set context [::nsmcp::RequestContext new -principal [_ns_stats.mcp.identity] \
+        -permissions {} -targets [list $server] -server $server]
+    try {
+        set handle [ns_queryget conversation ""]
+        set action [ns_queryget mcpQuestionAction ""]
+        if {[catch {
+            switch -- $action {
+                send {
+                    set backend [ns_queryget backend ""]
+                    if {$backend eq ""} {
+                        set result [::nsmcp::questions send $context [ns_queryget question ""] $handle]
+                    } else {
+                        set result [::nsmcp::questions send $context [ns_queryget question ""] $handle $backend]
+                    }
+                }
+                poll {set result [::nsmcp::questions poll $context $handle]}
+                cancel {set result [::nsmcp::questions cancel $context $handle]}
+                forget {set result [::nsmcp::questions forget $context $handle]}
+                default {error "Unknown question action"}
+            }
+        } message]} {
+            ns_return 400 text/plain $message
+        } else {
+            ns_set iupdate [ns_conn outputheaders] Cache-Control no-store
+            ns_return 200 application/json [ns_json value -- $result]
+        }
+    } finally {$context destroy}
+    return ""
+}
+
+proc _ns_stats.mcp.questionPanel {} {
+    if {[info commands ::nsmcp::questions] eq ""} {
+        return "<h3>Ask about this server</h3><p>Question answering is not enabled. Configure a question backend in the nsmcp module section.</p>"
+    }
+    set token [ns_quotehtml [_ns_stats.mcp.token]]
+    set server [ns_quotehtml [ns_info server]]
+    set selector ""
+    if {![catch {::nsmcp::questions choices} choices] && [dict exists $choices backends]} {
+        append selector "<label>Backend <select class='mcp-backend'>"
+        dict for {name entry} [dict get $choices backends] {
+            set attributes ""
+            if {$name eq [dict get $choices default]} {append attributes " selected"}
+            set label [expr {$name eq "codex" ? "Codex" : "Chat Completions"}]
+            if {[dict exists $entry model] && [dict get $entry model] ne ""} {
+                append label " ([dict get $entry model])"
+            }
+            if {![dict get $entry available]} {
+                append attributes " disabled title='[ns_quotehtml [dict get $entry reason]]'"
+                append label " — unavailable"
+            }
+            append selector "<option value='[ns_quotehtml $name]'$attributes>[ns_quotehtml $label]</option>"
+        }
+        append selector "</select></label> <span>Changing backend starts a new conversation.</span><br>"
+    }
+    set html "<section class='mcp-questions' data-token='$token' data-server='$server'><h3>Ask about this server</h3><p>Ask a question or follow up in the same conversation. Answers use the configured model and enabled read-only MCP tools. Expand tool results to inspect their evidence.</p><div class='mcp-conversation' aria-live='polite'></div><form class='mcp-question-form'>$selector<label>Question<textarea class='mcp-question' rows='3' maxlength='16384' style='width:100%;box-sizing:border-box' required></textarea></label><button class='mcp-ask' type='submit'>Ask</button> <button class='mcp-cancel' type='button' disabled>Cancel</button> <button class='mcp-new' type='button'>New conversation</button> <span class='mcp-question-status' role='status'></span></form></section>"
+    # Pin browser-only dependencies with SRI. If loading fails, questionScript
+    # retains plain text rendering; no package manager or build step is needed.
+    append html [subst -nocommands -nobackslashes {
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/$::markedVersion/lib/marked.umd.min.js" integrity="$::markedIntegrity" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/$::dompurifyVersion/purify.min.js" integrity="$::dompurifyIntegrity" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+}]
+    append html [_ns_stats.mcp.questionScript]
+    return $html
+}
+
+proc _ns_stats.mcp.questionScript {} {
+    return {<script>
+(function () {
+ const panel = document.querySelector('.mcp-questions');
+ if (!panel) return;
+ const form = panel.querySelector('.mcp-question-form');
+ const input = panel.querySelector('.mcp-question');
+ const backend = panel.querySelector('.mcp-backend');
+ const ask = panel.querySelector('.mcp-ask');
+ const cancel = panel.querySelector('.mcp-cancel');
+ const fresh = panel.querySelector('.mcp-new');
+ const status = panel.querySelector('.mcp-question-status');
+ const transcript = panel.querySelector('.mcp-conversation');
+ const storageKey = 'nsstats-questions:' + panel.dataset.server;
+ let conversation = '', timer, running = false, pending = false;
+ let selectedBackend = backend ? backend.value : '';
+ try {
+   conversation = sessionStorage.getItem(storageKey) || '';
+   if (backend) {
+     const saved = sessionStorage.getItem(storageKey + ':backend');
+     if (saved && Array.from(backend.options).some(option => option.value === saved && !option.disabled)) backend.value = saved;
+     selectedBackend = backend.value;
+   }
+ } catch (_) {}
+ function rememberBackend(value) {
+   if (!backend) return;
+   backend.value = value; selectedBackend = value;
+   try { sessionStorage.setItem(storageKey + ':backend', value); } catch (_) {}
+ }
+ function remember(value) {
+   conversation = value;
+   try { if (value) sessionStorage.setItem(storageKey, value); else sessionStorage.removeItem(storageKey); } catch (_) {}
+ }
+ function pretty(text, structured = false) {
+   try {
+     const value = JSON.parse(text);
+     // MCP text often duplicates structuredContent. Hide only that redundant
+     // representation in this view; retain errors and non-text content blocks.
+     if (structured && value && value.structuredContent != null && Array.isArray(value.content)) {
+       value.content = value.content.filter(item => !item || item.type !== 'text');
+       if (!value.content.length) delete value.content;
+     }
+     return JSON.stringify(value, null, 2);
+   } catch (_) { return text; }
+ }
+ let markdown;
+ function renderAnswer(element, text) {
+   element.className = 'mcp-answer';
+   element.style.whiteSpace = 'pre-wrap';
+   element.textContent = text;
+   if (!window.marked || !window.DOMPurify || !window.DOMPurify.isSupported) return;
+   try {
+     // Use an isolated parser: do not change other widgets' marked defaults.
+     if (!markdown) markdown = new window.marked.Marked({
+       gfm: true, breaks: false, renderer: {html() { return ''; }, image() { return ''; }}
+     });
+     const fragment = window.DOMPurify.sanitize(markdown.parse(text), {
+       ALLOWED_TAGS: ['p','br','strong','em','del','blockquote','ul','ol','li',
+         'pre','code','hr','h1','h2','h3','h4','h5','h6','table','thead','tbody','tr','th','td','a'],
+       ALLOWED_ATTR: ['href','title','start'],
+       ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false,
+       ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|\/(?!\/)|#)/i,
+       RETURN_DOM_FRAGMENT: true
+     });
+     fragment.querySelectorAll('a').forEach(link => link.setAttribute('rel', 'noreferrer noopener'));
+     element.replaceChildren(fragment);
+     element.style.whiteSpace = 'normal';
+   } catch (_) {
+     // Fail closed to the original text if either library cannot render it.
+     element.textContent = text;
+   }
+ }
+ function render(data) {
+   if (data.conversation) remember(data.conversation);
+   if (data.backend) rememberBackend(data.backend);
+   const fragment = document.createDocumentFragment();
+   (data.turns || []).forEach(function (turn) {
+     const article = document.createElement('article');
+     const heading = document.createElement('h4'); heading.textContent = turn.question; article.append(heading);
+     const answer = document.createElement('div'); renderAnswer(answer, turn.answer || 'Waiting for an answer…'); article.append(answer);
+     (turn.tools || []).forEach(function (tool) {
+       const details = document.createElement('details');
+       const summary = document.createElement('summary'); summary.textContent = tool.name + ' — ' + tool.status + (tool.truncated ? ' (result omitted)' : ''); details.append(summary);
+       const args = document.createElement('pre'); args.style.whiteSpace = 'pre-wrap'; args.style.overflowWrap = 'anywhere'; args.textContent = 'Arguments\n' + pretty(tool.arguments); details.append(args);
+       const result = document.createElement('pre'); result.style.whiteSpace = 'pre-wrap'; result.style.overflowWrap = 'anywhere'; result.style.maxHeight = '28rem'; result.style.overflow = 'auto'; result.textContent = 'Result\n' + pretty(tool.result, true); details.append(result);
+       article.append(details);
+     });
+     if (turn.error) { const error = document.createElement('p'); error.textContent = turn.error; error.setAttribute('role', 'alert'); article.append(error); }
+     fragment.append(article);
+   });
+   transcript.replaceChildren(fragment);
+   running = ['queued', 'running', 'cancelling'].includes(data.status);
+   ask.disabled = running; input.disabled = running; fresh.disabled = running;
+   cancel.disabled = !running || data.status === 'cancelling';
+   if (backend) backend.disabled = running;
+   status.textContent = data.status || '';
+   clearTimeout(timer);
+   if (running) timer = setTimeout(poll, 1000);
+ }
+ async function request(action, extra) {
+   const fields = {'@page':'mcp', mcpQuestionAction:action, conversation:conversation};
+   if (action === 'send' && selectedBackend) fields.backend = selectedBackend;
+   const body = new URLSearchParams(Object.assign(fields, extra || {}));
+   const response = await fetch(window.location.pathname, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8', 'X-Nsstats-MCP-Token':panel.dataset.token, 'X-Requested-With':'XMLHttpRequest'}, body:body.toString()});
+   if (!response.ok) throw new Error(await response.text());
+   const type = response.headers.get('content-type') || '';
+   if (!type.includes('application/json')) throw new Error('The server did not return JSON; check your admin session.');
+   return response.json();
+ }
+ async function poll() {
+   try { render(await request('poll')); }
+   catch (error) {
+     status.textContent = error.message;
+     // A network/session failure must not hide an active job or prevent cancel.
+     if (running) timer = setTimeout(poll, 3000);
+     else { remember(''); ask.disabled = false; input.disabled = false; fresh.disabled = false; if (backend) backend.disabled = false; }
+   }
+ }
+ form.addEventListener('submit', async function (event) {
+   event.preventDefault();
+   if (running || pending || !input.value.trim()) return;
+   pending = true; ask.disabled = true; fresh.disabled = true; if (backend) backend.disabled = true; status.textContent = 'Sending…';
+   try { render(await request('send', {question:input.value})); input.value = ''; }
+   catch (error) { status.textContent = error.message; ask.disabled = false; fresh.disabled = false; if (backend) backend.disabled = false; }
+   finally { pending = false; }
+ });
+ cancel.addEventListener('click', async function () {
+   try { render(await request('cancel')); } catch (error) { status.textContent = error.message; }
+ });
+ async function startNew() {
+   if (conversation) await request('forget');
+   remember(''); transcript.replaceChildren(); status.textContent = ''; input.value = ''; input.focus();
+ }
+ fresh.addEventListener('click', async function () {
+   if (running || pending) return;
+   pending = true; ask.disabled = true; fresh.disabled = true; if (backend) backend.disabled = true;
+   try { await startNew(); }
+   catch (error) { status.textContent = error.message; }
+   finally { pending = false; ask.disabled = false; fresh.disabled = false; if (backend) backend.disabled = false; }
+ });
+ if (backend) backend.addEventListener('change', async function () {
+   if (running || pending) { backend.value = selectedBackend; return; }
+   const next = backend.value;
+   const draft = input.value;
+   pending = true; ask.disabled = true; fresh.disabled = true; backend.disabled = true;
+   try { await startNew(); input.value = draft; rememberBackend(next); }
+   catch (error) { backend.value = selectedBackend; status.textContent = error.message; }
+   finally { pending = false; ask.disabled = false; fresh.disabled = false; backend.disabled = false; }
+ });
+ if (conversation) poll();
+})();
+</script>}
+}
+
 proc _ns_stats.mcp {} {
     if {[info commands ::nsmcp::ToolRegistry] eq ""} {
         return "[_ns_stats.header MCP]<p>The nsmcp module is not active.</p>[_ns_stats.footer]"
+    }
+    if {[ns_queryget mcpQuestionAction ""] ne ""} {
+        return [_ns_stats.mcp.questionAction]
     }
     if {[ns_queryget mcpToolState ""] ne ""} {
         return [_ns_stats.mcp.toolState]
@@ -953,6 +1218,7 @@ proc _ns_stats.mcp {} {
     set server [ns_info server]
     set section ns/server/$server/module/nsmcp
     append html "<p>Server: <strong>[ns_quotehtml $server]</strong>. Open Inspect result in a tool’s Details to execute it on demand; page loading does not execute tools. Tool switches take effect at runtime; other configuration changes require module initialization or restart.</p>"
+    append html [_ns_stats.mcp.questionPanel]
 
     if {[info commands ::nsmcp::tools] ne ""} {
         if {[catch {::nsmcp::tools describe} tools]} {
@@ -1008,6 +1274,29 @@ proc _ns_stats.mcp {} {
         [list [list nsmcp $version $tag]]]
     append html "<p>Version and build tag come from NaviServer's loaded-module metadata. Unknown means the module does not report that information. Individual tools have no separate version.</p>"
 
+    if {[info commands ::nsmcp::questions] ne ""} {
+        if {![catch {::nsmcp::questions describe} backend]} {
+            set rows {}
+            dict for {key value} $backend {lappend rows [list $key $value]}
+            append html [_ns_stats.mcp.table "Default question backend" {Setting Value} $rows]
+            if {![catch {::nsmcp::questions choices} choices] && [dict exists $choices backends]} {
+                set rows {}
+                dict for {name entry} [dict get $choices backends] {
+                    set model ""
+                    if {[dict exists $entry model]} {set model [dict get $entry model]}
+                    set state Available
+                    set reason "Settings validated; provider connection is checked when a question runs."
+                    if {![dict get $entry available]} {
+                        set state Unavailable
+                        set reason [dict get $entry reason]
+                    }
+                    lappend rows [list $name $state $model $reason]
+                }
+                append html [_ns_stats.mcp.table "Question backend availability" {Backend Status Model Details} $rows]
+            }
+        }
+    }
+
     set objects {
         auth Authentication {Authenticate bearer tokens.}
         credentials Credentials {Load named token files and permission policies.}
@@ -1027,6 +1316,18 @@ proc _ns_stats.mcp {} {
     foreach {heading options} {
         {HTTP and authentication} {
             enableHttp false path /mcp allowedOrigins {} credentials {}
+        }
+        {Question answering} {
+            enableQuestions false questionBackend codex questionModel {} questionMcpTokenFile {}
+            questionTimeout 180s questionLifetime 1h
+            questionMaxConversations 20 questionMaxTurns 20 questionMaxResultBytes 128KiB
+        }
+        {Codex question backend} {
+            questionCodexCommand codex questionCodexModel {} questionMcpUrl {} questionMcpHost {} questionDirectory {}
+        }
+        {Chat Completions question backend} {
+            questionApiUrl {} questionApiKeyFile {} questionApiModel {} questionApiOptions {{}}
+            questionMaxOutputTokens 4096 questionMaxToolCalls 32 questionMaxApiRequests 16 questionMaxResponseBytes 8MiB
         }
         {Log tools} {
             enableLogTools false systemLog {} accessLog {} cacheDirectory {}
@@ -1070,6 +1371,7 @@ proc _ns_stats.mcp {} {
         server {path}
         http {allowedOrigins maxBodyBytes}
         database {pool maxBytes}
+        questions {queue lifetime maxConversations maxTurns maxBytes}
         logService {queue lifetime maxJobs}
         accessAnalytics {path maxRows retentionSeconds maxReadBytes maxLineBytes maxSeconds}
     } {
@@ -6123,8 +6425,241 @@ proc _ns_stats.log.httpclient {} {
     return [_ns_stats.log.mkchart httpclient logfile "HTTP Client Log"]
 }
 proc _ns_stats.log.smtpsent {} {
-    return [_ns_stats.log.mkchart module/nssmtpd logfile "SMTP Sent Log"]
+    if {[info commands ::smtpd::quarantine] eq ""} {
+        return [_ns_stats.log.mkchart module/nssmtpd logfile "SMTP Sent Log"]
+    }
+    if {[ns_queryget smtpView {}] eq "quarantine" || [ns_queryget smtpQuarantineAction {}] ne ""} {
+        return [_ns_stats.smtp.quarantine.page]
+    }
+    set html [_ns_stats.log.mkchart module/nssmtpd logfile "SMTP Sent Log"]
+    return "[_ns_stats.smtp.quarantine.navigation sent]$html"
 }
+# Quarantine is a delivery view of the SMTP sent log, not a separate menu page.
+proc _ns_stats.smtp.quarantine.navigation {view} {
+    set html {<nav class='ns-smtp-views' aria-label='SMTP deliveries'>}
+    foreach {name label} {sent {Delivery log} quarantine Quarantine} {
+        set current [expr {$name eq $view ? " aria-current='page'" : ""}]
+        append html "<a href='?@page=log.smtpsent&amp;smtpView=$name'$current>[ns_quotehtml $label]</a> "
+    }
+    return "$html</nav>"
+}
+
+proc _ns_stats.smtp.quarantine.tokenKey {} {
+    return smtp-quarantine:[_ns_stats.mcp.identity]
+}
+
+proc _ns_stats.smtp.quarantine.token {} {
+    set key [_ns_stats.smtp.quarantine.tokenKey]
+    if {![nsv_exists _ns_stats $key]} {
+        nsv_set _ns_stats $key [ns_crypto::randombytes -encoding hex 32]
+    }
+    return [nsv_get _ns_stats $key]
+}
+
+# Called only through log.smtpsent after the normal nsstats access check. GET
+# never releases mail; POST additionally requires the admin-bound token and an
+# explicit confirmation. Redirect after release to prevent refresh resubmission.
+proc _ns_stats.smtp.quarantine.release {} {
+    if {[ns_conn method] ne "POST"} {
+        ns_return 405 text/plain "Use POST to release quarantined mail."
+        return ""
+    }
+    set key [_ns_stats.smtp.quarantine.tokenKey]
+    set token [ns_queryget smtpQuarantineToken {}]
+    if {$token eq "" || ![nsv_exists _ns_stats $key] || $token ne [nsv_get _ns_stats $key]} {
+        ns_return 403 text/plain "Invalid quarantine token; reload the inspection page."
+        return ""
+    }
+    if {[ns_queryget smtpQuarantineAction {}] ne "release"
+        || [ns_queryget smtpQuarantineConfirm {}] ne "1"} {
+        ns_return 400 text/plain "Confirm release of the pending recipients."
+        return ""
+    }
+    set id [ns_queryget id {}]
+    if {![regexp {^[0-9a-f]{32}$} $id]} {
+        ns_return 400 text/plain "Invalid quarantine id."
+        return ""
+    }
+    if {[catch {::smtpd::quarantine release $id} message]} {
+        ns_return 409 text/plain "Release did not complete: $message. Inspect the entry before retrying."
+        return ""
+    }
+    ns_set iupdate [ns_conn outputheaders] Location "[ns_conn url]?@page=log.smtpsent&smtpView=quarantine&id=$id&released=1"
+    ns_return 303 text/plain "Release attempt finished; inspect recipient outcomes."
+    return ""
+}
+
+# Tables deliberately use the same compact classes as the other admin pages.
+# All mail-controlled values are escaped, including findings and error strings.
+proc _ns_stats.smtp.quarantine.table {columns rows} {
+    set html {<div class='w3-responsive ns-quarantine-scroll'><table class='data data-table w3-table w3-hoverable ns-quarantine-table'><thead><tr>}
+    foreach column $columns {append html "<th>[ns_quotehtml $column]</th>"}
+    append html {</tr></thead><tbody>}
+    foreach row $rows {
+        append html <tr>
+        foreach value $row {append html "<td>[ns_quotehtml $value]</td>"}
+        append html </tr>
+    }
+    return "$html</tbody></table></div>"
+}
+
+proc _ns_stats.smtp.quarantine.value {dictionary key {default {}}} {
+    if {[dict exists $dictionary $key]} {return [dict get $dictionary $key]}
+    return $default
+}
+
+proc _ns_stats.smtp.quarantine.page {} {
+    ns_set iupdate [ns_conn outputheaders] Cache-Control no-store
+    ns_set iupdate [ns_conn outputheaders] Referrer-Policy no-referrer
+    ns_set iupdate [ns_conn outputheaders] X-Content-Type-Options nosniff
+    if {[ns_conn method] eq "POST" || [ns_queryget smtpQuarantineAction {}] ne ""} {
+        return [_ns_stats.smtp.quarantine.release]
+    }
+    if {[ns_conn method] ne "GET"} {
+        ns_return 405 text/plain "Use GET for quarantine inspection."
+        return ""
+    }
+    set id [ns_queryget id {}]
+    if {$id ne "" && ![regexp {^[0-9a-f]{32}$} $id]} {
+        ns_return 400 text/plain "Invalid quarantine id."
+        return ""
+    }
+    if {[ns_queryget download {}] eq "1"} {
+        if {$id eq "" || [catch {
+            set metadata [::smtpd::quarantine show $id]
+            set path [dict get $metadata messagePath]
+            if {[file type $path] ne "file"} {error "Message file unavailable"}
+        } message]} {
+            ns_return 404 text/plain "Quarantine message is unavailable."
+            return ""
+        }
+        ns_set iupdate [ns_conn outputheaders] Content-Disposition "attachment; filename=\"quarantine-$id.eml\""
+        ns_returnfile 200 message/rfc822 $path
+        return ""
+    }
+    _ns_stats.header "SMTP sent log: Quarantine"
+    set html [_ns_stats.smtp.quarantine.navigation quarantine]
+    if {[catch {::smtpd::quarantine status} status]} {
+        append html "<p>Quarantine is unavailable: [ns_quotehtml $status]</p>"
+        return "$html[_ns_stats.footer]"
+    }
+    set rows {}
+    foreach {key label} {enabled {Quarantine policy rejections} directory {Persistent directory} messages {Retained messages} states {Message states} maxMessages {Message limit}} {
+        if {[dict exists $status $key]} {lappend rows [list $label [dict get $status $key]]}
+    }
+    foreach {key label} {bytes {Stored file bytes} maxBytes {Admission byte limit}} {
+        if {[dict exists $status $key]} {lappend rows [list $label "[_ns_stats.hr [dict get $status $key]]B"]}
+    }
+    if {[dict exists $status retention]} {
+        lappend rows [list Retention "[format %.1f [expr {[dict get $status retention]/86400.0}]] days"]
+    }
+    append html [_ns_stats.smtp.quarantine.table {Setting Value} $rows]
+    append html {<p>Held mail has been accepted by SMTP but not forwarded. Expiry discards held mail without a bounce; uncertain deliveries are preserved for review.</p>}
+    if {$id ne ""} {
+        if {[catch {::smtpd::quarantine show $id} metadata]} {
+            append html "<p role='alert'>Cannot inspect entry: [ns_quotehtml $metadata]</p>"
+        } else {
+            append html [_ns_stats.smtp.quarantine.detail $metadata]
+        }
+    } else {
+        append html [_ns_stats.smtp.quarantine.list]
+    }
+    return "$html[_ns_stats.footer]"
+}
+
+proc _ns_stats.smtp.quarantine.list {} {
+    set offset [ns_queryget offset 0]
+    if {![string is integer -strict $offset] || $offset < 0} {set offset 0}
+    set limit 25
+    if {[catch {::smtpd::quarantine list -limit $limit -offset $offset} report]} {
+        return "<p>Cannot list quarantine: [ns_quotehtml $report]</p>"
+    }
+    set html {<h3>Quarantined messages</h3><div class='w3-responsive ns-quarantine-scroll'><table class='data data-table w3-table w3-hoverable ns-quarantine-table'><thead><tr><th>Received</th><th>Sender</th><th>Recipients</th><th>Reason</th><th>State</th><th>Inspect</th></tr></thead><tbody>}
+    foreach entry [dict get $report entries] {
+        set id [dict get $entry id]
+        append html <tr>
+        foreach value [list [clock format [dict get $entry createdAt] -format {%Y-%m-%d %H:%M:%S %Z}] \
+            [dict get $entry sender] [join [dict keys [dict get $entry recipients]] {, }] \
+            [_ns_stats.smtp.quarantine.value [dict get $entry decision] reason {Policy rejection}] [dict get $entry state]] {
+            append html "<td>[ns_quotehtml $value]</td>"
+        }
+        append html "<td><a href='?@page=log.smtpsent&amp;smtpView=quarantine&amp;id=[ns_urlencode $id]'>Inspect [ns_quotehtml [string range $id 0 7]]</a></td></tr>"
+    }
+    append html "</tbody></table></div><p>[dict get $report total] retained entries. "
+    if {$offset > 0} {
+        set previous [expr {max(0,$offset-$limit)}]
+        append html "<a href='?@page=log.smtpsent&amp;smtpView=quarantine&amp;offset=$previous'>Previous</a> "
+    }
+    if {[dict get $report more]} {
+        set next [dict get $report nextOffset]
+        append html "<a href='?@page=log.smtpsent&amp;smtpView=quarantine&amp;offset=$next'>Next</a>"
+    }
+    return "$html</p>"
+}
+
+proc _ns_stats.smtp.quarantine.detail {metadata} {
+    set id [dict get $metadata id]
+    set context [dict get $metadata context]
+    set decision [dict get $metadata decision]
+    set state [dict get $metadata state]
+    set html "<p><a href='?@page=log.smtpsent&amp;smtpView=quarantine'>All quarantined messages</a></p><h3>Message [ns_quotehtml $id]</h3>"
+    if {[ns_queryget released {}] eq "1"} {
+        append html {<p role='status'>Release attempt finished. Check the recipient outcomes below; upstream acceptance does not establish final mailbox delivery.</p>}
+    }
+    set rows [list [list State $state] [list {Envelope sender} [dict get $context sender]] \
+        [list Received [clock format [dict get $metadata createdAt] -format {%Y-%m-%d %H:%M:%S %Z}]] \
+        [list Reason [_ns_stats.smtp.quarantine.value $decision reason {Policy rejection}]] \
+        [list {Message size} "[_ns_stats.hr [dict get $metadata bytes]]B"]]
+    append html [_ns_stats.smtp.quarantine.table {Field Value} $rows]
+    append html {<h4>Delivery recipients</h4>}
+    set rows {}
+    set pending 0
+    dict for {recipient outcome} [dict get $metadata recipients] {
+        if {$outcome eq "pending"} {incr pending}
+        set detail {}
+        if {[dict exists $metadata deliveryErrors $recipient]} {set detail [dict get $metadata deliveryErrors $recipient]}
+        lappend rows [list $recipient $outcome $detail]
+    }
+    append html [_ns_stats.smtp.quarantine.table {Recipient State Details} $rows]
+    if {$state eq "releasing"} {
+        append html {<p>Release is active or was interrupted. After a process restart, inspect the upstream logs and use <code>smtpd::quarantine recover ID</code> through nscp before proceeding.</p>}
+    }
+    if {$state eq "uncertain"} {
+        append html {<p role='alert'>Some delivery outcomes are uncertain. They will not be resent automatically. Inspect upstream logs; an explicit retry through nscp may duplicate delivery.</p>}
+    }
+    if {$state in {held uncertain} && $pending > 0} {
+        set token [_ns_stats.smtp.quarantine.token]
+        append html "<form method='post' action='[ns_quotehtml [ns_conn url]]' class='ns-quarantine-release'>\
+            <input type='hidden' name='@page' value='log.smtpsent'>\
+            <input type='hidden' name='smtpView' value='quarantine'>\
+            <input type='hidden' name='id' value='[ns_quotehtml $id]'>\
+            <input type='hidden' name='smtpQuarantineAction' value='release'>\
+            <input type='hidden' name='smtpQuarantineToken' value='[ns_quotehtml $token]'>\
+            <label><input type='checkbox' name='smtpQuarantineConfirm' value='1' required> I have inspected this message and approve delivery to its $pending pending recipient(s).</label>\
+            <p><button type='submit'>Release pending recipients</button></p></form>"
+    }
+    set findings [_ns_stats.smtp.quarantine.value $decision findings]
+    if {$findings ne ""} {
+        set rows {}
+        dict for {key value} $findings {lappend rows [list $key $value]}
+        append html "<h4>Policy findings</h4>[_ns_stats.smtp.quarantine.table {Finding Value} $rows]"
+    }
+    append html "<details><summary>Complete metadata and audit history</summary><pre class='ns-quarantine-preview'>[ns_quotehtml $metadata]</pre></details>"
+    append html "<h4>Message</h4><p><a href='?@page=log.smtpsent&amp;smtpView=quarantine&amp;id=[ns_urlencode $id]&amp;download=1'>Download message.eml</a></p>"
+    set path [dict get $metadata messagePath]
+    if {[catch {
+        if {[file type $path] ne "file"} {error "Message file unavailable"}
+        set channel [open $path rb]
+        try {set preview [read $channel 65536]} finally {close $channel}
+    } message]} {
+        append html "<p>Cannot read preview: [ns_quotehtml $message]</p>"
+    } else {
+        append html {<p>Plain-text source preview, up to 64KiB. HTML, links and attachments are not rendered; download the .eml for complete inspection.</p>}
+        append html "<pre class='ns-quarantine-preview'>[ns_quotehtml [encoding convertfrom utf-8 $preview]]</pre>"
+    }
+    return $html
+}
+
 proc _ns_stats.log.smtpevents {} {
     return [_ns_stats.log.mkchart module/nssmtpd eventlogfile "SMTP Events" \
                 _ns_stats.log.smtpevents.chart]
@@ -7234,12 +7769,12 @@ if { !$allowed } {
         } else {
             ns_return 200 text/html [ns_adp_parse -string $::fallbackTemplate]
         }
-        if {[info exists ::ad_conn(file)]} {
-            ad_script_abort
-        }
-    } else {
-        # We assume, that when _ns_stats returns empty, the page
-        # returned/redicted itself.
+    }
+    # Direct-response handlers have already returned JSON, a redirect or a
+    # download. Abort OpenACS processing for these as well as rendered pages;
+    # otherwise its request processor evaluates the companion ADP again.
+    if {[info exists ::ad_conn(file)]} {
+        ad_script_abort
     }
 }
 #
