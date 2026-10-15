@@ -591,6 +591,7 @@ proc _ns_stats.mcp.toolSummary {tool} {
         server_runtime {return "Current gauges or sampled rates, timings and CPU usage."}
         server_history {return "Persisted runtime samples and their coverage."}
         smtp_logs {return "Inspect recent SMTP send results and session events."}
+        log_error_summary {return "Summarize errors in a time window with grouped counts, examples and coverage."}
         log_errors {return "Search the system log for errors."}
         log_request_context {return "Correlate log entries by request or thread identifier."}
         log_results {return "Check a search job or read a redacted result page."}
@@ -607,6 +608,7 @@ proc _ns_stats.mcp.toolExample {name} {
         server_runtime {return "Use server_topology and server_runtime with mode snapshot. Show pool limits, active and waiting requests, and cumulative counters."}
         server_history {return "Use server_history for the last five completed minutes. Follow all pages using nextArguments and report coverage, gaps, restarts and write failures."}
         smtp_logs {return "Use smtp_logs with log event for the last 15 minutes. Show SMTP deferrals, rejections, TLS failures and transaction outcomes; include coverage."}
+        log_error_summary {return "Use log_error_summary for today in Europe/Vienna. Group errors, give counts and examples, and report coverage. Poll log_results until complete."}
         log_errors {return "Use log_errors to search for errors, then poll log_results with the returned jobHandle and read the result pages."}
         log_request_context {return "Use log_request_context with the identifier from the selected log entry. Retrieve the correlated system and access records using log_results."}
         log_results {return "Use log_results with the jobHandle from the preceding search. When complete, use its resultHandle to retrieve a result page."}
@@ -998,6 +1000,7 @@ proc _ns_stats.mcp.questionAction {} {
                     }
                 }
                 poll {set result [::nsmcp::questions poll $context $handle]}
+                evidence {set result [::nsmcp::questions evidence $context $handle [ns_queryget evidenceHandle {}]]}
                 cancel {set result [::nsmcp::questions cancel $context $handle]}
                 forget {set result [::nsmcp::questions forget $context $handle]}
                 default {error "Unknown question action"}
@@ -1061,6 +1064,8 @@ proc _ns_stats.mcp.questionScript {} {
  const status = panel.querySelector('.mcp-question-status');
  const transcript = panel.querySelector('.mcp-conversation');
  const storageKey = 'nsstats-questions:' + panel.dataset.server;
+ const evidenceCache = new Map();
+ let evidenceConversation = '';
  let conversation = '', timer, running = false, pending = false;
  let selectedBackend = backend ? backend.value : '';
  try {
@@ -1120,6 +1125,9 @@ proc _ns_stats.mcp.questionScript {} {
    }
  }
  function render(data) {
+   if (data.conversation && evidenceConversation !== data.conversation) {
+     evidenceCache.clear(); evidenceConversation = data.conversation;
+   }
    if (data.conversation) remember(data.conversation);
    if (data.backend) rememberBackend(data.backend);
    const fragment = document.createDocumentFragment();
@@ -1132,6 +1140,21 @@ proc _ns_stats.mcp.questionScript {} {
        const summary = document.createElement('summary'); summary.textContent = tool.name + ' — ' + tool.status + (tool.truncated ? ' (result omitted)' : ''); details.append(summary);
        const args = document.createElement('pre'); args.style.whiteSpace = 'pre-wrap'; args.style.overflowWrap = 'anywhere'; args.textContent = 'Arguments\n' + pretty(tool.arguments); details.append(args);
        const result = document.createElement('pre'); result.style.whiteSpace = 'pre-wrap'; result.style.overflowWrap = 'anywhere'; result.style.maxHeight = '28rem'; result.style.overflow = 'auto'; result.textContent = 'Result\n' + pretty(tool.result, true); details.append(result);
+       if (tool.evidenceHandle && !tool.result) {
+         result.textContent = 'Expand to load retained evidence.';
+         details.addEventListener('toggle', async function () {
+           if (!details.open) return;
+           const key = tool.evidenceHandle;
+           try {
+             if (!evidenceCache.has(key)) evidenceCache.set(key, request('evidence', {evidenceHandle:key}));
+             const evidence = await evidenceCache.get(key);
+             result.textContent = 'Result\n' + pretty(evidence.result, true);
+           } catch (error) {
+             evidenceCache.delete(key);
+             result.textContent = 'Evidence unavailable: ' + error.message;
+           }
+         });
+       }
        article.append(details);
      });
      if (turn.error) { const error = document.createElement('p'); error.textContent = turn.error; error.setAttribute('role', 'alert'); article.append(error); }
@@ -1321,6 +1344,7 @@ proc _ns_stats.mcp {} {
             enableQuestions false questionBackend codex questionModel {} questionMcpTokenFile {}
             questionTimeout 180s questionLifetime 1h
             questionMaxConversations 20 questionMaxTurns 20 questionMaxResultBytes 128KiB
+            questionMaxBytes 2MiB questionMaxEvidenceBytes 16MiB questionEvidenceDirectory {}
         }
         {Codex question backend} {
             questionCodexCommand codex questionCodexModel {} questionMcpUrl {} questionMcpHost {} questionDirectory {}
@@ -1371,7 +1395,7 @@ proc _ns_stats.mcp {} {
         server {path}
         http {allowedOrigins maxBodyBytes}
         database {pool maxBytes}
-        questions {queue lifetime maxConversations maxTurns maxBytes}
+        questions {queue lifetime maxConversations maxTurns maxBytes maxEvidenceBytes evidenceDirectory}
         logService {queue lifetime maxJobs}
         accessAnalytics {path maxRows retentionSeconds maxReadBytes maxLineBytes maxSeconds}
     } {

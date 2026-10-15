@@ -264,3 +264,13 @@ Quarantine pages and downloads are sent with `Cache-Control: no-store`.
 
 Install the updated nssmtpd quarantine support first and configure its persistent
 spool; nsstats does not enable quarantine or change its policy, limits or retention.
+
+### Lazy question evidence
+
+With the updated nsmcp service, large question-tool results are fetched only when
+expanded. Polling carries metadata and opaque evidence handles; results up to
+4KiB remain inline. The same admin/CSRF protection and conversation ownership
+checks apply to evidence retrieval. Expired, forgotten, quota-omitted or unavailable
+evidence is reported explicitly. The MCP configuration page shows
+`questionMaxBytes`, `questionMaxEvidenceBytes` and `questionEvidenceDirectory`.
+Deploy the updated nsmcp and nsstats together for lazy inspection.
