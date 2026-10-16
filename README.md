@@ -274,3 +274,16 @@ checks apply to evidence retrieval. Expired, forgotten, quota-omitted or unavail
 evidence is reported explicitly. The MCP configuration page shows
 `questionMaxBytes`, `questionMaxEvidenceBytes` and `questionEvidenceDirectory`.
 Deploy the updated nsmcp and nsstats together for lazy inspection.
+
+### Background question jobs
+
+The question panel shows background-job status, scanned bytes and the job handle
+while the backend waits. Intermediate polls do not consume model tool calls.
+After a timeout or cancellation, the handle stays in the conversation; ask a
+follow-up to retrieve it. Background log jobs continue independently and remain
+subject to their normal expiry and permissions.
+
+If a conversation becomes unavailable, the question panel clears its stale
+handle, stops polling and unlocks New conversation and backend selection. The
+visible transcript and job handles remain available for inspection. Temporary
+network failures continue to retry and keep cancellation available.

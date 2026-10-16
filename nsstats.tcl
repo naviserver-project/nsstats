@@ -1005,8 +1005,13 @@ proc _ns_stats.mcp.questionAction {} {
                 forget {set result [::nsmcp::questions forget $context $handle]}
                 default {error "Unknown question action"}
             }
-        } message]} {
-            ns_return 400 text/plain $message
+        } message options]} {
+            if {[dict get $options -errorcode] eq {NSMCP QUESTION CONVERSATION_UNAVAILABLE}} {
+                ns_return 410 application/json [ns_json value -- [list {} object [list \
+                    code string conversation_unavailable message string $message]]]
+            } else {
+                ns_return 400 text/plain $message
+            }
         } else {
             ns_set iupdate [ns_conn outputheaders] Cache-Control no-store
             ns_return 200 application/json [ns_json value -- $result]
@@ -1040,6 +1045,12 @@ proc _ns_stats.mcp.questionPanel {} {
         append selector "</select></label> <span>Changing backend starts a new conversation.</span><br>"
     }
     set html "<section class='mcp-questions' data-token='$token' data-server='$server'><h3>Ask about this server</h3><p>Ask a question or follow up in the same conversation. Answers use the configured model and enabled read-only MCP tools. Expand tool results to inspect their evidence.</p><div class='mcp-conversation' aria-live='polite'></div><form class='mcp-question-form'>$selector<label>Question<textarea class='mcp-question' rows='3' maxlength='16384' style='width:100%;box-sizing:border-box' required></textarea></label><button class='mcp-ask' type='submit'>Ask</button> <button class='mcp-cancel' type='button' disabled>Cancel</button> <button class='mcp-new' type='button'>New conversation</button> <span class='mcp-question-status' role='status'></span></form></section>"
+    append html {<style>
+.mcp-status-icon {display:inline-block;width:1em;height:1em;margin-inline-end:.35em;vertical-align:-.15em}
+.mcp-status-working {animation:mcp-status-spin 1s linear infinite;transform-origin:center}
+@keyframes mcp-status-spin {to {transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce) {.mcp-status-working {animation:none}}
+</style>}
     # Pin browser-only dependencies with SRI. If loading fails, questionScript
     # retains plain text rendering; no package manager or build step is needed.
     append html [subst -nocommands -nobackslashes {
@@ -1066,7 +1077,7 @@ proc _ns_stats.mcp.questionScript {} {
  const storageKey = 'nsstats-questions:' + panel.dataset.server;
  const evidenceCache = new Map();
  let evidenceConversation = '';
- let conversation = '', timer, running = false, pending = false;
+ let conversation = '', timer, running = false, pending = false, generation = 0;
  let selectedBackend = backend ? backend.value : '';
  try {
    conversation = sessionStorage.getItem(storageKey) || '';
@@ -1084,6 +1095,40 @@ proc _ns_stats.mcp.questionScript {} {
  function remember(value) {
    conversation = value;
    try { if (value) sessionStorage.setItem(storageKey, value); else sessionStorage.removeItem(storageKey); } catch (_) {}
+ }
+ function statusIcon(state) {
+   const ns = 'http://www.w3.org/2000/svg';
+   const icon = document.createElementNS(ns, 'svg');
+   const working = ['running','cancelling'].includes(state);
+   const complete = ['complete','completed'].includes(state);
+   const failed = state === 'failed';
+   const color = complete ? '#24733d' : failed ? '#b3261e' : working ? '#075b9c' : '#666';
+   const attrs = {viewBox:'0 0 20 20',width:'18',height:'18',fill:'none',stroke:color,'stroke-width':'2',
+     'stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false',
+     class:'mcp-status-icon' + (working ? ' mcp-status-working' : '')};
+   Object.entries(attrs).forEach(([key,value]) => icon.setAttribute(key,value));
+   // Keep geometry and paint usable even if the surrounding page drops the
+   // optional stylesheet or resets SVG presentation properties.
+   Object.assign(icon.style, {display:'inline-block',width:'18px',height:'18px',
+     verticalAlign:'-.15em',marginRight:'.35em',flexShrink:'0',color:color});
+   const shape = document.createElementNS(ns, working || complete || failed ? 'path' : 'circle');
+   if (working) shape.setAttribute('d','M10 2a8 8 0 1 1-8 8');
+   else if (complete) shape.setAttribute('d','M3 10l4 4L17 4');
+   else if (failed) shape.setAttribute('d','M4 4l12 12M16 4L4 16');
+   else {shape.setAttribute('cx','10');shape.setAttribute('cy','10');shape.setAttribute('r','8');}
+   Object.assign(shape.style, {fill:'none',stroke:color,strokeWidth:'2'});
+   icon.append(shape);
+   if (!working && !complete && !failed) {
+     const mark = document.createElementNS(ns, 'path');
+     mark.setAttribute('d', state === 'cancelled' ? 'M4.5 4.5l11 11' : 'M10 5v5l3 2');
+     Object.assign(mark.style, {fill:'none',stroke:color,strokeWidth:'2'});
+     icon.append(mark);
+   }
+   return icon;
+ }
+ function showStatus(element, state, text) {
+   const label = document.createElement('span'); label.textContent = text;
+   element.replaceChildren(statusIcon(state), label);
  }
  function pretty(text, structured = false) {
    try {
@@ -1135,9 +1180,23 @@ proc _ns_stats.mcp.questionScript {} {
      const article = document.createElement('article');
      const heading = document.createElement('h4'); heading.textContent = turn.question; article.append(heading);
      const answer = document.createElement('div'); renderAnswer(answer, turn.answer || 'Waiting for an answer…'); article.append(answer);
+     (turn.jobs || []).forEach(function (job) {
+       const row = document.createElement('p');
+       let text = job.name + ' — ' + job.status;
+       const progress = job.progress;
+       if (progress && Number.isFinite(progress.examinedBytes) && Number.isFinite(progress.sourceBytes)) {
+         text += ': ' + (progress.examinedBytes / 1048576).toFixed(1) + ' / ' + (progress.sourceBytes / 1048576).toFixed(1) + 'MiB scanned';
+       }
+       text += '. jobHandle: ' + job.jobHandle;
+       if (['failed', 'cancelled'].includes(turn.status) && ['queued', 'running'].includes(job.status)) {
+         text += '. Background job retained; ask a follow-up to retrieve this handle.';
+       }
+       showStatus(row, job.status, text);
+       article.append(row);
+     });
      (turn.tools || []).forEach(function (tool) {
        const details = document.createElement('details');
-       const summary = document.createElement('summary'); summary.textContent = tool.name + ' — ' + tool.status + (tool.truncated ? ' (result omitted)' : ''); details.append(summary);
+       const summary = document.createElement('summary'); showStatus(summary, tool.status, tool.name + ' — ' + tool.status + (tool.truncated ? ' (result omitted)' : '')); details.append(summary);
        const args = document.createElement('pre'); args.style.whiteSpace = 'pre-wrap'; args.style.overflowWrap = 'anywhere'; args.textContent = 'Arguments\n' + pretty(tool.arguments); details.append(args);
        const result = document.createElement('pre'); result.style.whiteSpace = 'pre-wrap'; result.style.overflowWrap = 'anywhere'; result.style.maxHeight = '28rem'; result.style.overflow = 'auto'; result.textContent = 'Result\n' + pretty(tool.result, true); details.append(result);
        if (tool.evidenceHandle && !tool.result) {
@@ -1165,23 +1224,51 @@ proc _ns_stats.mcp.questionScript {} {
    ask.disabled = running; input.disabled = running; fresh.disabled = running;
    cancel.disabled = !running || data.status === 'cancelling';
    if (backend) backend.disabled = running;
-   status.textContent = data.status || '';
+   if (data.status) showStatus(status, data.status, data.status); else status.textContent = '';
    clearTimeout(timer);
    if (running) timer = setTimeout(poll, 1000);
  }
+ function conversationUnavailable(error) {
+   ++generation;
+   clearTimeout(timer);
+   remember('');
+   evidenceCache.clear(); evidenceConversation = '';
+   running = false;
+   ask.disabled = false; input.disabled = false; fresh.disabled = false;
+   cancel.disabled = true;
+   if (backend) backend.disabled = false;
+   error.message = 'Conversation unavailable. Start a new conversation or select another backend. Background job handles remain visible above.';
+   status.textContent = error.message;
+ }
  async function request(action, extra) {
+   const requestGeneration = generation;
    const fields = {'@page':'mcp', mcpQuestionAction:action, conversation:conversation};
    if (action === 'send' && selectedBackend) fields.backend = selectedBackend;
    const body = new URLSearchParams(Object.assign(fields, extra || {}));
    const response = await fetch(window.location.pathname, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8', 'X-Nsstats-MCP-Token':panel.dataset.token, 'X-Requested-With':'XMLHttpRequest'}, body:body.toString()});
-   if (!response.ok) throw new Error(await response.text());
    const type = response.headers.get('content-type') || '';
+   if (!response.ok) {
+     if (response.status === 410 && type.includes('application/json')) {
+       const data = await response.json();
+       const error = new Error(data.message || 'Conversation unavailable');
+       error.code = data.code;
+       if (error.code === 'conversation_unavailable' && generation === requestGeneration) conversationUnavailable(error);
+       throw error;
+     }
+     throw new Error(await response.text());
+   }
    if (!type.includes('application/json')) throw new Error('The server did not return JSON; check your admin session.');
    return response.json();
  }
  async function poll() {
-   try { render(await request('poll')); }
+   const requestGeneration = generation;
+   const wasRunning = running;
+   try {
+     const data = await request('poll');
+     if (generation === requestGeneration && !(wasRunning && !running)) render(data);
+   }
    catch (error) {
+     if (generation !== requestGeneration || error.code === 'conversation_unavailable') return;
      status.textContent = error.message;
      // A network/session failure must not hide an active job or prevent cancel.
      if (running) timer = setTimeout(poll, 3000);
@@ -1200,8 +1287,12 @@ proc _ns_stats.mcp.questionScript {} {
    try { render(await request('cancel')); } catch (error) { status.textContent = error.message; }
  });
  async function startNew() {
-   if (conversation) await request('forget');
-   remember(''); transcript.replaceChildren(); status.textContent = ''; input.value = ''; input.focus();
+   if (conversation) {
+     try { await request('forget'); }
+     catch (error) { if (error.code !== 'conversation_unavailable') throw error; }
+   }
+   ++generation; clearTimeout(timer);
+   remember(''); evidenceCache.clear(); evidenceConversation = ''; transcript.replaceChildren(); status.textContent = ''; input.value = ''; input.focus();
  }
  fresh.addEventListener('click', async function () {
    if (running || pending) return;
@@ -5625,6 +5716,7 @@ proc _ns_stats.process {} {
     set processInfo [_ns_stats.memsizes [ns_info pid] 1]
     set t [clock milliseconds]; set F [open "|cat" w]; puts $F "timing-pipe-open+puts"; close $F
     dict set processInfo fork-time [expr {[clock milliseconds] - $t}]ms
+    
     set values [list \
                     Version              "[ns_info patchlevel] (tag $tag) $buildinfo" \
                     "Build Date"          [ns_info builddate] \
