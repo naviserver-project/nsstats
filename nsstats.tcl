@@ -590,6 +590,9 @@ proc _ns_stats.mcp.toolSummary {tool} {
         server_topology {return "Versions, loaded modules and server configuration."}
         server_runtime {return "Current gauges or sampled rates, timings and CPU usage."}
         server_history {return "Persisted runtime samples and their coverage."}
+        server_request_routing {return "Effective pool mappings and registered request filters."}
+        access_bot_routing {return "Compare logged traffic with bot-pool mappings; identify candidates and unknowns."}
+        slow_requests {return "Inspect slow-request records, request identifiers and phase timings."}
         smtp_logs {return "Inspect recent SMTP send results and session events."}
         log_error_summary {return "Summarize errors in a time window with grouped counts, examples and coverage."}
         log_errors {return "Search the system log for errors."}
@@ -607,6 +610,9 @@ proc _ns_stats.mcp.toolExample {name} {
         server_topology {return "Use server_topology to report NaviServer, Tcl, platform and loaded module versions."}
         server_runtime {return "Use server_topology and server_runtime with mode snapshot. Show pool limits, active and waiting requests, and cumulative counters."}
         server_history {return "Use server_history for the last five completed minutes. Follow all pages using nextArguments and report coverage, gaps, restarts and write failures."}
+        server_request_routing {return "Use server_request_routing to show effective connection-pool mappings and registered filters. Do not infer a filter's purpose from its name."}
+        access_bot_routing {return "Use access_bot_routing in mode scan for the last 60 minutes with pool bots. Wait for completion using log_results. Compare User-Agents and actual pools, distinguish routing candidates from bot-like heuristics, and report aggregate counts, coverage and omitted records."}
+        slow_requests {return "Use slow_requests for the last 60 minutes. Show request identifiers, paths, pools, status codes and available phase timings. Follow nextArguments and report coverage and omitted records."}
         smtp_logs {return "Use smtp_logs with log event for the last 15 minutes. Show SMTP deferrals, rejections, TLS failures and transaction outcomes; include coverage."}
         log_error_summary {return "Use log_error_summary for today in Europe/Vienna. Group errors, give counts and examples, and report coverage. Poll log_results until complete."}
         log_errors {return "Use log_errors to search for errors, then poll log_results with the returned jobHandle and read the result pages."}
@@ -1130,6 +1136,19 @@ proc _ns_stats.mcp.questionScript {} {
    const label = document.createElement('span'); label.textContent = text;
    element.replaceChildren(statusIcon(state), label);
  }
+ function toolError(tool) {
+   if (tool.status !== 'failed') return '';
+   if (!tool.result && tool.evidenceHandle) return 'Open Details to load error details.';
+   try {
+     const value = JSON.parse(tool.result || 'null');
+     const error = value && value.error;
+     if (typeof error === 'string') return error;
+     if (error && typeof error.message === 'string') return error.message;
+     const texts = value && Array.isArray(value.content) ? value.content.filter(item => item.type === 'text').map(item => item.text) : [];
+     if (texts.length) return texts.join(' ');
+   } catch (_) {}
+   return 'Backend returned no error details.';
+ }
  function pretty(text, structured = false) {
    try {
      const value = JSON.parse(text);
@@ -1179,24 +1198,33 @@ proc _ns_stats.mcp.questionScript {} {
    (data.turns || []).forEach(function (turn) {
      const article = document.createElement('article');
      const heading = document.createElement('h4'); heading.textContent = turn.question; article.append(heading);
-     const answer = document.createElement('div'); renderAnswer(answer, turn.answer || 'Waiting for an answer…'); article.append(answer);
+     const answer = document.createElement('div');
+     if (turn.answer) renderAnswer(answer, turn.answer);
+     else if (['queued', 'running', 'cancelling'].includes(turn.status || data.status)) {
+       showStatus(answer, 'running', 'Waiting for an answer…');
+     } else answer.textContent = 'No answer received.';
+     article.append(answer);
      (turn.jobs || []).forEach(function (job) {
        const row = document.createElement('p');
-       let text = job.name + ' — ' + job.status;
+       const retained = ['failed', 'cancelled'].includes(turn.status) && ['queued', 'running'].includes(job.status);
+       let text = job.name + ' — ' + (retained ? 'background job retained (last observed ' + job.status + ')' : job.status);
        const progress = job.progress;
        if (progress && Number.isFinite(progress.examinedBytes) && Number.isFinite(progress.sourceBytes)) {
          text += ': ' + (progress.examinedBytes / 1048576).toFixed(1) + ' / ' + (progress.sourceBytes / 1048576).toFixed(1) + 'MiB scanned';
        }
        text += '. jobHandle: ' + job.jobHandle;
-       if (['failed', 'cancelled'].includes(turn.status) && ['queued', 'running'].includes(job.status)) {
-         text += '. Background job retained; ask a follow-up to retrieve this handle.';
+       if (retained) {
+         text += '. Progress is no longer being refreshed here; ask a follow-up using this handle. Do not start a duplicate scan.';
        }
-       showStatus(row, job.status, text);
+       showStatus(row, retained ? 'retained' : job.status, text);
        article.append(row);
      });
      (turn.tools || []).forEach(function (tool) {
        const details = document.createElement('details');
-       const summary = document.createElement('summary'); showStatus(summary, tool.status, tool.name + ' — ' + tool.status + (tool.truncated ? ' (result omitted)' : '')); details.append(summary);
+       const summary = document.createElement('summary');
+       const error = toolError(tool);
+       showStatus(summary, tool.status, tool.name + ' — ' + tool.status + (error ? ': ' + error.slice(0,240) : '') + (tool.truncated ? ' (result omitted)' : ''));
+       details.append(summary);
        const args = document.createElement('pre'); args.style.whiteSpace = 'pre-wrap'; args.style.overflowWrap = 'anywhere'; args.textContent = 'Arguments\n' + pretty(tool.arguments); details.append(args);
        const result = document.createElement('pre'); result.style.whiteSpace = 'pre-wrap'; result.style.overflowWrap = 'anywhere'; result.style.maxHeight = '28rem'; result.style.overflow = 'auto'; result.textContent = 'Result\n' + pretty(tool.result, true); details.append(result);
        if (tool.evidenceHandle && !tool.result) {
