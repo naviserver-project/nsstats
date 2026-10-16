@@ -5714,9 +5714,11 @@ proc _ns_stats.process {} {
     }
 
     set processInfo [_ns_stats.memsizes [ns_info pid] 1]
-    set t [clock milliseconds]; set F [open "|cat" w]; puts $F "timing-pipe-open+puts"; close $F
-    dict set processInfo fork-time [expr {[clock milliseconds] - $t}]ms
-    
+    if {$::tcl_platform(platform) ne "windows"} {
+        set t [clock milliseconds]; set F [open {|cat > /dev/null} w]; puts $F "timing-pipe-open+puts"; close $F
+        dict set processInfo fork-time [expr {[clock milliseconds] - $t}]ms
+    }
+
     set values [list \
                     Version              "[ns_info patchlevel] (tag $tag) $buildinfo" \
                     "Build Date"          [ns_info builddate] \
