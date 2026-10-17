@@ -28,6 +28,19 @@ The parameter reference loads the core dictionary and available installed module
 dictionaries. The MCP administration page appears when nsmcp is active; inspection
 calls require an explicit administrator action and use the normal protocol checks.
 
+[para]
+The allocator memory page plots retained ns_stats allocator gauges as an inline
+SVG in MiB. Persistent history covers up to the last 24 hours; the in-memory
+buffer covers up to 15 minutes. Reads are bounded to 10,000 samples. Missing
+values, sampling gaps and process restarts break lines. The chart reports its
+actual sample range and incomplete coverage; it does not enable collection.
+The chart is shared for 60 seconds. Later refreshes reuse compact allocator
+samples and query only the recent overlapping tail. Transient pool checkout
+failures use bounded retries; the last successful chart remains visible with its
+age and a delayed-refresh notice. Concurrent page views do not start duplicate
+scans. Incremental refresh does not re-certify full-window coverage.
+Allocator growth alone does not establish a memory leak.
+
 [section CONFIGURATION]
 [include include/parameters.man]
 

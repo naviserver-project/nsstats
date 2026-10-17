@@ -178,6 +178,20 @@ Changing collector backend resets the page baseline. An unavailable core CPU
 measurement stays unavailable; collector errors are not silently replaced by
 legacy results.
 
+The **Allocator memory** page includes a compact inline SVG when retained
+`ns_stats` samples contain allocator metrics. It plots allocated, heap and physical
+bytes in MiB over the available in-memory history (up to 15 minutes) or persisted
+history (up to 24 hours and 10,000 samples). Gaps, absent values and restarts break
+lines. Hourly grid marks and angled time labels make the time axis readable.
+Peak-preserving reduction to 120 display buckets keeps the graphic compact; the caption reports
+the actual sample range and incomplete coverage. Viewing it does not enable
+sampling or persistence. Older servers retain the existing memory display.
+The server shares the chart for 60 seconds and subsequent refreshes fetch only
+an overlapping recent tail. The caption gives the retained sample count and
+chart age. Concurrent refreshes share the last result; temporary pool contention
+uses bounded retries and retains the last successful chart with a delayed-refresh
+notice. Incremental refreshes do not re-certify full-window coverage.
+
 ## Process, modules and database pools
 
 The main Process page shows client and database versions beside each pool's

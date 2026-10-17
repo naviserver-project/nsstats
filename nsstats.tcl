@@ -1000,10 +1000,10 @@ proc ::_ns_stats.utilization.historyPoint {record} {
         sampling [dict get $record sampling] requests $requests pools $poolRates timings $timings cpu $cpu groups $groups]
 }
 
-proc ::_ns_stats.utilization.readHistory {minutes} {
+proc ::_ns_stats.utilization.readHistory {minutes {projector ::_ns_stats.utilization.historyPoint} {reader ::ns_stats}} {
     set to [clock seconds]
     set from [expr {$to-$minutes*60}]
-    set status [ns_stats history status]
+    set status [{*}$reader history status]
     set source memory
     if {[::_ns_stats.dictGetDef $status pool {}] ne ""} {
         if {[dict get $status owner] ne [ns_info server]} {
@@ -1024,13 +1024,13 @@ proc ::_ns_stats.utilization.readHistory {minutes} {
     # Bound request work; at ten-second cadence this covers a full day.
     while {$more && [llength $points]<10000} {
         if {$source eq "sqlite"} {
-            set page [ns_stats history query -from $from -to $to -limit 1000 -cursor $cursor]
+            set page [{*}$reader history query -from $from -to $to -limit 1000 -cursor $cursor]
         } else {
-            set page [ns_stats sampling history -from $from -to $to -limit 180 -cursor $cursor]
+            set page [{*}$reader sampling history -from $from -to $to -limit 180 -cursor $cursor]
         }
         incr pages
         foreach record [dict get $page records] {
-            lappend points [::_ns_stats.utilization.historyPoint $record]
+            lappend points [{*}$projector $record]
         }
         set current [dict get $page coverage]
         set gaps [concat $gaps [::_ns_stats.dictGetDef $current gaps {}]]
@@ -4102,12 +4102,250 @@ proc ::_ns_stats.config.file {} {
     return $html
 }
 
+# Allocator gauges are useful even for the initial (rate-not-ready) sample.
+proc ::_ns_stats.mem.historyPoint {record} {
+    set memory {}
+    foreach key {current_allocated_bytes heap_size total_physical_bytes} {
+        if {[dict exists $record process allocatorBytes $key]} {
+            dict set memory $key [dict get $record process allocatorBytes $key]
+        }
+    }
+    return [dict create timestamp [dict get $record timestamp] \
+        instance [::_ns_stats.dictGetDef $record instance {}] \
+        sampling [dict create intervalSeconds [::_ns_stats.dictGetDef $record sampling intervalSeconds 10]] \
+        memory $memory]
+}
+
+# Retry transient pool contention per read, not an entire multi-page scan.
+# This also works with older ns_stats cores without typed checkout errors.
+proc ::_ns_stats.mem.historyQuery {args} {
+    foreach delay {0 25 75} {
+        if {$delay} {after $delay}
+        if {![catch {ns_stats {*}$args} result options]} {return $result}
+        if {$result ne "history pool checkout timed out"} {return -options $options $result}
+    }
+    return -options $options $result
+}
+
+proc ::_ns_stats.mem.historyCached {cache {message {}}} {
+    set html [::_ns_stats.dictGetDef $cache html {}]
+    if {$html ne ""} {
+        set age [expr {max(0,[clock seconds]-[dict get $cache updated])}]
+        append html "<p>Chart refreshed ${age}s ago; sampling is unchanged.</p>"
+    }
+    if {$message ne ""} {append html "<p role='status'>[ns_quotehtml $message]</p>"}
+    return $html
+}
+
+proc ::_ns_stats.mem.historySvg {points} {
+    set metrics {current_allocated_bytes {Allocated} #0072b2 heap_size {Heap} #d55e00 total_physical_bytes {Physical} #009e73}
+    set valid {}
+    set maximum 1048576.0
+    foreach point $points {
+        set stamp [dict get $point timestamp]
+        if {![string is wideinteger -strict $stamp] || $stamp < 0} {continue}
+        set values {}
+        foreach {key label color} $metrics {
+            set value [::_ns_stats.dictGetDef $point memory $key {}]
+            if {[catch {expr {double($value) >= 0 && double($value) < Inf}} finite] || !$finite} {continue}
+            dict set values $key $value
+            set maximum [expr {max($maximum,double($value))}]
+        }
+        dict set point memory $values
+        lappend valid $point
+    }
+    set ordered [lsort -integer -index 0 [lmap point $valid {list [dict get $point timestamp] $point}]]
+    set valid [lmap entry $ordered {lindex $entry 1}]
+    if {[llength $valid] < 2} {return ""}
+    set first [dict get [lindex $valid 0] timestamp]
+    set last [dict get [lindex $valid end] timestamp]
+    if {$last <= $first} {return ""}
+    set lines {}
+    set legend {}
+    foreach {key label color} $metrics {
+        set segments {}; set segment {}; set previous {}
+        foreach point $valid {
+            set stamp [dict get $point timestamp]
+            set value [::_ns_stats.dictGetDef $point memory $key {}]
+            set interrupted false
+            if {$previous ne ""} {
+                set interval [expr {max(1.0,[::_ns_stats.dictGetDef $point sampling intervalSeconds 10], [::_ns_stats.dictGetDef $previous sampling intervalSeconds 10])}]
+                set interrupted [expr {[dict get $point instance] ne [dict get $previous instance]
+                    || $stamp <= [dict get $previous timestamp]
+                    || $stamp-[dict get $previous timestamp] > 1500000*$interval}]
+            }
+            if {$value eq "" || $interrupted} {
+                if {$segment ne ""} {lappend segments $segment; set segment {}}
+            }
+            if {$value ne ""} {lappend segment [list $stamp $value]}
+            set previous $point
+        }
+        if {$segment ne ""} {lappend segments $segment}
+        if {$segments eq ""} {continue}
+        append legend "<span style='display:inline-block;margin-right:16px'><span aria-hidden='true' style='color:$color'>&#9644;</span> $label</span>"
+        foreach segment $segments {
+            # Keep extrema as well as endpoints in each time bucket: a small
+            # SVG must retain short memory peaks, rather than stride over them.
+            set buckets {}
+            foreach pair $segment {
+                lassign $pair stamp value
+                set bucket [expr {min(119,int(120.0*($stamp-$first)/($last-$first)))}]
+                dict lappend buckets $bucket $pair
+            }
+            set reduced {}
+            dict for {bucket pairs} $buckets {
+                set ordered [lsort -real -index 1 $pairs]
+                set selected [list [lindex $pairs 0] [lindex $pairs end] [lindex $ordered 0] [lindex $ordered end]]
+                set reduced [concat $reduced [lsort -unique -integer -index 0 $selected]]
+            }
+            set coordinates {}
+            foreach pair $reduced {
+                lassign $pair stamp value
+                set x [expr {68+674.0*($stamp-$first)/($last-$first)}]
+                set y [expr {164-144.0*$value/$maximum}]
+                lappend coordinates [format %.2f,%.2f $x $y]
+            }
+            if {[llength $coordinates] == 1} {
+                lassign [split [lindex $coordinates 0] ,] x y
+                append lines "<circle cx='$x' cy='$y' r='2' fill='$color'/>"
+            } else {
+                append lines "<polyline fill='none' stroke='$color' stroke-width='1.8' points='[join $coordinates { }]'/>"
+            }
+        }
+    }
+    if {$legend eq ""} {return ""}
+    set start [clock format [expr {$first/1000000}] -format {%Y-%m-%d %H:%M:%S %Z}]
+    set end [clock format [expr {$last/1000000}] -format {%Y-%m-%d %H:%M:%S %Z}]
+    set axis {}
+    foreach fraction {0 0.5 1} {
+        set y [expr {164-144*$fraction}]
+        append axis "<path d='M68 $y H742' stroke='currentColor' opacity='.15'/><text x='60' y='[expr {$y+4}]' text-anchor='end' fill='currentColor'>[format %.1f [expr {$maximum*$fraction/1048576.0}]]</text>"
+    }
+    # Align to local wall-clock hours, retaining the numeric offset when
+    # rounding so the repeated hour at a DST transition is unambiguous.
+    set tick [clock scan [clock format [expr {$first/1000000}] -format {%Y-%m-%d %H:00:00 %z}] -format {%Y-%m-%d %H:%M:%S %z}]
+    if {$tick*1000000 < $first} {incr tick 3600}
+    set hours {}
+    set hourCount 0
+    while {$tick*1000000 <= $last} {
+        set x [format %.2f [expr {68+674.0*($tick*1000000-$first)/($last-$first)}]]
+        set label [ns_quotehtml [clock format $tick -format {%H:%M}]]
+        set detail [ns_quotehtml [clock format $tick -format {%Y-%m-%d %H:%M %Z (%z)}]]
+        append hours "<g class='ns-memory-hour'><title>$detail</title><path d='M$x 20 V170' stroke='currentColor' opacity='.18'/><text x='$x' y='181' text-anchor='end' transform='rotate(-45 $x 181)' fill='currentColor'>$label</text></g>"
+        incr hourCount
+        incr tick 3600
+    }
+    set endpoints {}
+    if {$hourCount < 2} {
+        set endpoints "<text x='68' y='212' fill='currentColor'>[ns_quotehtml [clock format [expr {$first/1000000}] -format {%H:%M}]]</text><text x='742' y='212' text-anchor='end' fill='currentColor'>[ns_quotehtml [clock format [expr {$last/1000000}] -format {%H:%M}]]</text>"
+    }
+    return "<figure style='max-width:900px;margin:16px 0'><h3>Allocator memory history</h3>\
+        <p>Process-wide, MiB. [ns_quotehtml $start] &#8212; [ns_quotehtml $end].</p>\
+        <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 760 220' role='img' aria-labelledby='ns-memory-history-title' style='display:block;width:100%;height:auto;font:12px sans-serif'>\
+        <title id='ns-memory-history-title'>Allocator memory history in MiB; gaps and restarts break the lines.</title>\
+        $axis$hours$lines$endpoints\
+        </svg><figcaption>$legend</figcaption></figure>"
+}
+
+proc ::_ns_stats.mem.history {} {
+    if {[info commands ns_stats] eq "" || [catch {ns_stats history status} status]} {return ""}
+    set persistent [expr {[::_ns_stats.dictGetDef $status pool {}] ne ""}]
+    if {$persistent && [dict get $status owner] ne [ns_info server]} {
+        return "<p>Persistent history belongs to virtual server '[ns_quotehtml [dict get $status owner]]'; open nsstats there.</p>"
+    }
+    set identity [list [::_ns_stats.dictGetDef $status pool {}] [::_ns_stats.dictGetDef $status owner {}]]
+    set key allocator-history
+    set now [clock seconds]
+    set cache {}
+    if {[nsv_exists _ns_stats $key]} {
+        set candidate [nsv_get _ns_stats $key]
+        if {[dict get $candidate identity] eq $identity} {set cache $candidate}
+    }
+    if {$cache ne ""} {
+        if {$now < [::_ns_stats.dictGetDef $cache retryAfter 0]} {
+            return [::_ns_stats.mem.historyCached $cache [dict get $cache error]]
+        }
+        if {$now-[::_ns_stats.dictGetDef $cache updated 0] < 60} {
+            return [::_ns_stats.mem.historyCached $cache]
+        }
+    }
+    # One reader per server. Other page requests use the previous result while
+    # refresh is running; do not create competing full-day scans of a one-handle pool.
+    if {[nsv_incr _ns_stats $key:busy] != 1} {
+        nsv_incr _ns_stats $key:busy -1
+        return [::_ns_stats.mem.historyCached $cache "Allocator history refresh is in progress; showing the last available chart, if any."]
+    }
+    try {
+        set minutes [expr {$persistent ? 1440 : 15}]
+        set cutoff [expr {($now-$minutes*60)*1000000}]
+        if {$persistent} {
+            set storage [::_ns_stats.mem.historyQuery history storage]
+            if {[::_ns_stats.dictGetDef $storage retainedFrom {}] ne ""} {
+                set cutoff [expr {max($cutoff,int(ceil([dict get $storage retainedFrom]*1000000)))}]
+            }
+        }
+        set points {}
+        if {$cache ne "" && [nsv_exists _ns_stats $key:points]} {
+            set saved [nsv_get _ns_stats $key:points]
+            if {[dict get $saved identity] eq $identity} {set points [dict get $saved values]}
+        }
+        if {$persistent && [::_ns_stats.dictGetDef $storage sampleCount -1] == 0} {set points {}}
+        set incremental [expr {$points ne ""}]
+        if {$incremental} {
+            set since [dict get [lindex $points end] timestamp]
+            # Overlap one sample interval so the cached/new boundary is replaced,
+            # not connected blindly. A final-page coverage pass now covers only
+            # the recent tail, rather than decoding yesterday's payloads again.
+            set minutes [expr {max(1,min($minutes,int(ceil(($now-$since/1000000.0)/60.0))+1))}]
+        } else {
+            set minutes [expr {max(1,min($minutes,int(ceil(($now-$cutoff/1000000.0)/60.0))))}]
+        }
+        set report [::_ns_stats.utilization.readHistory $minutes ::_ns_stats.mem.historyPoint ::_ns_stats.mem.historyQuery]
+        if {![dict get $report available]} {error [dict get $report reason]}
+        set merged {}
+        foreach point [concat $points [dict get $report points]] {
+            set stamp [dict get $point timestamp]
+            if {$stamp >= $cutoff && $stamp < $now*1000000} {dict set merged $stamp $point}
+        }
+        set points {}
+        foreach stamp [lsort -integer [dict keys $merged]] {lappend points [dict get $merged $stamp]}
+        set capped [expr {[llength $points]>10000}]
+        if {$capped} {set points [lrange $points end-9999 end]}
+        set html [::_ns_stats.mem.historySvg $points]
+        if {$html ne ""} {
+            set source [expr {$persistent ? "Persistent history, up to the last 24 hours" : "In-memory history, up to the last 15 minutes"}]
+            append html "<p>$source. [llength $points] retained samples; 120 display buckets, preserving peaks and breaks. Lines break at missing values, sampling gaps and process restarts."
+            if {$capped || [dict get $report truncated]} {append html " The 10,000-sample display limit was reached."}
+            if {$incremental} {
+                append html " Earlier samples are reused from the chart cache; full-window coverage is not re-certified by incremental refresh."
+            } elseif {![::_ns_stats.dictGetDef $report coverage complete false]} {
+                append html " Requested-window coverage is incomplete; this chart shows available samples only."
+            }
+            append html " This is allocator memory, not OS resident memory or a diagnosis of a leak.</p>"
+        }
+        nsv_set _ns_stats $key:points [dict create identity $identity values $points]
+        set cache [dict create identity $identity updated [clock seconds] html $html]
+        nsv_set _ns_stats $key $cache
+        return [::_ns_stats.mem.historyCached $cache]
+    } on error {message options} {
+        if {$cache eq ""} {set cache [dict create identity $identity]}
+        set message "Allocator history refresh delayed: $message."
+        dict set cache retryAfter [expr {[clock seconds]+15}]
+        dict set cache error $message
+        nsv_set _ns_stats $key $cache
+        return [::_ns_stats.mem.historyCached $cache $message]
+    } finally {
+        nsv_incr _ns_stats $key:busy -1
+    }
+}
+
 proc ::_ns_stats.mem.tcl {} {
     #
     # The following works just on Linux. The output is optional.
     #
     set meminfo [::_ns_stats.memsizes [ns_info pid] 1]
     set html    [::_ns_stats.header Memory]
+    append html [::_ns_stats.mem.history]
     try {
         ns_info meminfo {*}[expr {[ns_queryget release 0] ? "-release" : ""}]
     } on ok {result} {
