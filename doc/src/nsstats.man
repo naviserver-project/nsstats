@@ -39,4 +39,27 @@ parameters below. Generate the committed include with [const {make regen-config-
 For the complete web-interface guide, see
 [uri https://github.com/naviserver-project/nsstats/blob/main/README.md {the repository README}].
 [keywords monitoring statistics configuration ns_stats]
+[section {MODULE ADMIN PAGES}]
+Modules publish reusable ADPs through the server-scoped nsstats:plugins NSV
+array. Each provider key holds a dictionary mapping page IDs to descriptors.
+Required fields are label, title, group, scope and an absolute readable adp path.
+The optional requires field names a command that must exist. Groups are overview,
+memory, background, logs and administration; scopes are global, server, mixed
+and source. Page IDs start with a lowercase letter and contain lowercase letters,
+digits, dots, underscores or hyphens. Built-in pages cannot be replaced.
+[example_begin]
+nsv_set nsstats:plugins example [lb]dict create example.status [lb]dict create \
+    label Example title {Example status} group administration scope server \
+    requires ::example::Service adp /module/lib/status.adp[rb][rb]
+[example_end]
+Registration can precede the first nsstats request. Discovery uses the current
+server registry and omits unavailable or invalid pages. Remove a provider with
+nsv_unset nsstats:plugins example. Treat registration as trusted module code,
+never as browser input. Pages appear in navigation and retain normal nsstats
+access checks before their ADP is evaluated. Header/footer helpers and ordinary
+table styles are available. Direct JSON/download responses must leave ADP output
+empty, including whitespace. The plugin retains responsibility for POST, CSRF
+and application authorization. The nsmcp module owns its MCP ADP and companion
+Tcl file in lib; future UI changes deploy with nsmcp alone after this host upgrade.
+
 [manpage_end]

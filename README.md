@@ -287,3 +287,45 @@ If a conversation becomes unavailable, the question panel clears its stale
 handle, stops polling and unlocks New conversation and backend selection. The
 visible transcript and job handles remain available for inspection. Temporary
 network failures continue to retry and keep cancellation available.
+
+
+## Module-provided admin pages
+
+Modules can publish reusable ADP pages without copying their UI into nsstats.
+The server-scoped `nsstats:plugins` NSV array is the extension registry. Each
+provider owns one key containing a dictionary of page IDs and descriptors:
+
+```tcl
+nsv_set nsstats:plugins mymodule [dict create mymodule.status [dict create \
+    label {My module} title {My module status} group administration scope server \
+    requires ::mymodule::Service adp /absolute/module/lib/status.adp]]
+```
+
+Required descriptor fields are `label`, `title`, `group`, `scope`, and `adp`.
+`requires` optionally names a command that must exist in the current interpreter.
+Groups are `overview`, `memory`, `background`, `logs`, and `administration`;
+scopes are `global`, `server`, `mixed`, and `source`. Page IDs use lowercase
+letters, digits, dots, underscores and hyphens, starting with a letter. Built-in
+page IDs cannot be replaced. Providers should use a module prefix for new IDs.
+
+Register during module startup; nsstats need not have loaded first. Each request
+reads the registry for its virtual server, validates descriptors, and adds
+available pages to menus, the directory and breadcrumbs. Invalid registrations,
+missing/unreadable ADPs and absent required commands are omitted. Remove a
+provider with `nsv_unset nsstats:plugins mymodule`. Registry entries are trusted
+module configuration and must never come from browser parameters.
+
+Requests use the normal `?@page=mymodule.status` URL and the existing nsstats
+access check. Only an authorized request evaluates the registered ADP, using
+`ns_adp_parse -file`. The host supplies `_ns_stats.header`, `_ns_stats.footer`
+and its regular table styles. A page sets its title/navigation through the
+header helper and returns body HTML. An ADP that sends JSON or a download must
+produce **no ADP output**, including whitespace; the host will then skip HTML
+wrapping and complete the request, including in OpenACS. Mutating or inspecting
+handlers remain responsible for their POST/CSRF and application permission checks.
+Module lib directories need not be publicly served.
+
+The MCP page is supplied by nsmcp as `lib/nsstats.adp` with companion
+`lib/nsstats.tcl`. Its existing `?@page=mcp` URL remains unchanged. Upgrade both
+packages once to introduce registration; subsequent nsmcp page changes deploy
+with nsmcp alone. Nsstats no longer embeds MCP-specific code or browser libraries.

@@ -8,7 +8,7 @@
 # nsstats.tcl --
 #
 #   Simple web-based interface for NaviServer runtime statistics.
-#   The whole application is implemented as a single file.
+#   The base interface is implemented here; modules can register ADP extensions.
 #
 #   To use it, set enabled to 1 and place this file somewhere under
 #   NaviServer pageroot which is usually /usr/local/ns/pages and point
@@ -23,13 +23,6 @@ set user     [ns_config ns/module/nsstats user "nsadmin"]
 set password [ns_config ns/module/nsstats password ""]
 set enabled  [ns_config ns/module/nsstats enabled 1]
 set debug    0
-
-# Browser Markdown dependencies. Update each version and its matching SRI hash
-# together; an integrity mismatch leaves question answers in plain text.
-set ::markedVersion      18.1.1
-set ::markedIntegrity    sha384-7sjOQLpS2mL+qbjUOYVEk350vVNi+nPTKMQFruUWMDTzgcxzTJiwye3rHDJCJ9ZL
-set ::dompurifyVersion   3.4.17
-set ::dompurifyIntegrity sha384-P0JNneQf81HOl9VwNXK76cQ9VMD6Nfsnepxb0cCOg8+UzEdzgPHAPV4wVQrvYQSx
 
 set ::templateFile nsstats
 
@@ -59,6 +52,82 @@ if { ![nsv_exists _ns_stats threads_0] } {
 }
 set severity [expr {$debug ? "notice" : "debug"}]
 
+# Server-scoped extension registry. Modules publish a dictionary of pages under
+# their provider name in nsstats:plugins; no nsstats initialization order is needed.
+# Registry data is trusted module configuration, never taken from request input.
+proc _ns_stats.plugins.install {} {
+    set ::pluginPages {}
+    if {[catch {nsv_array get nsstats:plugins} providers]} {return}
+    foreach provider [lsort [dict keys $providers]] {
+        set pages [dict get $providers $provider]
+        if {[catch {dict size $pages}]} {
+            ns_log warning "nsstats: ignoring malformed plugin $provider"
+            continue
+        }
+        dict for {id entry} $pages {
+            set available true
+            if {[catch {
+                if {![regexp {^[a-z][a-z0-9_.-]*$} $id] || $id eq "index"
+                    || [dict exists $::titles $id] || [dict exists $::pluginPages $id]} {error "duplicate or invalid page identifier"}
+                foreach key {label title group scope adp} {dict get $entry $key}
+                if {![dict exists $::navGroups [dict get $entry group]]} {error "unknown navigation group"}
+                if {[dict get $entry scope] ni {global server mixed source}} {error "invalid scope"}
+                set file [dict get $entry adp]
+                if {[file pathtype $file] ne "absolute" || [file extension $file] ne ".adp"
+                    || ![file isfile $file] || ![file readable $file]} {error "ADP file unavailable"}
+                if {[dict exists $entry requires] && [info commands [dict get $entry requires]] eq ""} {set available false}
+            } message]} {
+                ns_log warning "nsstats: ignoring plugin $provider page '$id': $message"
+                continue
+            }
+            if {!$available} {continue}
+            dict set ::pluginPages $id $entry
+            dict set ::titles $id [dict get $entry title]
+            dict set ::navScopes $id [dict get $entry scope]
+            dict set ::navLinks $id [dict get $entry label]
+            set group [dict get $entry group]
+            lassign [dict get $::navGroups $group] label pages
+            lappend pages $id [dict get $entry label]
+            dict set ::navGroups $group [list $label $pages]
+        }
+    }
+}
+
+proc _ns_stats.renderPage {page} {
+    if {[dict exists $::pluginPages $page]} {
+        # Called only after the ordinary nsstats access check. Empty ADP output
+        # denotes a direct response (JSON/download), just like built-in handlers.
+        return [ns_adp_parse -file [dict get $::pluginPages $page adp]]
+    }
+    if {![dict exists $::titles $page] || [info commands _ns_stats.$page] eq ""} {error "Unknown statistics page"}
+    return [_ns_stats.$page]
+}
+
+proc _ns_stats.identity {} {
+    set identity [ns_conn authuser]
+    if {[info commands ad_conn] ne "" && ![catch {ad_conn user_id} userId] && $userId > 0} {
+        set identity "openacs:$userId"
+    } elseif {$identity eq ""} {
+        set identity "peer:[ns_conn peeraddr -source direct]"
+    }
+    return "nsstats:[ns_info server]:$identity"
+}
+
+proc _ns_stats.table {heading columns rows} {
+    set html "<h3>[ns_quotehtml $heading]</h3><div class='w3-responsive'><table class='data data-table w3-table w3-hoverable'><thead><tr>"
+    foreach column $columns {append html "<th>[ns_quotehtml $column]</th>"}
+    append html "</tr></thead><tbody>"
+    foreach row $rows {
+        append html "<tr>"
+        foreach value $row {append html "<td>[ns_quotehtml $value]</td>"}
+        append html "</tr>"
+    }
+    append html "</tbody></table></div>"
+    return $html
+}
+
+set ::pluginPages {}
+
 # One hierarchy shared by the menus, directory and breadcrumbs. Existing page
 # identifiers remain unchanged; optional pages are omitted when unavailable.
 set ::navGroups {
@@ -82,14 +151,14 @@ set ::navGroups {
     }}
     administration {Administration {
         config.file {Configuration file} config.params {Configuration parameters}
-        locks.mutex {Mutex and RW-locks} locks.nsv {NSV locks} mcp MCP
+        locks.mutex {Mutex and RW-locks} locks.nsv {NSV locks}
     }}
 }
 set ::navScopes {
     process global utilization global threads global list-lsof global
     stats.history global mem.tcl global dbpools global mem.cache server mem.nsvsize server mem.adp server
     background.jobs global background.sched global proxy-workers global
-    config.file global config.params global locks.mutex server locks.nsv server mcp server
+    config.file global config.params global locks.mutex server locks.nsv server
     log.logfile global log.httpclient source log.smtpsent source log.smtpevents source
     log.levels global
 }
@@ -121,13 +190,10 @@ proc _ns_stats.navigation.groups {} {
         set available {}
         foreach {target title} $entries {
             set page [lindex [split $target #] 0]
-            if {[info procs _ns_stats.$page] eq ""} {
+            if {[info procs _ns_stats.$page] eq "" && ![dict exists $::pluginPages $page]} {
                 continue
             }
             if {$page eq "stats.history" && [info commands ns_stats] eq ""} {
-                continue
-            }
-            if {$page eq "mcp" && [info commands ::nsmcp::ToolRegistry] eq ""} {
                 continue
             }
             if {$page eq "utilization" && [info commands ns_json] eq ""} {
@@ -237,29 +303,7 @@ proc _ns_stats.navigation.style {} {
 .ns-nav-items a {display:flex;justify-content:space-between;align-items:center;gap:16px;padding:12px;color:var(--color-anchor,#004080);text-decoration:none;}
 .ns-nav-items a:hover,.ns-nav-items a[aria-current] {background:var(--color-dropdown-hover-bg,#e6eef7);}
 .ns-nav-mobile {display:none;}
-.mcp-tools {width:100%;table-layout:fixed;}
-.mcp-conversation article {border-left:3px solid var(--color-border,#ccc);padding:0 12px;margin:16px 0;}
-.mcp-backend {max-width:100%;margin:0 0 .6em;}
-.mcp-answer {overflow-x:auto;overflow-wrap:anywhere;}
-.mcp-answer p {margin:.6em 0;}
-.mcp-answer pre {white-space:pre-wrap;overflow-wrap:anywhere;}
-.mcp-answer table {border-collapse:collapse;margin:.6em 0;}
-.mcp-answer th,.mcp-answer td {border:1px solid var(--color-border,#ccc);padding:4px 8px;text-align:left;}
 .ns-measurement-controls input[name="statsWindow"] {width:6em;box-sizing:border-box;padding:3px 6px;border:1px solid var(--color-border,#888);background:var(--color-body-bg,#fff);color:var(--color-body-text,#000);opacity:1;}
-.mcp-tool-toggle {display:block;margin-top:6px;}
-.mcp-tools th:nth-child(1),.mcp-tools td:nth-child(1) {width:18%;}
-.mcp-tools th:nth-child(2),.mcp-tools td:nth-child(2) {width:10%;}
-.mcp-tools th:nth-child(3),.mcp-tools td:nth-child(3) {width:38%;}
-.mcp-tools th:nth-child(4),.mcp-tools td:nth-child(4) {width:26%;}
-.mcp-tools th:nth-child(5),.mcp-tools td:nth-child(5) {width:8%;}
-.ns-mcp-dialog {width:min(1000px,calc(100vw - 48px));max-height:85vh;overflow:auto;box-sizing:border-box;padding:24px;border:1px solid var(--color-border,#ccc);border-radius:6px;background:var(--color-body-bg,#fff);color:var(--color-body-text,#000);}
-.ns-mcp-dialog::backdrop {background:#0007;}
-.ns-mcp-close {float:right;padding:6px 12px;}
-.ns-mcp-dialog pre {white-space:pre-wrap;overflow-wrap:anywhere;}
-.mcp-result {max-height:50vh;overflow:auto;padding:12px;border:1px solid var(--color-border,#ccc);}
-.mcp-followups button {margin:4px 8px 4px 0;}
-.ns-mcp-dialog .data-table {table-layout:auto;}
-.ns-mcp-dialog .data-table th:first-child,.ns-mcp-dialog .data-table td:first-child {width:auto;}
 .ns-smtp-views {display:flex;gap:12px;flex-wrap:wrap;margin:0 0 16px;}
 .ns-smtp-views a {display:inline-block;padding:8px 12px;border:1px solid var(--color-border,#ccc);border-radius:4px;}
 .ns-smtp-views a[aria-current] {font-weight:bold;background:var(--color-secondary-bg,#eee);}
@@ -311,7 +355,6 @@ set ::titles {
     mem.cache         "Cache Statistics (ns_cache)"
     mem.nsvsize       "Shared Variable Statistics (nsv)"
     mem.tcl           "Allocated Memory"
-    mcp               "MCP configuration and tools"
     process           "Process Information"
     proxy-workers     "nsproxy Workers"
     requestprocs      "Request Handlers"
@@ -319,6 +362,8 @@ set ::titles {
     utilization       "Utilization"
     url2file          "Url2File Mappings"
 }
+
+_ns_stats.plugins.install
 
 #
 # Version compatibility proc
@@ -535,7 +580,7 @@ proc _ns_stats.stats.history {} {
             if {$unit eq "duration"} {set value [format "%.2f hours" [expr {$value / 3600.0}]]}
             lappend rows [list $label $value]
         }
-        append html [_ns_stats.mcp.table "Persistence and cleanup settings" {Setting Value} $rows]
+        append html [_ns_stats.table "Persistence and cleanup settings" {Setting Value} $rows]
         if {[dict get $status enabled] && ![catch {ns_stats history storage} storage]} {
             set rows {}
             foreach {key label unit} {
@@ -557,7 +602,7 @@ proc _ns_stats.stats.history {} {
                 }
                 lappend rows [list $label $value]
             }
-            append html [_ns_stats.mcp.table "Retained history and database usage" {Metric Value} $rows]
+            append html [_ns_stats.table "Retained history and database usage" {Metric Value} $rows]
             append html "<p>The effective SQLite cap leaves headroom within the configured budget. Cleanup can prune before that cap is reached. Storage averages describe retained samples and can change with server activity.</p>"
         }
     }
@@ -582,1004 +627,6 @@ proc _ns_stats.dbpools {} {
 # Configuration and credential fields are explicitly selected so secret values
 # and token digests never enter the rendered page.
 #
-proc _ns_stats.mcp.toolSummary {tool} {
-    # Short admin summaries; full MCP discovery descriptions remain available.
-    switch -- [dict get $tool name] {
-        server_describe {return "Basic runtime and package versions."}
-        configuration {return "Inspect configuration, policy scripts, limits and pool settings; redact credentials."}
-        server_topology {return "Versions, loaded modules and server configuration."}
-        server_runtime {return "Current gauges or sampled rates, timings and CPU usage."}
-        server_history {return "Persisted runtime samples and their coverage."}
-        server_request_routing {return "Effective pool mappings and registered request filters."}
-        access_bot_routing {return "Compare logged traffic with bot-pool mappings; identify candidates and unknowns."}
-        slow_requests {return "Inspect slow-request records, request identifiers and phase timings."}
-        smtp_logs {return "Inspect recent SMTP send results and session events."}
-        log_error_summary {return "Summarize errors in a time window with grouped counts, examples and coverage."}
-        log_errors {return "Search the system log for errors."}
-        log_request_context {return "Correlate log entries by request or thread identifier."}
-        log_results {return "Check a search job or read a redacted result page."}
-        access_summary {return "Summarize traffic, status codes, timings and peer bursts."}
-        default {return [dict get $tool description]}
-    }
-}
-
-proc _ns_stats.mcp.toolExample {name} {
-    switch -- $name {
-        server_describe {return "Use server_describe to report runtime and package versions."}
-        configuration {return "Use configuration with scope process and follow nextArguments to inspect current settings across all virtual servers. Pair with server_topology and server_runtime for configuration and scaling advice."}
-        server_topology {return "Use server_topology to report NaviServer, Tcl, platform and loaded module versions."}
-        server_runtime {return "Use server_topology and server_runtime with mode snapshot. Show pool limits, active and waiting requests, and cumulative counters."}
-        server_history {return "Use server_history for the last five completed minutes. Follow all pages using nextArguments and report coverage, gaps, restarts and write failures."}
-        server_request_routing {return "Use server_request_routing to show effective connection-pool mappings and registered filters. Do not infer a filter's purpose from its name."}
-        access_bot_routing {return "Use access_bot_routing in mode scan for the last 60 minutes with pool bots. Wait for completion using log_results. Compare User-Agents and actual pools, distinguish routing candidates from bot-like heuristics, and report aggregate counts, coverage and omitted records."}
-        slow_requests {return "Use slow_requests for the last 60 minutes. Show request identifiers, paths, pools, status codes and available phase timings. Follow nextArguments and report coverage and omitted records."}
-        smtp_logs {return "Use smtp_logs with log event for the last 15 minutes. Show SMTP deferrals, rejections, TLS failures and transaction outcomes; include coverage."}
-        log_error_summary {return "Use log_error_summary for today in Europe/Vienna. Group errors, give counts and examples, and report coverage. Poll log_results until complete."}
-        log_errors {return "Use log_errors to search for errors, then poll log_results with the returned jobHandle and read the result pages."}
-        log_request_context {return "Use log_request_context with the identifier from the selected log entry. Retrieve the correlated system and access records using log_results."}
-        log_results {return "Use log_results with the jobHandle from the preceding search. When complete, use its resultHandle to retrieve a result page."}
-        access_summary {return "Use access_summary for the last ten completed minutes. Show request frequency, status and pool distributions, timing averages and coverage."}
-        default {return ""}
-    }
-}
-
-# Use the existing nsstats access check; no bearer credentials are exposed or
-# stored by this interface. Bind handles and the POST token to this admin.
-proc _ns_stats.mcp.identity {} {
-    set identity [ns_conn authuser]
-    if {[info commands ad_conn] ne "" && ![catch {ad_conn user_id} userId] && $userId > 0} {
-        set identity "openacs:$userId"
-    } elseif {$identity eq ""} {
-        set identity "peer:[ns_conn peeraddr -source direct]"
-    }
-    return "nsstats:[ns_info server]:$identity"
-}
-
-proc _ns_stats.mcp.token {} {
-    set key mcp-inspect:[_ns_stats.mcp.identity]
-    if {![nsv_exists _ns_stats $key]} {
-        nsv_set _ns_stats $key [ns_crypto::randombytes -encoding hex 32]
-    }
-    return [nsv_get _ns_stats $key]
-}
-
-# This handler is reached only after the normal nsstats authorization check.
-# Require a POST and a page-issued token before passing the exact JSON-RPC body
-# through MCP's protocol, validation, authorization and result handling.
-proc _ns_stats.mcp.inspect {} {
-    if {[ns_conn method] ne "POST"} {
-        ns_return 405 text/plain "Use POST for tool inspection."
-        return ""
-    }
-    set key mcp-inspect:[_ns_stats.mcp.identity]
-    set token [ns_set iget [ns_conn headers] X-Nsstats-MCP-Token]
-    if {$token eq "" || ![nsv_exists _ns_stats $key] || $token ne [nsv_get _ns_stats $key]} {
-        ns_return 403 text/plain "Invalid inspection token; reload the MCP page."
-        return ""
-    }
-    if {[info commands ::nsmcp::protocol] eq ""} {
-        ns_return 503 text/plain "MCP protocol is not initialized."
-        return ""
-    }
-    # nsstats routes POST requests through ns_queryget/ns_getform. Keep the
-    # page selector and JSON-RPC payload together in the submitted form.
-    set body [ns_queryget mcpRequest ""]
-    if {[string bytelength $body] > 131072} {
-        ns_return 413 text/plain "Inspection request is too large."
-        return ""
-    }
-    # Limit this administration endpoint to tools/call. Protocol.handle performs
-    # the full JSON-RPC validation, including duplicate-member checks.
-    if {[catch {
-        set request [ns_json parse -- $body]
-        if {[dict get $request method] ne "tools/call"} {
-            error "Expected tools/call"
-        }
-    }]} {
-        ns_return 400 text/plain "Supply a JSON-RPC tools/call request."
-        return ""
-    }
-    set server [ns_info server]
-    set permissions {diagnostics.logs.peers.read diagnostics.configuration.process.read}
-    foreach tool [::nsmcp::tools describe] {
-        lappend permissions [dict get $tool permission]
-    }
-    set context [::nsmcp::RequestContext new -principal [_ns_stats.mcp.identity] \
-        -permissions [lsort -unique $permissions] -targets [list $server] -server $server]
-    try {
-        set response [::nsmcp::protocol handle $context $body]
-        ns_set iupdate [ns_conn outputheaders] Cache-Control no-store
-        ns_return [dict get $response status] application/json [dict get $response body]
-    } finally {
-        $context destroy
-    }
-    return ""
-}
-
-# Runtime tool switches use the same protected admin identity and page-issued
-# token as inspection. They are intentionally not callable through MCP itself.
-proc _ns_stats.mcp.toolState {} {
-    if {[ns_conn method] ne "POST"} {
-        ns_return 405 text/plain "Use POST to change tool availability."
-        return ""
-    }
-    set key mcp-inspect:[_ns_stats.mcp.identity]
-    set token [ns_set iget [ns_conn headers] X-Nsstats-MCP-Token]
-    if {$token eq "" || ![nsv_exists _ns_stats $key] || $token ne [nsv_get _ns_stats $key]} {
-        ns_return 403 text/plain "Invalid administration token; reload the MCP page."
-        return ""
-    }
-    if {[info commands ::nsmcp::tools] eq ""
-        || [catch {::nsmcp::tools controlsAvailable} available]
-        || ![string is boolean -strict $available] || !$available} {
-        ns_return 503 text/plain "Runtime tool controls are not available."
-        return ""
-    }
-    set name [ns_queryget mcpToolState ""]
-    set enabled [ns_queryget mcpEnabled ""]
-    set known false
-    foreach tool [::nsmcp::tools describe] {
-        if {[dict get $tool name] eq $name} {
-            set known true
-            break
-        }
-    }
-    if {!$known || $enabled ni {0 1}} {
-        ns_return 400 text/plain "Supply a registered tool and mcpEnabled=0 or 1."
-        return ""
-    }
-    if {[catch {::nsmcp::tools setEnabled $name $enabled} result]} {
-        ns_log error "nsstats: tool availability update failed for $name: $result"
-        ns_return 500 text/plain "Tool availability could not be changed; consult the server log."
-        return ""
-    }
-    ns_log notice "nsstats: [_ns_stats.mcp.identity] set tool $name enabled=$result"
-    ns_set iupdate [ns_conn outputheaders] Cache-Control no-store
-    ns_return 200 application/json [ns_json value -- [list {} object \
-        [list server string [ns_info server] tool string $name enabled boolean $result]]]
-    return ""
-}
-
-proc _ns_stats.mcp.toolControlScript {} {
-    return {<script>
-(function () {
- document.querySelectorAll('.mcp-tool-toggle').forEach(function (button) {
-   const status = button.parentElement.querySelector('.mcp-tool-state-status');
-   button.addEventListener('click', async function () {
-     button.disabled = true; status.textContent = 'Applying…';
-     try {
-       const url = new URL(window.location.href);
-       url.searchParams.set('@page', 'mcp'); url.searchParams.delete('mcpInspect'); url.hash = '';
-       const response = await fetch(url, {
-         method:'POST', credentials:'same-origin', cache:'no-store',
-         headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8', 'X-Nsstats-MCP-Token':button.dataset.token},
-         body:new URLSearchParams({'@page':'mcp', mcpToolState:button.dataset.tool, mcpEnabled:button.dataset.enabled}).toString()
-       });
-       const text = await response.text();
-       if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + text);
-       const result = JSON.parse(text);
-       if (result.tool !== button.dataset.tool || typeof result.enabled !== 'boolean') throw new Error('Unexpected tool-state response.');
-       window.location.reload();
-     } catch (error) {
-       status.textContent = error.message; button.disabled = false;
-     }
-   });
- });
-})();
-</script>}
-}
-
-proc _ns_stats.mcp.arguments {schema} {
-    set rows {}
-    set required {}
-    if {[dict exists $schema required]} {
-        set required [dict get $schema required]
-    }
-    if {[dict exists $schema properties]} {
-        dict for {name property} [dict get $schema properties] {
-            set type [expr {[dict exists $property type] ? [dict get $property type] : ""}]
-            set description [expr {[dict exists $property description] ? [dict get $property description] : ""}]
-            foreach key {default minimum maximum enum} {
-                if {[dict exists $property $key]} {
-                    append description " $key: [dict get $property $key]."
-                }
-            }
-            lappend rows [list $name $type [expr {$name in $required ? "Yes" : "No"}] [string trim $description]]
-        }
-    }
-    if {$rows eq ""} {
-        set html "<p>No named arguments.</p>"
-    } else {
-        set html [_ns_stats.mcp.table Arguments {Argument Type Required Description} $rows]
-    }
-    if {[dict exists $schema oneOf] || [dict exists $schema anyOf]} {
-        append html "<p>Argument combinations have additional requirements; see the input schema.</p>"
-    }
-    append html "<details><summary>Input schema</summary><pre>[ns_quotehtml $schema]</pre></details>"
-    return $html
-}
-
-proc _ns_stats.mcp.table {heading columns rows} {
-    set dialogs ""
-    set rowIndex 0
-    set classes "data data-table mcp w3-table w3-hoverable"
-    if {"Tool name" in $columns} {
-        append classes " mcp-tools"
-    }
-    set html "<h3>[ns_quotehtml $heading]</h3><div class='w3-responsive'><table class='$classes'><thead><tr>"
-    foreach column $columns {
-        append html "<th>[ns_quotehtml $column]</th>"
-    }
-    append html "</tr></thead><tbody>"
-    foreach row $rows {
-        append html "<tr>"
-        set index 0
-        foreach value $row {
-            set content [ns_quotehtml $value]
-            if {[lindex $columns $index] eq "Tool name"} {
-                set content "<code>$content</code>"
-            }
-            if {[lindex $columns $index] eq "Status" && [llength $value] == 4} {
-                lassign $value state name enabled token
-                set label [expr {$enabled ? "Disable" : "Enable"}]
-                set next [expr {!$enabled}]
-                set content "[ns_quotehtml $state]<button type='button' class='mcp-tool-toggle' data-tool='[ns_quotehtml $name]' data-enabled='$next' data-token='[ns_quotehtml $token]'>$label</button> <span class='mcp-tool-state-status' role='status'></span>"
-            }
-            if {[lindex $columns $index] eq "Tool details"} {
-                lassign $value description schema example token
-                set id ns-mcp-tool-$rowIndex
-                set title [ns_quotehtml [lindex $row 0]]
-                set content "<button type='button' data-mcp-dialog='$id' aria-haspopup='dialog'>Details</button>"
-                append dialogs "<dialog class='ns-mcp-dialog' id='$id' aria-labelledby='$id-title'><form method='dialog'><button class='ns-mcp-close' aria-label='Close tool details'>Close</button></form><h3 id='$id-title'>$title</h3><p>[ns_quotehtml $description]</p>"
-                append dialogs [_ns_stats.mcp.arguments $schema]
-                if {$token ne ""} {
-                    append dialogs "<details class='mcp-inspect' data-tool='$title' data-token='[ns_quotehtml $token]'><summary>Inspect result</summary><p>Edit JSON arguments and run this tool. Results use the admin identity; handles belong to this identity. Peer disclosure is available to this trusted admin interface when requested.</p><label>Arguments (JSON)<textarea class='mcp-arguments' rows='6' style='box-sizing:border-box;width:100%'>{}</textarea></label><button type='button' class='mcp-run'>Run tool</button> <button type='button' class='mcp-reset'>Reset arguments</button><p class='mcp-inspect-status' role='status'></p><div class='mcp-followups'></div><details class='mcp-response' hidden><summary>Tool result</summary><button type='button' class='mcp-copy'>Copy complete response</button> <button type='button' class='mcp-download'>Download complete response</button><pre class='mcp-result' tabindex='0'></pre><details class='mcp-envelope'><summary>Complete JSON-RPC response</summary><pre class='mcp-result mcp-raw-result' tabindex='0'></pre></details></details></details>"
-                }
-                if {$example ne ""} {
-                    append dialogs "<h4>Example query</h4><textarea readonly rows='4' aria-label='Example query' style='box-sizing:border-box;width:100%'>[ns_quotehtml $example]</textarea>"
-                }
-                append dialogs "</dialog>"
-            }
-            if {[lindex $columns $index] eq "Argument schema"} {
-                set content "<details><summary>Arguments</summary><div>$content</div></details>"
-            }
-            append html "<td style='overflow-wrap:anywhere;vertical-align:top'>$content</td>"
-            incr index
-        }
-        append html "</tr>"
-        incr rowIndex
-    }
-    append html "</tbody></table></div>" $dialogs
-    if {$dialogs ne ""} {
-        append html {<script>
-(function () {
- document.querySelectorAll('[data-mcp-dialog]').forEach(function (button) {
-   button.addEventListener('click', function () {
-     document.getElementById(button.dataset.mcpDialog).showModal();
-   });
- });
- document.querySelectorAll('.ns-mcp-dialog').forEach(function (dialog) {
-   dialog.addEventListener('click', function (event) {
-     if (event.target !== dialog) return;
-     const bounds = dialog.getBoundingClientRect();
-     if (event.clientX < bounds.left || event.clientX > bounds.right ||
-         event.clientY < bounds.top || event.clientY > bounds.bottom) dialog.close();
-   });
- });
-})();
-</script>}
-    }
-    if {$dialogs ne ""} {
-        append html [_ns_stats.mcp.inspectionScript]
-    }
-    return $html
-}
-
-proc _ns_stats.mcp.inspectionScript {} {
-    return {<script>
-(function () {
- document.querySelectorAll('.mcp-inspect').forEach(function (panel) {
-   const input = panel.querySelector('.mcp-arguments');
-   const status = panel.querySelector('.mcp-inspect-status');
-   const result = panel.querySelector('.mcp-result');
-   const responsePanel = panel.querySelector('.mcp-response');
-   const rawResult = panel.querySelector('.mcp-raw-result');
-   const envelopePanel = panel.querySelector('.mcp-envelope');
-   const followups = panel.querySelector('.mcp-followups');
-   const runButton = panel.querySelector('.mcp-run');
-   let json = '', currentTool = panel.dataset.tool;
-   runButton.textContent = 'Run ' + currentTool;
-   function offer(label, tool, args) {
-     const button = document.createElement('button');
-     button.type = 'button'; button.textContent = label;
-     button.addEventListener('click', function () {
-       input.value = JSON.stringify(args, null, 2);
-       run(tool, args);
-     });
-     followups.appendChild(button);
-   }
-   async function run(tool, args) {
-     currentTool = tool; runButton.textContent = 'Run ' + tool;
-     runButton.disabled = true; panel.querySelector('.mcp-reset').disabled = true; status.textContent = 'Running ' + tool + '…';
-     followups.replaceChildren(); responsePanel.hidden = true; json = '';
-     try {
-       const url = new URL(window.location.href);
-       url.searchParams.set('@page', 'mcp'); url.searchParams.set('mcpInspect', '1');
-       url.hash = '';
-       const response = await fetch(url, {
-         method: 'POST', credentials: 'same-origin', cache: 'no-store',
-         headers: {'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8', 'X-Nsstats-MCP-Token': panel.dataset.token},
-         body: new URLSearchParams({
-           '@page':'mcp', mcpInspect:'1',
-           mcpRequest:JSON.stringify({jsonrpc:'2.0', id:1, method:'tools/call', params:{name:tool, arguments:args}})
-         }).toString()
-       });
-       const body = await response.text();
-       let envelope;
-       try { envelope = JSON.parse(body); }
-       catch (error) { throw new Error('HTTP ' + response.status + ': ' + body); }
-       json = JSON.stringify(envelope, null, 2); rawResult.textContent = json;
-       const displayed = envelope.error || (envelope.result && envelope.result.structuredContent) || envelope.result || envelope;
-       result.textContent = JSON.stringify(displayed, null, 2); envelopePanel.open = false;
-       responsePanel.hidden = false; responsePanel.open = true; currentTool = tool;
-       status.textContent = envelope.error ? 'MCP returned an error.' : 'Response received from ' + tool + '.';
-       const data = envelope.result && envelope.result.structuredContent;
-       if (!data) return;
-       if (data.jobHandle && data.status !== 'complete') {
-         offer('Poll job', 'log_results', {jobHandle:data.jobHandle});
-       }
-       if (data.nextArguments) offer('Next history page', 'server_history', data.nextArguments);
-       const handles = new Set();
-       function pages(value, path) {
-         if (!value || typeof value !== 'object') return;
-         if (typeof value.resultHandle === 'string' && (!value.records || value.more) && !handles.has(value.resultHandle)) {
-           handles.add(value.resultHandle);
-           const next = {resultHandle:value.resultHandle, limit:args.limit || 20};
-           if (args.includePeerAddresses === true) next.includePeerAddresses = true;
-           if (value.more && value.nextCursor !== '' && value.nextCursor != null) next.cursor = value.nextCursor;
-           offer((next.cursor != null ? 'Next page' : 'Read results') + (path ? ' (' + path + ')' : ''), 'log_results', next);
-         }
-         Object.keys(value).forEach(key => pages(value[key], path ? path + '.' + key : key));
-       }
-       pages(data, '');
-     } catch (error) {
-       status.textContent = error.message;
-     } finally { runButton.disabled = false; panel.querySelector('.mcp-reset').disabled = false; }
-   }
-   runButton.addEventListener('click', function () {
-     try {
-       const args = JSON.parse(input.value);
-       if (!args || Array.isArray(args) || typeof args !== 'object') throw new Error('Arguments must be a JSON object.');
-       run(currentTool, args);
-     } catch (error) { status.textContent = error.message; }
-   });
-   panel.querySelector('.mcp-reset').addEventListener('click', function () {
-     currentTool = panel.dataset.tool; input.value = '{}'; runButton.textContent = 'Run ' + currentTool;
-     followups.replaceChildren(); status.textContent = 'Arguments reset; no call made.';
-   });
-   panel.querySelector('.mcp-copy').addEventListener('click', async function () {
-     try { await navigator.clipboard.writeText(json); status.textContent = 'JSON copied.'; }
-     catch (error) { status.textContent = 'Copy unavailable; select the response text to copy it.'; }
-   });
-   panel.querySelector('.mcp-download').addEventListener('click', function () {
-     const url = URL.createObjectURL(new Blob([json], {type:'application/json'}));
-     const link = document.createElement('a'); link.href = url; link.download = currentTool + '.json';
-     link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-   });
- });
-})();
-</script>}
-}
-
-# The admin identity owns question handles; browser input never supplies a
-# provider thread ID, command, model credential or tool authorization policy.
-proc _ns_stats.mcp.questionAction {} {
-    if {[ns_conn method] ne "POST"} {
-        ns_return 405 text/plain "Use POST for questions."
-        return ""
-    }
-    set key mcp-inspect:[_ns_stats.mcp.identity]
-    set token [ns_set iget [ns_conn headers] X-Nsstats-MCP-Token]
-    if {$token eq "" || ![nsv_exists _ns_stats $key] || $token ne [nsv_get _ns_stats $key]} {
-        ns_return 403 text/plain "Invalid administration token; reload this page."
-        return ""
-    }
-    if {[info commands ::nsmcp::questions] eq ""} {
-        ns_return 503 text/plain "Question answering is not configured."
-        return ""
-    }
-    ns_set iupdate [ns_conn outputheaders] Cache-Control no-store
-    set server [ns_info server]
-    set context [::nsmcp::RequestContext new -principal [_ns_stats.mcp.identity] \
-        -permissions {} -targets [list $server] -server $server]
-    try {
-        set handle [ns_queryget conversation ""]
-        set action [ns_queryget mcpQuestionAction ""]
-        if {[catch {
-            switch -- $action {
-                send {
-                    set backend [ns_queryget backend ""]
-                    if {$backend eq ""} {
-                        set result [::nsmcp::questions send $context [ns_queryget question ""] $handle]
-                    } else {
-                        set result [::nsmcp::questions send $context [ns_queryget question ""] $handle $backend]
-                    }
-                }
-                poll {set result [::nsmcp::questions poll $context $handle]}
-                evidence {set result [::nsmcp::questions evidence $context $handle [ns_queryget evidenceHandle {}]]}
-                cancel {set result [::nsmcp::questions cancel $context $handle]}
-                forget {set result [::nsmcp::questions forget $context $handle]}
-                default {error "Unknown question action"}
-            }
-        } message options]} {
-            if {[dict get $options -errorcode] eq {NSMCP QUESTION CONVERSATION_UNAVAILABLE}} {
-                ns_return 410 application/json [ns_json value -- [list {} object [list \
-                    code string conversation_unavailable message string $message]]]
-            } else {
-                ns_return 400 text/plain $message
-            }
-        } else {
-            ns_set iupdate [ns_conn outputheaders] Cache-Control no-store
-            ns_return 200 application/json [ns_json value -- $result]
-        }
-    } finally {$context destroy}
-    return ""
-}
-
-proc _ns_stats.mcp.questionPanel {} {
-    if {[info commands ::nsmcp::questions] eq ""} {
-        return "<h3>Ask about this server</h3><p>Question answering is not enabled. Configure a question backend in the nsmcp module section.</p>"
-    }
-    set token [ns_quotehtml [_ns_stats.mcp.token]]
-    set server [ns_quotehtml [ns_info server]]
-    set selector ""
-    if {![catch {::nsmcp::questions choices} choices] && [dict exists $choices backends]} {
-        append selector "<label>Backend <select class='mcp-backend'>"
-        dict for {name entry} [dict get $choices backends] {
-            set attributes ""
-            if {$name eq [dict get $choices default]} {append attributes " selected"}
-            set label [expr {$name eq "codex" ? "Codex" : "Chat Completions"}]
-            if {[dict exists $entry model] && [dict get $entry model] ne ""} {
-                append label " ([dict get $entry model])"
-            }
-            if {![dict get $entry available]} {
-                append attributes " disabled title='[ns_quotehtml [dict get $entry reason]]'"
-                append label " — unavailable"
-            }
-            append selector "<option value='[ns_quotehtml $name]'$attributes>[ns_quotehtml $label]</option>"
-        }
-        append selector "</select></label> <span>Changing backend starts a new conversation.</span><br>"
-    }
-    set html "<section class='mcp-questions' data-token='$token' data-server='$server'><h3>Ask about this server</h3><p>Ask a question or follow up in the same conversation. Answers use the configured model and enabled read-only MCP tools. Expand tool results to inspect their evidence.</p><div class='mcp-conversation' aria-live='polite'></div><form class='mcp-question-form'>$selector<label>Question<textarea class='mcp-question' rows='3' maxlength='16384' style='width:100%;box-sizing:border-box' required></textarea></label><button class='mcp-ask' type='submit'>Ask</button> <button class='mcp-cancel' type='button' disabled>Cancel</button> <button class='mcp-new' type='button'>New conversation</button> <span class='mcp-question-status' role='status'></span></form></section>"
-    append html {<style>
-.mcp-status-icon {display:inline-block;width:1em;height:1em;margin-inline-end:.35em;vertical-align:-.15em}
-.mcp-status-working {animation:mcp-status-spin 1s linear infinite;transform-origin:center}
-@keyframes mcp-status-spin {to {transform:rotate(360deg)}}
-@media (prefers-reduced-motion:reduce) {.mcp-status-working {animation:none}}
-</style>}
-    # Pin browser-only dependencies with SRI. If loading fails, questionScript
-    # retains plain text rendering; no package manager or build step is needed.
-    append html [subst -nocommands -nobackslashes {
-<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/$::markedVersion/lib/marked.umd.min.js" integrity="$::markedIntegrity" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/$::dompurifyVersion/purify.min.js" integrity="$::dompurifyIntegrity" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-}]
-    append html [_ns_stats.mcp.questionScript]
-    return $html
-}
-
-proc _ns_stats.mcp.questionScript {} {
-    return {<script>
-(function () {
- const panel = document.querySelector('.mcp-questions');
- if (!panel) return;
- const form = panel.querySelector('.mcp-question-form');
- const input = panel.querySelector('.mcp-question');
- const backend = panel.querySelector('.mcp-backend');
- const ask = panel.querySelector('.mcp-ask');
- const cancel = panel.querySelector('.mcp-cancel');
- const fresh = panel.querySelector('.mcp-new');
- const status = panel.querySelector('.mcp-question-status');
- const transcript = panel.querySelector('.mcp-conversation');
- const storageKey = 'nsstats-questions:' + panel.dataset.server;
- const evidenceCache = new Map();
- let evidenceConversation = '';
- let conversation = '', timer, running = false, pending = false, generation = 0;
- let selectedBackend = backend ? backend.value : '';
- try {
-   conversation = sessionStorage.getItem(storageKey) || '';
-   if (backend) {
-     const saved = sessionStorage.getItem(storageKey + ':backend');
-     if (saved && Array.from(backend.options).some(option => option.value === saved && !option.disabled)) backend.value = saved;
-     selectedBackend = backend.value;
-   }
- } catch (_) {}
- function rememberBackend(value) {
-   if (!backend) return;
-   backend.value = value; selectedBackend = value;
-   try { sessionStorage.setItem(storageKey + ':backend', value); } catch (_) {}
- }
- function remember(value) {
-   conversation = value;
-   try { if (value) sessionStorage.setItem(storageKey, value); else sessionStorage.removeItem(storageKey); } catch (_) {}
- }
- function statusIcon(state) {
-   const ns = 'http://www.w3.org/2000/svg';
-   const icon = document.createElementNS(ns, 'svg');
-   const working = ['running','cancelling'].includes(state);
-   const complete = ['complete','completed'].includes(state);
-   const failed = state === 'failed';
-   const color = complete ? '#24733d' : failed ? '#b3261e' : working ? '#075b9c' : '#666';
-   const attrs = {viewBox:'0 0 20 20',width:'18',height:'18',fill:'none',stroke:color,'stroke-width':'2',
-     'stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false',
-     class:'mcp-status-icon' + (working ? ' mcp-status-working' : '')};
-   Object.entries(attrs).forEach(([key,value]) => icon.setAttribute(key,value));
-   // Keep geometry and paint usable even if the surrounding page drops the
-   // optional stylesheet or resets SVG presentation properties.
-   Object.assign(icon.style, {display:'inline-block',width:'18px',height:'18px',
-     verticalAlign:'-.15em',marginRight:'.35em',flexShrink:'0',color:color});
-   const shape = document.createElementNS(ns, working || complete || failed ? 'path' : 'circle');
-   if (working) shape.setAttribute('d','M10 2a8 8 0 1 1-8 8');
-   else if (complete) shape.setAttribute('d','M3 10l4 4L17 4');
-   else if (failed) shape.setAttribute('d','M4 4l12 12M16 4L4 16');
-   else {shape.setAttribute('cx','10');shape.setAttribute('cy','10');shape.setAttribute('r','8');}
-   Object.assign(shape.style, {fill:'none',stroke:color,strokeWidth:'2'});
-   icon.append(shape);
-   if (!working && !complete && !failed) {
-     const mark = document.createElementNS(ns, 'path');
-     mark.setAttribute('d', state === 'cancelled' ? 'M4.5 4.5l11 11' : 'M10 5v5l3 2');
-     Object.assign(mark.style, {fill:'none',stroke:color,strokeWidth:'2'});
-     icon.append(mark);
-   }
-   return icon;
- }
- function showStatus(element, state, text) {
-   const label = document.createElement('span'); label.textContent = text;
-   element.replaceChildren(statusIcon(state), label);
- }
- function toolError(tool) {
-   if (tool.status !== 'failed') return '';
-   if (!tool.result && tool.evidenceHandle) return 'Open Details to load error details.';
-   try {
-     const value = JSON.parse(tool.result || 'null');
-     const error = value && value.error;
-     if (typeof error === 'string') return error;
-     if (error && typeof error.message === 'string') return error.message;
-     const texts = value && Array.isArray(value.content) ? value.content.filter(item => item.type === 'text').map(item => item.text) : [];
-     if (texts.length) return texts.join(' ');
-   } catch (_) {}
-   return 'Backend returned no error details.';
- }
- function pretty(text, structured = false) {
-   try {
-     const value = JSON.parse(text);
-     // MCP text often duplicates structuredContent. Hide only that redundant
-     // representation in this view; retain errors and non-text content blocks.
-     if (structured && value && value.structuredContent != null && Array.isArray(value.content)) {
-       value.content = value.content.filter(item => !item || item.type !== 'text');
-       if (!value.content.length) delete value.content;
-     }
-     return JSON.stringify(value, null, 2);
-   } catch (_) { return text; }
- }
- let markdown;
- function renderAnswer(element, text) {
-   element.className = 'mcp-answer';
-   element.style.whiteSpace = 'pre-wrap';
-   element.textContent = text;
-   if (!window.marked || !window.DOMPurify || !window.DOMPurify.isSupported) return;
-   try {
-     // Use an isolated parser: do not change other widgets' marked defaults.
-     if (!markdown) markdown = new window.marked.Marked({
-       gfm: true, breaks: false, renderer: {html() { return ''; }, image() { return ''; }}
-     });
-     const fragment = window.DOMPurify.sanitize(markdown.parse(text), {
-       ALLOWED_TAGS: ['p','br','strong','em','del','blockquote','ul','ol','li',
-         'pre','code','hr','h1','h2','h3','h4','h5','h6','table','thead','tbody','tr','th','td','a'],
-       ALLOWED_ATTR: ['href','title','start'],
-       ALLOW_DATA_ATTR: false, ALLOW_ARIA_ATTR: false,
-       ALLOWED_URI_REGEXP: /^(?:https?:|mailto:|\/(?!\/)|#)/i,
-       RETURN_DOM_FRAGMENT: true
-     });
-     fragment.querySelectorAll('a').forEach(link => link.setAttribute('rel', 'noreferrer noopener'));
-     element.replaceChildren(fragment);
-     element.style.whiteSpace = 'normal';
-   } catch (_) {
-     // Fail closed to the original text if either library cannot render it.
-     element.textContent = text;
-   }
- }
- function render(data) {
-   if (data.conversation && evidenceConversation !== data.conversation) {
-     evidenceCache.clear(); evidenceConversation = data.conversation;
-   }
-   if (data.conversation) remember(data.conversation);
-   if (data.backend) rememberBackend(data.backend);
-   const fragment = document.createDocumentFragment();
-   (data.turns || []).forEach(function (turn) {
-     const article = document.createElement('article');
-     const heading = document.createElement('h4'); heading.textContent = turn.question; article.append(heading);
-     const answer = document.createElement('div');
-     if (turn.answer) renderAnswer(answer, turn.answer);
-     else if (['queued', 'running', 'cancelling'].includes(turn.status || data.status)) {
-       showStatus(answer, 'running', 'Waiting for an answer…');
-     } else answer.textContent = 'No answer received.';
-     article.append(answer);
-     (turn.jobs || []).forEach(function (job) {
-       const row = document.createElement('p');
-       const retained = ['failed', 'cancelled'].includes(turn.status) && ['queued', 'running'].includes(job.status);
-       let text = job.name + ' — ' + (retained ? 'background job retained (last observed ' + job.status + ')' : job.status);
-       const progress = job.progress;
-       if (progress && Number.isFinite(progress.examinedBytes) && Number.isFinite(progress.sourceBytes)) {
-         text += ': ' + (progress.examinedBytes / 1048576).toFixed(1) + ' / ' + (progress.sourceBytes / 1048576).toFixed(1) + 'MiB scanned';
-       }
-       text += '. jobHandle: ' + job.jobHandle;
-       if (retained) {
-         text += '. Progress is no longer being refreshed here; ask a follow-up using this handle. Do not start a duplicate scan.';
-       }
-       showStatus(row, retained ? 'retained' : job.status, text);
-       article.append(row);
-     });
-     (turn.tools || []).forEach(function (tool) {
-       const details = document.createElement('details');
-       const summary = document.createElement('summary');
-       const error = toolError(tool);
-       showStatus(summary, tool.status, tool.name + ' — ' + tool.status + (error ? ': ' + error.slice(0,240) : '') + (tool.truncated ? ' (result omitted)' : ''));
-       details.append(summary);
-       const args = document.createElement('pre'); args.style.whiteSpace = 'pre-wrap'; args.style.overflowWrap = 'anywhere'; args.textContent = 'Arguments\n' + pretty(tool.arguments); details.append(args);
-       const result = document.createElement('pre'); result.style.whiteSpace = 'pre-wrap'; result.style.overflowWrap = 'anywhere'; result.style.maxHeight = '28rem'; result.style.overflow = 'auto'; result.textContent = 'Result\n' + pretty(tool.result, true); details.append(result);
-       if (tool.evidenceHandle && !tool.result) {
-         result.textContent = 'Expand to load retained evidence.';
-         details.addEventListener('toggle', async function () {
-           if (!details.open) return;
-           const key = tool.evidenceHandle;
-           try {
-             if (!evidenceCache.has(key)) evidenceCache.set(key, request('evidence', {evidenceHandle:key}));
-             const evidence = await evidenceCache.get(key);
-             result.textContent = 'Result\n' + pretty(evidence.result, true);
-           } catch (error) {
-             evidenceCache.delete(key);
-             result.textContent = 'Evidence unavailable: ' + error.message;
-           }
-         });
-       }
-       article.append(details);
-     });
-     if (turn.error) { const error = document.createElement('p'); error.textContent = turn.error; error.setAttribute('role', 'alert'); article.append(error); }
-     fragment.append(article);
-   });
-   transcript.replaceChildren(fragment);
-   running = ['queued', 'running', 'cancelling'].includes(data.status);
-   ask.disabled = running; input.disabled = running; fresh.disabled = running;
-   cancel.disabled = !running || data.status === 'cancelling';
-   if (backend) backend.disabled = running;
-   if (data.status) showStatus(status, data.status, data.status); else status.textContent = '';
-   clearTimeout(timer);
-   if (running) timer = setTimeout(poll, 1000);
- }
- function conversationUnavailable(error) {
-   ++generation;
-   clearTimeout(timer);
-   remember('');
-   evidenceCache.clear(); evidenceConversation = '';
-   running = false;
-   ask.disabled = false; input.disabled = false; fresh.disabled = false;
-   cancel.disabled = true;
-   if (backend) backend.disabled = false;
-   error.message = 'Conversation unavailable. Start a new conversation or select another backend. Background job handles remain visible above.';
-   status.textContent = error.message;
- }
- async function request(action, extra) {
-   const requestGeneration = generation;
-   const fields = {'@page':'mcp', mcpQuestionAction:action, conversation:conversation};
-   if (action === 'send' && selectedBackend) fields.backend = selectedBackend;
-   const body = new URLSearchParams(Object.assign(fields, extra || {}));
-   const response = await fetch(window.location.pathname, {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8', 'X-Nsstats-MCP-Token':panel.dataset.token, 'X-Requested-With':'XMLHttpRequest'}, body:body.toString()});
-   const type = response.headers.get('content-type') || '';
-   if (!response.ok) {
-     if (response.status === 410 && type.includes('application/json')) {
-       const data = await response.json();
-       const error = new Error(data.message || 'Conversation unavailable');
-       error.code = data.code;
-       if (error.code === 'conversation_unavailable' && generation === requestGeneration) conversationUnavailable(error);
-       throw error;
-     }
-     throw new Error(await response.text());
-   }
-   if (!type.includes('application/json')) throw new Error('The server did not return JSON; check your admin session.');
-   return response.json();
- }
- async function poll() {
-   const requestGeneration = generation;
-   const wasRunning = running;
-   try {
-     const data = await request('poll');
-     if (generation === requestGeneration && !(wasRunning && !running)) render(data);
-   }
-   catch (error) {
-     if (generation !== requestGeneration || error.code === 'conversation_unavailable') return;
-     status.textContent = error.message;
-     // A network/session failure must not hide an active job or prevent cancel.
-     if (running) timer = setTimeout(poll, 3000);
-     else { remember(''); ask.disabled = false; input.disabled = false; fresh.disabled = false; if (backend) backend.disabled = false; }
-   }
- }
- form.addEventListener('submit', async function (event) {
-   event.preventDefault();
-   if (running || pending || !input.value.trim()) return;
-   pending = true; ask.disabled = true; fresh.disabled = true; if (backend) backend.disabled = true; status.textContent = 'Sending…';
-   try { render(await request('send', {question:input.value})); input.value = ''; }
-   catch (error) { status.textContent = error.message; ask.disabled = false; fresh.disabled = false; if (backend) backend.disabled = false; }
-   finally { pending = false; }
- });
- cancel.addEventListener('click', async function () {
-   try { render(await request('cancel')); } catch (error) { status.textContent = error.message; }
- });
- async function startNew() {
-   if (conversation) {
-     try { await request('forget'); }
-     catch (error) { if (error.code !== 'conversation_unavailable') throw error; }
-   }
-   ++generation; clearTimeout(timer);
-   remember(''); evidenceCache.clear(); evidenceConversation = ''; transcript.replaceChildren(); status.textContent = ''; input.value = ''; input.focus();
- }
- fresh.addEventListener('click', async function () {
-   if (running || pending) return;
-   pending = true; ask.disabled = true; fresh.disabled = true; if (backend) backend.disabled = true;
-   try { await startNew(); }
-   catch (error) { status.textContent = error.message; }
-   finally { pending = false; ask.disabled = false; fresh.disabled = false; if (backend) backend.disabled = false; }
- });
- if (backend) backend.addEventListener('change', async function () {
-   if (running || pending) { backend.value = selectedBackend; return; }
-   const next = backend.value;
-   const draft = input.value;
-   pending = true; ask.disabled = true; fresh.disabled = true; backend.disabled = true;
-   try { await startNew(); input.value = draft; rememberBackend(next); }
-   catch (error) { backend.value = selectedBackend; status.textContent = error.message; }
-   finally { pending = false; ask.disabled = false; fresh.disabled = false; backend.disabled = false; }
- });
- if (conversation) poll();
-})();
-</script>}
-}
-
-proc _ns_stats.mcp {} {
-    if {[info commands ::nsmcp::ToolRegistry] eq ""} {
-        return "[_ns_stats.header MCP]<p>The nsmcp module is not active.</p>[_ns_stats.footer]"
-    }
-    if {[ns_queryget mcpQuestionAction ""] ne ""} {
-        return [_ns_stats.mcp.questionAction]
-    }
-    if {[ns_queryget mcpToolState ""] ne ""} {
-        return [_ns_stats.mcp.toolState]
-    }
-    if {[ns_queryget mcpInspect ""] ne ""} {
-        return [_ns_stats.mcp.inspect]
-    }
-    set html [_ns_stats.header "MCP"]
-    set server [ns_info server]
-    set section ns/server/$server/module/nsmcp
-    append html "<p>Server: <strong>[ns_quotehtml $server]</strong>. Open Inspect result in a tool’s Details to execute it on demand; page loading does not execute tools. Tool switches take effect at runtime; other configuration changes require module initialization or restart.</p>"
-    append html [_ns_stats.mcp.questionPanel]
-
-    if {[info commands ::nsmcp::tools] ne ""} {
-        if {[catch {::nsmcp::tools describe} tools]} {
-            append html "<p>Tool inspection unavailable; update nsmcp to provide registry describe.</p>"
-        } else {
-            set rows {}
-            set token ""
-            if {[info commands ::nsmcp::protocol] ne ""} {
-                set token [_ns_stats.mcp.token]
-            }
-            set controls false
-            if {$token ne "" && ![catch {::nsmcp::tools controlsAvailable} supported]
-                && [string is boolean -strict $supported] && $supported} {
-                set controls true
-            }
-            foreach tool $tools {
-                set enabled [expr {![dict exists $tool enabled] || [dict get $tool enabled]}]
-                set state [expr {[dict exists $tool enabled] ? ($enabled ? "Enabled" : "Disabled") : "Registered"}]
-                set inspectToken [expr {$enabled ? $token : ""}]
-                set row [list [dict get $tool name] $state \
-                    [_ns_stats.mcp.toolSummary $tool] [dict get $tool permission] \
-                    [list [dict get $tool description] [dict get $tool inputSchema] \
-                        [_ns_stats.mcp.toolExample [dict get $tool name]] $inspectToken]]
-                if {$controls} {
-                    lset row 1 [list $state [dict get $tool name] $enabled $token]
-                }
-                lappend rows $row
-            }
-            set columns {{Tool name} Status Purpose {Required permission} {Tool details}}
-            append html "<p>Use these exact tool names in client queries. Open Details for arguments and a selectable example query.</p>"
-            if {$controls} {
-                append html "<p>Tool switches affect all MCP clients on this virtual server. Runtime changes survive reloads but reset on process restart. Disabling a tool prevents new calls; existing jobs and collectors continue. Clients may need to refresh their tool list.</p>"
-            }
-            append html [_ns_stats.mcp.table "Available tools" $columns $rows]
-            if {$controls} {
-                append html [_ns_stats.mcp.toolControlScript]
-            }
-        }
-    }
-
-    set version Unknown
-    set tag Unknown
-    if {![catch {ns_server -server $server modules} modules]
-        && [dict exists $modules nsmcp]} {
-        set module [dict get $modules nsmcp]
-        foreach key {version tag} {
-            if {[dict exists $module $key] && [dict get $module $key] ne ""} {
-                set $key [dict get $module $key]
-            }
-        }
-    }
-    append html [_ns_stats.mcp.table "Module version" {Module Version {Build tag}} \
-        [list [list nsmcp $version $tag]]]
-    append html "<p>Version and build tag come from NaviServer's loaded-module metadata. Unknown means the module does not report that information. Individual tools have no separate version.</p>"
-
-    if {[info commands ::nsmcp::questions] ne ""} {
-        if {![catch {::nsmcp::questions describe} backend]} {
-            set rows {}
-            dict for {key value} $backend {lappend rows [list $key $value]}
-            append html [_ns_stats.mcp.table "Default question backend" {Setting Value} $rows]
-            if {![catch {::nsmcp::questions choices} choices] && [dict exists $choices backends]} {
-                set rows {}
-                dict for {name entry} [dict get $choices backends] {
-                    set model ""
-                    if {[dict exists $entry model]} {set model [dict get $entry model]}
-                    set state Available
-                    set reason "Settings validated; provider connection is checked when a question runs."
-                    if {![dict get $entry available]} {
-                        set state Unavailable
-                        set reason [dict get $entry reason]
-                    }
-                    lappend rows [list $name $state $model $reason]
-                }
-                append html [_ns_stats.mcp.table "Question backend availability" {Backend Status Model Details} $rows]
-            }
-        }
-    }
-
-    set objects {
-        auth Authentication {Authenticate bearer tokens.}
-        credentials Credentials {Load named token files and permission policies.}
-        server {HTTP endpoint} {Receive MCP HTTP requests.}
-        database {SQLite cache} {Store bounded analytics data.}
-        logService {Log service} {Manage log searches, correlation and redaction.}
-        accessAnalytics {Access analytics} {Ingest and aggregate access-log records.}
-    }
-    set rows {}
-    foreach {name label purpose} $objects {
-        set present [expr {[info commands ::nsmcp::$name] ne ""}]
-        lappend rows [list $label [expr {$present ? "Initialized" : "Not initialized"}] $purpose]
-    }
-    append html [_ns_stats.mcp.table "Runtime components" {Component Status Purpose} $rows]
-    append html "<p>Initialized means the component object exists; it is not a health or coverage guarantee.</p>"
-
-    foreach {heading options} {
-        {HTTP and authentication} {
-            enableHttp false path /mcp allowedOrigins {} credentials {}
-        }
-        {Question answering} {
-            enableQuestions false questionBackend codex questionModel {} questionMcpTokenFile {}
-            questionTimeout 180s questionLifetime 1h
-            questionMaxConversations 20 questionMaxTurns 20 questionMaxResultBytes 128KiB
-            questionMaxBytes 2MiB questionMaxEvidenceBytes 16MiB questionEvidenceDirectory {}
-        }
-        {Codex question backend} {
-            questionCodexCommand codex questionCodexModel {} questionMcpUrl {} questionMcpHost {} questionDirectory {}
-        }
-        {Chat Completions question backend} {
-            questionApiUrl {} questionApiKeyFile {} questionApiModel {} questionApiOptions {{}}
-            questionMaxOutputTokens 4096 questionMaxToolCalls 32 questionMaxApiRequests 16 questionMaxResponseBytes 8MiB
-        }
-        {Log tools} {
-            enableLogTools false systemLog {} accessLog {} cacheDirectory {}
-        }
-        {SMTP log tools} {
-            enableSmtpTools false smtpLogReadBytes 1MiB
-        }
-        {Access analytics and database} {
-            enableAccessAnalytics false databasePool {} databaseMaxBytes 1GiB
-            accessIngestInterval 5s accessMaxRows 2000000 accessRetention 24h
-            accessTimingColumn -1
-        }
-        {Runtime diagnostics and history} {
-            enableStatsTools true
-        }
-    } {
-        set rows {}
-        foreach {key default} $options {
-            set configured [ns_config $section $key ""]
-            if {$configured eq ""} {
-                lappend rows [list $key $default "Default / unset"]
-            } else {
-                lappend rows [list $key $configured "Configured"]
-            }
-        }
-        append html [_ns_stats.mcp.table $heading {Parameter Value Source} $rows]
-    }
-
-    set rows {}
-    foreach {key default} [list server [lindex [ns_info servers] 0] \
-                              sampling false samplingInterval 10s \
-                              historyPool {} historyRetention 24h historyMaxBytes 64MiB] {
-        set value [ns_config ns/stats $key $default]
-        lappend rows [list $key $value]
-    }
-    append html [_ns_stats.mcp.table "Core diagnostics startup settings (ns/stats)" {Parameter Value} $rows]
-    append html "<p>Sampling and persistence are configured by ns_stats, independently of MCP. Runtime status below may differ from startup settings.</p>"
-
-    set rows {}
-    foreach {object properties} {
-        server {path}
-        http {allowedOrigins maxBodyBytes}
-        database {pool maxBytes}
-        questions {queue lifetime maxConversations maxTurns maxBytes maxEvidenceBytes evidenceDirectory}
-        logService {queue lifetime maxJobs}
-        accessAnalytics {path maxRows retentionSeconds maxReadBytes maxLineBytes maxSeconds}
-    } {
-        set command ::nsmcp::$object
-        if {[info commands $command] eq ""} {
-            continue
-        }
-        foreach property $properties {
-            if {![catch {$command cget -$property} value]} {
-                lappend rows [list $object $property $value]
-            }
-        }
-    }
-    append html [_ns_stats.mcp.table "Active component settings" {Component Setting Value} $rows]
-    append html "<p>Active component settings reflect initialized objects; configuration tables above show startup values and defaults.</p>"
-
-    if {[info commands ::nsmcp::logDiscovery] ne ""} {
-        if {[catch {::nsmcp::logDiscovery discover} discovery]} {
-            append html "<p>Log discovery unavailable.</p>"
-        } else {
-            set rows {}
-            foreach kind {system access} {
-                set entry [dict get $discovery $kind]
-                lappend rows [list $kind [dict get $entry path] [dict get $entry origin] \
-                    [dict get $entry exists] [dict get $entry readable]]
-            }
-            append html [_ns_stats.mcp.table "Discovered logs" {Log Path Origin Exists Readable} $rows]
-        }
-    }
-
-    if {[info commands ::nsmcp::credentials] ne ""} {
-        if {[catch {::nsmcp::credentials describe} credentials]} {
-            append html "<p>Credential policy status unavailable.</p>"
-        } else {
-            set rows {}
-            dict for {name entry} $credentials {
-                set row [list $name]
-                foreach key {principal permissions targets expires status tokenFile} {
-                    lappend row [expr {[dict exists $entry $key] ? [dict get $entry $key] : "unknown"}]
-                }
-                lappend rows $row
-            }
-            append html [_ns_stats.mcp.table "Credential policies" \
-                {Name Principal Permissions Servers {Expiry epoch (0: none)} Status {Token file path}} $rows]
-            append html "<p>Token contents and digests are omitted. Tool visibility depends on each credential's permissions.</p>"
-        }
-    }
-
-    if {[info commands ::ns_stats] ne ""} {
-        foreach {command heading} {sampling Sampling history {History persistence}} {
-            if {[catch {ns_stats $command status} status]} {
-                append html "<p>[ns_quotehtml $heading] status unavailable.</p>"
-            } else {
-                set rows {}
-                dict for {key value} $status {
-                    lappend rows [list $key $value]
-                }
-                append html [_ns_stats.mcp.table $heading {Metric Value} $rows]
-            }
-        }
-    }
-    append html [_ns_stats.footer]
-    return $html
-}
-
 proc _ns_stats.mem.adp {} {
     set col         [ns_queryget col 1]
     set reverseSort [ns_queryget reversesort 1]
@@ -6591,7 +5638,7 @@ proc _ns_stats.smtp.quarantine.navigation {view} {
 }
 
 proc _ns_stats.smtp.quarantine.tokenKey {} {
-    return smtp-quarantine:[_ns_stats.mcp.identity]
+    return smtp-quarantine:[_ns_stats.identity]
 }
 
 proc _ns_stats.smtp.quarantine.token {} {
@@ -7808,7 +6855,7 @@ if {$::raw eq "1"} {
     set ::rawparam "&raw=1"
 }
 
-if { [info commands _ns_stats.$page] eq "" } {
+if { ![dict exists $::pluginPages $page] && (![dict exists $::titles $page] || [info commands _ns_stats.$page] eq "") } {
     set page process
 }
 
@@ -7898,7 +6945,7 @@ if { !$allowed } {
 } else {
     # Produce page
     ns_set iupdate [ns_conn outputheaders] "expires" "now"
-    set html [_ns_stats.$page]
+    set html [_ns_stats.renderPage $page]
     if {$html ne ""} {
         if {[info exists ::ad_conn(file)]} {
             set path $::ad_conn(file)
