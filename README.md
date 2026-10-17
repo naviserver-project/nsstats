@@ -289,6 +289,16 @@ visible transcript and job handles remain available for inspection. Temporary
 network failures continue to retry and keep cancellation available.
 
 
+## Runtime compatibility
+
+Base nsstats remains usable on the supported NaviServer 4.99 series without
+nsmcp, NSF/NX, `ns_stats`, or `ns_json`. Optional pages and newer diagnostics are
+shown only when their facilities are available; existing collectors remain the
+fallback. The extension registry uses legacy server-scoped `nsv_array get` and
+ADP parsing APIs. A missing registry means no extension pages, not an error.
+Installing nsstats does not require installing nsmcp or its model backends.
+A client module's own minimum NaviServer version does not raise nsstats' minimum.
+
 ## Module-provided admin pages
 
 Modules can publish reusable ADP pages without copying their UI into nsstats.

@@ -39,6 +39,14 @@ parameters below. Generate the committed include with [const {make regen-config-
 For the complete web-interface guide, see
 [uri https://github.com/naviserver-project/nsstats/blob/main/README.md {the repository README}].
 [keywords monitoring statistics configuration ns_stats]
+[section {LEGACY RUNTIME COMPATIBILITY}]
+Base nsstats continues to support the documented NaviServer 4.99 series without
+nsmcp, NSF/NX, ns_stats or ns_json. Optional facilities are probed and omitted
+when unavailable; existing collection fallbacks remain. Extension discovery uses
+legacy server-scoped nsv_array get and ADP parsing APIs. A missing registry adds
+no pages and does not prevent built-in dispatch. Client module requirements do
+not change the host's minimum runtime version.
+
 [section {MODULE ADMIN PAGES}]
 Modules publish reusable ADPs through the server-scoped nsstats:plugins NSV
 array. Each provider key holds a dictionary mapping page IDs to descriptors.
