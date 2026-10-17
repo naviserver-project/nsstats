@@ -493,7 +493,7 @@ table.config {font-size: 0.9rem;}
 .nowrap {white-space: nowrap;}
   </style>
   <%= $::extraHeadEntries %>
-<%= [_ns_stats.navigation.style] %>
+<%= [::_ns_stats.navigation.style] %>
 </head>
 
 <body>
@@ -504,7 +504,7 @@ table.config {font-size: 0.9rem;}
         set timestamp [clock format $seconds -format "%Y-%m-%dT%H:%M:%S"]
         append timestamp [format ".%06d" [ns_time microseconds $now]] [clock format $seconds -format "%z"]
     } else {
-        set timestamp [_ns_stats.fmtTime [ns_time seconds $now]]
+        set timestamp [::_ns_stats.fmtTime [ns_time seconds $now]]
     }
 %>
 
@@ -519,8 +519,8 @@ table.config {font-size: 0.9rem;}
 </header>
 
 <!-- Navigation and current location -->
-<%= [_ns_stats.navigation] %>
-<div class="breadcrumbs"><%= [_ns_stats.navigation.breadcrumb] %><span style="float:right"><%= [_ns_stats.measurementControls] %>Raw: <a href="<%= [ns_quotehtml $::rawUrl] %>"><%= $::rawLabel %></a></span></div>
+<%= [::_ns_stats.navigation] %>
+<div class="breadcrumbs"><%= [::_ns_stats.navigation.breadcrumb] %><span style="float:right"><%= [::_ns_stats.measurementControls] %>Raw: <a href="<%= [ns_quotehtml $::rawUrl] %>"><%= $::rawLabel %></a></span></div>
 
 <!-- Main Container -->
 <div class="main-container">
