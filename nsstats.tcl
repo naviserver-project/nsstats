@@ -303,6 +303,9 @@ proc ::_ns_stats.navigation.style {} {
 .ns-nav-items a:hover,.ns-nav-items a[aria-current] {background:var(--color-dropdown-hover-bg,#e6eef7);}
 .ns-nav-mobile {display:none;}
 .ns-measurement-controls input[name="statsWindow"] {width:6em;box-sizing:border-box;padding:3px 6px;border:1px solid var(--color-border,#888);background:var(--color-body-bg,#fff);color:var(--color-body-text,#000);opacity:1;}
+.ns-module-reload {display:inline-block;margin:0 0 0 6px;vertical-align:middle;}
+.ns-module-reload button {display:inline-flex;align-items:center;justify-content:center;padding:4px;border:1px solid var(--color-border,#888);border-radius:3px;background:var(--color-body-bg,#fff);color:var(--color-anchor,#004080);cursor:pointer;}
+.ns-module-reload button:focus-visible {outline:2px solid currentColor;outline-offset:2px;}
 .ns-scope {font-size:11px;white-space:nowrap;opacity:.75;}
 .ns-server-context {padding:8px 15px;font-size:13px;background:var(--color-secondary-bg,#f1f1f1);color:var(--color-body-text,#000);}
 .ns-directory li a {display:flex;justify-content:space-between;gap:12px;}
@@ -4338,6 +4341,86 @@ proc ::_ns_stats.process.dbversion {pool} {
     return $result
 }
 
+# The reload implementation and its entry point are installed together. Older
+# releases have ns_module metadata/name support without the reload operation.
+proc ::_ns_stats.process.reloadAvailable {} {
+    expr {[info commands ::ns_module] ne ""
+        && [info commands ::_ns_module_reload] ne ""
+        && [info commands ::ns_crypto::randombytes] ne ""}
+}
+
+proc ::_ns_stats.process.reloadKey {} {
+    return module-reload:[::_ns_stats.identity]
+}
+
+proc ::_ns_stats.process.reloadToken {} {
+    set key [::_ns_stats.process.reloadKey]
+    if {![nsv_exists _ns_stats $key]} {
+        nsv_set _ns_stats $key [ns_crypto::randombytes -encoding hex 32]
+    }
+    return [nsv_get _ns_stats $key]
+}
+
+proc ::_ns_stats.process.reloadButton {module} {
+    set name [ns_quotehtml $module]
+    set token [::_ns_stats.process.reloadToken]
+    return "<form class='ns-module-reload' method='post' action='[ns_quotehtml [ns_conn url]]'>\
+        <input type='hidden' name='@page' value='process'>\
+        <input type='hidden' name='moduleReloadAction' value='reload'>\
+        <input type='hidden' name='moduleReloadName' value='$name'>\
+        <input type='hidden' name='moduleReloadToken' value='[ns_quotehtml $token]'>\
+        <button type='submit' title='Reload Tcl definitions for $name' aria-label='Reload Tcl module $name'>\
+        <svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' aria-hidden='true'>\
+        <path d='M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M18 17a7 7 0 0 1-12 1l-2-6'/></svg></button></form>"
+}
+
+# Only called by process after the ordinary nsstats authorization check.
+proc ::_ns_stats.process.reload {} {
+    ns_set iupdate [ns_conn outputheaders] Cache-Control no-store
+    if {[ns_conn method] ne "POST"} {
+        ns_return 405 text/plain "Use POST to reload a Tcl module."
+        return ""
+    }
+    set key [::_ns_stats.process.reloadKey]
+    set token [ns_queryget moduleReloadToken {}]
+    if {$token eq "" || ![nsv_exists _ns_stats $key] || $token ne [nsv_get _ns_stats $key]} {
+        ns_return 403 text/plain "Invalid module reload token; reload the process page."
+        return ""
+    }
+    if {![::_ns_stats.process.reloadAvailable]} {
+        ns_return 501 text/plain "Tcl module reload is unavailable on this NaviServer."
+        return ""
+    }
+    set module [ns_queryget moduleReloadName {}]
+    if {[ns_queryget moduleReloadAction {}] ne "reload"} {
+        ns_return 400 text/plain "Invalid module reload action."
+        return ""
+    }
+    if {[catch {ns_server -server [ns_info server] modules} modules]
+        || ![dict exists $modules $module type]
+        || [dict get $modules $module type] ne "tcl-module"} {
+        ns_return 400 text/plain "Select a loaded Tcl module in the current virtual server."
+        return ""
+    }
+    if {[catch {ns_module reload $module} files]} {
+        ns_return 409 text/plain "Tcl module reload failed: $files"
+        return ""
+    }
+    nsv_set _ns_stats $key:result [list $module [llength $files]]
+    ns_set iupdate [ns_conn outputheaders] Location "[ns_conn url]?@page=process"
+    ns_return 303 text/plain "Tcl module reloaded."
+    return ""
+}
+
+proc ::_ns_stats.process.reloadNotice {} {
+    if {![::_ns_stats.process.reloadAvailable]} {return ""}
+    set key [::_ns_stats.process.reloadKey]:result
+    if {![nsv_exists _ns_stats $key]} {return ""}
+    lassign [nsv_get _ns_stats $key] module count
+    nsv_unset _ns_stats $key
+    return "<p role='status'>Reloaded Tcl module [ns_quotehtml $module] ($count affected Tcl files). The updated blueprint is published; active interpreters adopt it through normal propagation.</p>"
+}
+
 proc ::_ns_stats.process.modules {server} {
     if {[catch {ns_server -server $server modules} modules]} {
         # Older NaviServer releases only provide the registered module names.
@@ -4353,6 +4436,7 @@ proc ::_ns_stats.process.modules {server} {
             if {$driver ne ""} {lappend poolDrivers $driver}
         }
     }
+    set reloadAvailable [::_ns_stats.process.reloadAvailable]
     set columns {
         {} Module name Name type Type version Version tag Tag scope Scope
         file File
@@ -4378,6 +4462,10 @@ proc ::_ns_stats.process.modules {server} {
                 set value [dict get $info $key]
             }
             set cell [ns_quotehtml $value]
+            if {$key eq "" && $reloadAvailable && $server eq [ns_info server]
+                && [dict exists $info type] && [dict get $info type] eq "tcl-module"} {
+                append cell [::_ns_stats.process.reloadButton $module]
+            }
             if {$key eq "tag" && [dict exists $info name]} {
                 # Metadata has no repository URL; only link known modules.
                 set name [dict get $info name]
@@ -4631,6 +4719,9 @@ proc ::_ns_stats.lsof {pid} {
 }
 
 proc ::_ns_stats.process {} {
+    if {[ns_queryget moduleReloadAction {}] ne ""} {
+        return [::_ns_stats.process.reload]
+    }
     set runtimeSnapshot [::_ns_stats.runtimeSnapshot]
     if {[info commands ns_driver] ne ""} {
         #
@@ -4806,6 +4897,7 @@ proc ::_ns_stats.process {} {
                    ]
 
     set html [::_ns_stats.header Process]
+    append html [::_ns_stats.process.reloadNotice]
     append html [::_ns_stats.utilization.sourcePanel [dict create coreSnapshot $runtimeSnapshot] process]
     append html [::_ns_stats.process.table $values]
 

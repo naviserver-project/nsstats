@@ -215,6 +215,14 @@ names, module names and types, versions, build tags, scopes, and
 files. Missing optional metadata leaves blank cells. Earlier
 NaviServer versions retain the sorted module-name list from `ns_ictl getmodules`.
 
+On servers with `ns_module reload`, a circular-arrow button beside each Tcl
+module in the current virtual server reloads its definitions and dependent Tcl
+files, then publishes the updated blueprint. It uses the normal admin access,
+POST and an admin-bound token. Reload errors are reported directly. Startup-only
+`init.tcl` is excluded by the core loader; module code must support repeated
+evaluation. Native/mixed modules and other virtual servers have no reload button.
+Older NaviServer versions retain their existing display without this control.
+
 Recognized Git build tags for core modules and nsdbpg, nsdbsqlite, nsdns, and
 nssmtpd link to commits in their GitHub repositories. Unknown modules or tags
 without a commit hash remain plain text.
