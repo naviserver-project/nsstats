@@ -5771,12 +5771,9 @@ proc ::_ns_stats.log.chart {path section param title} {
 
     foreach line [split $logcontent \n] {
         #if {$count>10} break
-        if {[string length $line] < 15} {
-            break
-        }
-        incr count
-        set data [::_ns_stats.log.chart.parse-$section $line]
+        if {[string trim $line] eq ""} {continue}
         try {
+            set data [::_ns_stats.log.chart.parse-$section $line]
             dict with data {
                 #
                 # Convert time to UTC format for JavaScript: 13/Nov/2022:00:19:49 +0100
@@ -5786,6 +5783,7 @@ proc ::_ns_stats.log.chart {path section param title} {
                 #
                 set ts [clock scan $ts0 -gmt 1 -format {%d/%b/%Y:%H:%M:%S}]
 
+                incr count
                 dict lappend responsetime $host $ts $elapsed
                 dict incr requestcount0 [list $host $ts]
                 if {[dict exists $hostInfos $host]} {
@@ -5813,6 +5811,9 @@ proc ::_ns_stats.log.chart {path section param title} {
             ns_log warning ::_ns_stats.log.chart: cannot parse <$line>: $errorMsg
             continue
         }
+    }
+    if {$count == 0} {
+        return "[::_ns_stats.log.fileform $logfiles $path [ns_queryget @page {}]]<p>No usable log entries found in [ns_quotehtml $path].</p>"
     }
     set t1 [clock milliseconds]
     set responsetimeSeries {}
@@ -6010,6 +6011,7 @@ proc ::_ns_stats.log.mkchart {section param title {renderer ::_ns_stats.log.char
             try {
                 set HTML [{*}$renderer $logfile $section $param $title]
             } on error {message options} {
+                ns_log error "nsstats: cannot render $section $param log $logfile: [dict get $options -errorinfo]"
                 set HTML "<p>Cannot read log: [ns_quotehtml $message]</p>"
             }
         }
