@@ -4137,6 +4137,52 @@ proc ::_ns_stats.mem.historyCached {cache {message {}}} {
     return $html
 }
 
+# Simplify one continuous SVG segment in viewBox pixels. Extrema (including
+# plateau edges) are anchors, so even a subpixel peak is never discarded.
+proc ::_ns_stats.mem.historySimplify {points {tolerance 0.5}} {
+    set count [llength $points]
+    if {$count < 3} {return $points}
+    set anchors {0}
+    for {set i 1} {$i < $count-1} {incr i} {
+        set before [lindex $points [expr {$i-1}] 1]
+        set value [lindex $points $i 1]
+        set after [lindex $points [expr {$i+1}] 1]
+        if {($value >= $before && $value >= $after && ($value > $before || $value > $after))
+            || ($value <= $before && $value <= $after && ($value < $before || $value < $after))} {
+            lappend anchors $i
+        }
+    }
+    lappend anchors [expr {$count-1}]
+    set keep {}; set pending {}; set previous [lindex $anchors 0]
+    foreach index $anchors {
+        dict set keep $index 1
+        if {$index != $previous} {lappend pending [list $previous $index]}
+        set previous $index
+    }
+    # Iterative subdivision avoids deep Tcl recursion on irregular histories.
+    while {[llength $pending]} {
+        lassign [lindex $pending end] start end
+        set pending [lrange $pending 0 end-1]
+        lassign [lindex $points $start] x1 y1
+        lassign [lindex $points $end] x2 y2
+        set largest $tolerance; set split -1
+        for {set i [expr {$start+1}]} {$i < $end} {incr i} {
+            lassign [lindex $points $i] x y
+            if {$x2 == $x1} {set distance [expr {abs($y-$y1)}]} else {
+                set distance [expr {abs($y-($y1+($y2-$y1)*($x-$x1)/double($x2-$x1)))}]
+            }
+            if {$distance > $largest} {set largest $distance; set split $i}
+        }
+        if {$split >= 0} {
+            dict set keep $split 1
+            lappend pending [list $start $split] [list $split $end]
+        }
+    }
+    set result {}
+    foreach index [lsort -integer [dict keys $keep]] {lappend result [lindex $points $index]}
+    return $result
+}
+
 proc ::_ns_stats.mem.historySvg {points} {
     set metrics {current_allocated_bytes {Allocated} #0072b2 heap_size {Heap} #d55e00 total_physical_bytes {Physical} #009e73}
     set valid {}
@@ -4203,8 +4249,11 @@ proc ::_ns_stats.mem.historySvg {points} {
                 lassign $pair stamp value
                 set x [expr {68+674.0*($stamp-$first)/($last-$first)}]
                 set y [expr {164-144.0*$value/$maximum}]
-                lappend coordinates [format %.2f,%.2f $x $y]
+                lappend coordinates [list $x $y]
             }
+            set coordinates [lmap pair [::_ns_stats.mem.historySimplify $coordinates] {
+                format %.2f,%.2f {*}$pair
+            }]
             if {[llength $coordinates] == 1} {
                 lassign [split [lindex $coordinates 0] ,] x y
                 append lines "<circle cx='$x' cy='$y' r='2' fill='$color'/>"
