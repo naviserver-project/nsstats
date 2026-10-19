@@ -4127,6 +4127,22 @@ proc ::_ns_stats.mem.historyQuery {args} {
     return -options $options $result
 }
 
+# Probe the method signature without attempting a database read. A supported
+# query failure is reported, never hidden by retrying the legacy reader.
+proc ::_ns_stats.mem.historyRead {minutes} {
+    if {![catch {ns_stats info lookup syntax {history allocator}} syntax]
+        && [string match {*-from*} $syntax]} {
+        set to [clock seconds]
+        set result [::_ns_stats.mem.historyQuery history allocator -from [expr {$to-$minutes*60}] -to $to -limit 10000]
+        return [dict create available true source sqlite points [dict get $result records] \
+            coverage [dict get $result coverage] truncated [dict get $result more] pages 1 \
+            timings [dict get $result timings] legacyDecoded [dict get $result legacyDecoded] reader compact]
+    }
+    set result [::_ns_stats.utilization.readHistory $minutes ::_ns_stats.mem.historyPoint ::_ns_stats.mem.historyQuery]
+    dict set result reader legacy
+    return $result
+}
+
 proc ::_ns_stats.mem.historyCached {cache {message {}}} {
     set html [::_ns_stats.dictGetDef $cache html {}]
     if {$html ne ""} {
@@ -4325,6 +4341,7 @@ proc ::_ns_stats.mem.history {} {
         return [::_ns_stats.mem.historyCached $cache "Allocator history refresh is in progress; showing the last available chart, if any."]
     }
     try {
+        set refreshStarted [clock microseconds]
         set minutes [expr {$persistent ? 1440 : 15}]
         set cutoff [expr {($now-$minutes*60)*1000000}]
         if {$persistent} {
@@ -4349,7 +4366,15 @@ proc ::_ns_stats.mem.history {} {
         } else {
             set minutes [expr {max(1,min($minutes,int(ceil(($now-$cutoff/1000000.0)/60.0))))}]
         }
-        set report [::_ns_stats.utilization.readHistory $minutes ::_ns_stats.mem.historyPoint ::_ns_stats.mem.historyQuery]
+        set readStarted [clock microseconds]
+        set metadataMs [expr {($readStarted-$refreshStarted)/1000.0}]
+        if {$persistent} {
+            set report [::_ns_stats.mem.historyRead $minutes]
+        } else {
+            set report [::_ns_stats.utilization.readHistory $minutes ::_ns_stats.mem.historyPoint ::_ns_stats.mem.historyQuery]
+            dict set report reader memory
+        }
+        set readMs [expr {([clock microseconds]-$readStarted)/1000.0}]
         if {![dict get $report available]} {error [dict get $report reason]}
         set merged {}
         foreach point [concat $points [dict get $report points]] {
@@ -4360,7 +4385,15 @@ proc ::_ns_stats.mem.history {} {
         foreach stamp [lsort -integer [dict keys $merged]] {lappend points [dict get $merged $stamp]}
         set capped [expr {[llength $points]>10000}]
         if {$capped} {set points [lrange $points end-9999 end]}
+        set svgStarted [clock microseconds]
         set html [::_ns_stats.mem.historySvg $points]
+        set svgMs [expr {([clock microseconds]-$svgStarted)/1000.0}]
+        set timing [dict create reader [dict get $report reader] metadataMs $metadataMs readMs $readMs svgMs $svgMs \
+            totalMs [expr {([clock microseconds]-$refreshStarted)/1000.0}] \
+            samples [llength $points] pages [dict get $report pages]]
+        if {[dict exists $report timings]} {dict set timing query [dict get $report timings]}
+        if {[dict exists $report legacyDecoded]} {dict set timing legacyDecoded [dict get $report legacyDecoded]}
+        ns_log notice "nsstats: allocator history refresh: $timing"
         if {$html ne ""} {
             set source [expr {$persistent ? "Persistent history, up to the last 24 hours" : "In-memory history, up to the last 15 minutes"}]
             append html "<p>$source. [llength $points] retained samples; 120 display buckets, preserving peaks and breaks. Lines break at missing values, sampling gaps and process restarts."
@@ -4371,6 +4404,7 @@ proc ::_ns_stats.mem.history {} {
                 append html " Requested-window coverage is incomplete; this chart shows available samples only."
             }
             append html " This is allocator memory, not OS resident memory or a diagnosis of a leak.</p>"
+            append html "<details><summary>Chart generation timings</summary><pre>[ns_quotehtml $timing]</pre></details>"
         }
         nsv_set _ns_stats $key:points [dict create identity $identity values $points]
         set cache [dict create identity $identity updated [clock seconds] html $html]

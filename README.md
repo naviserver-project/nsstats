@@ -438,3 +438,11 @@ ignored; malformed dictionaries are reported without breaking the page.
 
 The optional nsmcp question page loads its pinned browser Markdown libraries
 from cdnjs. No npm installation or JavaScript build step is needed for nsstats.
+
+Allocator history uses the compact `ns_stats history allocator` projection when
+available, with a paged-reader fallback for older cores. Expand **Chart generation
+timings** below the graph to inspect read and SVG times; compact queries also
+report checkout, SQL read, decode time and the count of legacy snapshots decoded.
+These timings are logged on refresh. Existing rows remain readable without a
+bulk migration; new samples carry the compact projection. Compact chart reads do
+not certify complete history-window coverage.

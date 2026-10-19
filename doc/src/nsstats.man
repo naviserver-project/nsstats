@@ -34,6 +34,13 @@ SVG in MiB. Persistent history covers up to the last 24 hours; the in-memory
 buffer covers up to 15 minutes. Reads are bounded to 10,000 samples. Missing
 values, sampling gaps and process restarts break lines. The chart reports its
 actual sample range and incomplete coverage; it does not enable collection.
+When available, ns_stats history allocator reads a compact allocator projection
+in one bounded sample query, avoiding full snapshot/topology decoding. Older
+cores retain the paged history reader. Old database rows still require legacy
+snapshot decoding until they expire; the diagnostic count makes this visible.
+The compact projection does not certify full-window coverage. Chart generation
+timings are available below the chart and logged on refresh: reading (including
+checkout and decoding), SVG generation, sample count and query details.
 The chart is shared for 60 seconds. Later refreshes reuse compact allocator
 samples and query only the recent overlapping tail. Transient pool checkout
 failures use bounded retries; the last successful chart remains visible with its
