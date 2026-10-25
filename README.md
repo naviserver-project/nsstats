@@ -229,13 +229,39 @@ names, module names and types, versions, build tags, scopes, and
 files. Missing optional metadata leaves blank cells. Earlier
 NaviServer versions retain the sorted module-name list from `ns_ictl getmodules`.
 
-On servers with `ns_module reload`, a circular-arrow button beside each Tcl
-module in the current virtual server reloads its definitions and dependent Tcl
-files, then publishes the updated blueprint. It uses the normal admin access,
-POST and an admin-bound token. Reload errors are reported directly. Startup-only
-`init.tcl` is excluded by the core loader; module code must support repeated
-evaluation. Native/mixed modules and other virtual servers have no reload button.
+On servers with `ns_module reload`, a circular-arrow button beside each registered
+module with reloadable Tcl files in the current virtual server reloads its Tcl
+definitions and dependent Tcl files, then publishes the updated blueprint. This
+includes mixed C/Tcl modules such as nssmtpd: compiled code stays loaded and is
+not reinitialized. It uses the normal admin access, POST and an admin-bound token.
+Reload errors are reported directly. Startup-only `init.tcl` is excluded by the
+core loader; module code must support repeated evaluation. Modules without
+reloadable Tcl files and other virtual servers have no reload button.
 Older NaviServer versions retain their existing display without this control.
+
+### Tcl Libraries
+
+Administration → **Tcl Libraries** (`?@page=tcl.libraries`) lists the current
+virtual server's core Tcl files, module Tcl files (including mixed C/Tcl
+modules), and loaded Tcl packages. One filter searches filenames, source paths,
+module names and package names/versions. The Process page links to it.
+
+Recorded effective paths show private overrides. Eligible core files have
+individual reload controls; startup-only core files are grouped in a collapsed
+section. Module controls use the existing module reload operation. All reloads
+require the ordinary administrator authorization, POST, and the admin-bound
+token. Core requests accept only recorded, eligible logical filenames. They
+reload dependent core/module files and publish through `ns_eval`; compiled code
+is unchanged. Bootstrap, configuration and resource-initialization files do not
+receive core reload controls. Core inventory and actions require NaviServer's
+`ns_module files` and `ns_module reload -core` support, and a restart after
+installing that support so startup can record the inventory.
+
+**Tcl packages are listed for information only. Package reloading is not
+supported.** The package section has no reload controls and includes only
+packages with a provided version in the current interpreter; it does not load
+merely available packages. This is an interpreter inventory, not a process-wide
+union of packages loaded by other threads or virtual servers.
 
 Recognized Git build tags for core modules and nsdbpg, nsdbsqlite, nsdns, and
 nssmtpd link to commits in their GitHub repositories. Unknown modules or tags
@@ -446,3 +472,56 @@ report checkout, SQL read, decode time and the count of legacy snapshots decoded
 These timings are logged on refresh. Existing rows remain readable without a
 bulk migration; new samples carry the compact projection. Compact chart reads do
 not certify complete history-window coverage.
+
+
+### Bounded log-file searches
+
+The **Log File** page treats the filter as a case-sensitive literal (up to
+4096 UTF-8 bytes; NUL and line breaks are rejected). It searches each distinct
+configured access log once and the selected system log using `ns_fseekchars`.
+Selecting a system-log rotation retains the existing corresponding access-log
+suffix selection. At most 63 distinct access logs and one system log are selected;
+any source-count limit or unreadable file is reported on the page.
+
+Access matches return physical lines. System matches return the enclosing record,
+including colon-prefixed continuations and unprefixed stack traces, delimited by
+recognized timestamp/thread/severity headers. Multiple hits in one record produce
+one result. This replaces the former `fgrep -A100` context expansion.
+
+**Entries per result**, beside the filter and log selector, accepts **1–1000**
+(default **200**). Pressing Enter or clicking **Search** starts a fresh search
+with those settings; **Show more** preserves the selected size. A submit button
+keeps Enter-to-search working when both filter and numeric fields are present.
+Each result is additionally limited to **2 MiB of raw log content**, so it may
+contain fewer entries than requested. A record
+excerpt and backward header recovery are each limited to **128 KiB**. Oversized
+records are labelled as excerpts; the reader skips their remaining content to
+avoid duplicate results. A missing header within the backward limit produces a
+labelled fragment rather than an inferred request association. These limits bound
+retained content, not the bytes searched: a rare or absent literal can still
+require scanning the whole selected file. HTML escaping and display labels can
+make the rendered response larger than the raw-content limit.
+
+When more content remains to search, the result heading shows cumulative entry
+ranges, for example **Matching log entries 1–200**, then **201–400**. Ranges count
+displayed entries across the selected access and system logs, not a known total.
+The continuation hint appears on the same line as **Show more**, and is omitted
+when there is no continuation button.
+
+**Show more** resumes after the last returned record using an opaque,
+server-side cursor. It retains file identities, original sizes, endpoint
+fingerprints and offsets, not log content. Appends do not extend that search;
+submit a fresh search to include new records. Replacement, truncation or changed
+snapshot endpoints invalidate continuation. This is not a full-file checksum and
+does not detect every possible in-place rewrite in the middle of a file.
+
+Cursor metadata is kept in a **1 MiB cache**, with at most **64 KiB per entry**;
+individual descriptors are restricted to 60,000 UTF-8 bytes. Cursors expire after
+15 minutes and may be evicted earlier or lost at restart. They are bound to the
+virtual server, literal filter and selected system log. Compressed rotations are
+not decompressed by this page.
+
+Regression checks: `tclsh tests/log-search.test` runs helper/UI fixtures with a
+Tcl search substitute; run the same file in NaviServer command mode to exercise
+native `ns_fseekchars`, hashing and cursor caching. The other `tests/*.test` files
+remain standalone Tcl tests.

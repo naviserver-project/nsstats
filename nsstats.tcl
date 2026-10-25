@@ -150,6 +150,7 @@ set ::navGroups {
     }}
     administration {Administration {
         config.file {Configuration file} config.params {Configuration parameters}
+        tcl.libraries {Tcl Libraries}
         locks.mutex {Mutex and RW-locks} locks.nsv {NSV locks}
     }}
 }
@@ -157,7 +158,7 @@ set ::navScopes {
     process global utilization global threads global list-lsof global
     stats.history global mem.tcl global dbpools global mem.cache server mem.nsvsize server mem.adp server
     background.jobs global background.sched global proxy-workers global
-    config.file global config.params global locks.mutex server locks.nsv server
+    config.file global config.params global tcl.libraries server locks.mutex server locks.nsv server
     log.logfile global log.httpclient source
     log.levels global
 }
@@ -346,6 +347,7 @@ set ::titles {
     mem.nsvsize       "Shared Variable Statistics (nsv)"
     mem.tcl           "Allocated Memory"
     process           "Process Information"
+    tcl.libraries     "Tcl Libraries"
     proxy-workers     "nsproxy Workers"
     requestprocs      "Request Handlers"
     threads           "Running Threads"
@@ -3659,6 +3661,311 @@ proc ::_ns_stats.log.prepare_content {type content} {
     return $content
 }
 
+# Literal log searches use byte offsets on binary channels. Keep record recovery,
+# excerpts and result pages bounded independently of the size of the log file.
+proc ::_ns_stats.log.isheader {line} {
+    regsub -all {\x1b\[[0-9;]*m} $line {} line
+    return [regexp {^\[[0-9]{2}/[A-Za-z]{3}/[0-9]{4}:[0-9:.]+\]\[[^\]\r\n]*\]\[.*\] [A-Za-z][A-Za-z0-9_-]*:} $line]
+}
+
+proc ::_ns_stats.log.find {channel literal snapshot} {
+    set offset [tell $channel]
+    if {$offset >= $snapshot} {return -1}
+    seek $channel $offset start
+    set found [ns_fseekchars $channel $literal]
+    if {$found < 0 || $found + [string length [encoding convertto utf-8 $literal]] > $snapshot} {return -1}
+    return $found
+}
+
+# Returns one bounded physical-line prefix and advances past the whole line.
+# Very long lines are skipped natively rather than collected with unbounded gets.
+proc ::_ns_stats.log.line {channel snapshot limit} {
+    set start [tell $channel]
+    set text {}
+    while {[string length $text]<$limit && [tell $channel]<$snapshot} {
+        set chunkStart [tell $channel]
+        set chunk [read $channel [expr {min(4096,$limit-[string length $text],$snapshot-$chunkStart)}]]
+        set nl [string first \n $chunk]
+        if {$nl>=0} {
+            append text [string range $chunk 0 $nl]
+            set end [expr {$chunkStart+$nl+1}]
+            seek $channel $end start
+            return [dict create text $text start $start end $end clipped 0]
+        }
+        append text $chunk
+        if {$chunk eq {}} {error "The log was truncated while reading it; start a new search."}
+    }
+    set end [tell $channel]
+    set clipped [expr {$end < $snapshot}]
+    if {$clipped} {
+        set nl [::_ns_stats.log.find $channel \n $snapshot]
+        set end [expr {$nl < 0 ? $snapshot : $nl+1}]
+        seek $channel $end start
+    }
+    return [dict create text $text start $start end $end clipped $clipped]
+}
+
+proc ::_ns_stats.log.snapshot {path {previous {}}} {
+    file stat $path st
+    if {$st(type) ne "file"} {error "The selected log is not a regular file."}
+    if {$previous eq {}} {
+        set snapshot [dict create dev $st(dev) ino $st(ino) size $st(size)]
+    } else {
+        set snapshot $previous
+        if {$st(dev) != [dict get $snapshot dev] || $st(ino) != [dict get $snapshot ino]
+            || $st(size) < [dict get $snapshot size]} {
+            error "The log was replaced or truncated; start a new search."
+        }
+    }
+    set size [dict get $snapshot size]
+    set f [open $path rb]
+    try {
+        set head [ns_sha1 [read $f [expr {min(4096,$size)}]]]
+        seek $f [expr {max(0,$size-4096)}] start
+        set tail [ns_sha1 [read $f [expr {min(4096,$size)}]]]
+    } finally {close $f}
+    file stat $path after
+    if {$after(dev) != $st(dev) || $after(ino) != $st(ino) || $after(size) < $size} {
+        error "The log changed while opening it; start a new search."
+    }
+    if {$previous ne {} && ($head ne [dict get $snapshot head] || $tail ne [dict get $snapshot tail])} {
+        error "The log snapshot changed; start a new search."
+    }
+    dict set snapshot head $head; dict set snapshot tail $tail
+    return $snapshot
+}
+
+# Recover backwards at most recoveryBytes. A missing header produces an
+# explicitly labelled fragment, never an invented association with a request.
+proc ::_ns_stats.log.recordstart {f found floor kind recoveryBytes snapshot} {
+    # Most hits are close to their header. Grow recovery only when necessary,
+    # avoiding a 128 KiB look-behind for every short log record.
+    set window [expr {min(4096,$recoveryBytes)}]
+    while {1} {
+        set begin [expr {max($floor,$found-$window)}]
+        seek $f $begin start
+        set prefix [read $f [expr {$found-$begin}]]
+        set nl [string last \n $prefix]
+        if {$kind eq "access"} {
+            if {$nl>=0} {return [list [expr {$begin+$nl+1}] 0]}
+            # The resume offset is already a known physical-line boundary.
+            if {$begin==0 || $begin==$floor} {return [list $begin 0]}
+        } else {
+            # A match may precede the severity portion of its own header.
+            set current [expr {$nl<0 ? $begin : $begin+$nl+1}]
+            seek $f $current start
+            set probe [read $f [expr {min(4096,$snapshot-$current)}]]
+            if {[::_ns_stats.log.isheader [lindex [split $probe \n] 0]]} {return [list $current 0]}
+            set start -1; set pos $begin
+            foreach line [split $prefix \n] {
+                # Ignore a possibly partial first line of the recovery window.
+                if {($pos>$begin || $begin==0 || $begin==$floor) && [::_ns_stats.log.isheader $line]} {set start $pos}
+                incr pos [expr {[string length $line]+1}]
+            }
+            if {$start>=0} {return [list $start 0]}
+        }
+        if {$begin==$floor || $window>=$recoveryBytes} break
+        set window [expr {min($recoveryBytes,$window*2)}]
+    }
+    return [list [expr {$nl<0 ? $begin : $begin+$nl+1}] 1]
+}
+
+proc ::_ns_stats.log.readrecord {f start snapshot kind recordBytes} {
+    seek $f $start start
+    set text {}; set clipped 0; set first 1
+    while {[tell $f] < $snapshot} {
+        set pos [tell $f]
+        set room [expr {$recordBytes-[string length $text]}]
+        # Continue locating the next header after the excerpt fills up, keeping
+        # only a bounded prefix of each physical line. This skips the remainder
+        # of one oversized record, preventing duplicate excerpts for its matches.
+        set row [::_ns_stats.log.line $f $snapshot [expr {$room>0 ? max(4096,$room) : 4096}]]
+        set line [dict get $row text]
+        if {!$first && $kind eq "system" && [::_ns_stats.log.isheader $line]} {
+            seek $f $pos start
+            break
+        }
+        set first 0
+        if {$room>0} {append text [string range $line 0 $room-1]}
+        if {[dict get $row clipped] || [string length $line]>$room} {set clipped 1}
+        if {$kind eq "access"} break
+    }
+    return [dict create text $text next [tell $f] clipped $clipped]
+}
+
+proc ::_ns_stats.log.searchfile {path kind literal snapshot offset limits} {
+    ::_ns_stats.log.snapshot $path $snapshot
+    set size [dict get $snapshot size]
+    set f [open $path rb]; set rows {}; set bytes 0; set limited 0
+    try {
+        seek $f $offset start
+        while {$offset<$size} {
+            if {[llength $rows]>=[dict get $limits records] || $bytes>=[dict get $limits bytes]} {set limited 1; break}
+            set found [::_ns_stats.log.find $f $literal $size]
+            if {$found<0} {set offset $size; break}
+            lassign [::_ns_stats.log.recordstart $f $found $offset $kind [dict get $limits recovery] $size] start fragment
+            set row [::_ns_stats.log.readrecord $f $start $size $kind \
+                         [expr {min([dict get $limits record], [dict get $limits bytes]-$bytes)}]]
+            set offset [dict get $row next]
+            if {$offset<=$found} {error "Log reader did not advance."}
+            incr bytes [string length [dict get $row text]]
+            dict set row fragment $fragment
+            # Labels are separate from the byte-limited raw excerpt.
+            lappend rows $row
+            seek $f $offset start
+        }
+    } finally {close $f}
+    ::_ns_stats.log.snapshot $path $snapshot
+    return [dict create rows $rows bytes $bytes next $offset limited $limited]
+}
+
+# Cache values contain only small snapshot/cursor descriptors, never log bodies.
+# A cursor is opaque to clients and cannot select an arbitrary filesystem path.
+proc ::_ns_stats.log.cursor {operation value} {
+    set cache nsstats-log-cursors
+    if {$cache ni [ns_cache_names]} {catch {ns_cache_create -maxentry 65536 $cache 1048576}}
+    if {$operation eq "get"} {
+        if {![regexp {^[a-fA-F0-9]{40}$} $value]} {error "Invalid continuation cursor; start a new search."}
+        if {![ns_cache_get $cache $value state] || [dict get $state expires]<[clock seconds]} {
+            error "The continuation cursor expired; start a new search."
+        }
+        return $state
+    }
+    if {[string length [encoding convertto utf-8 $value]]>60000} {error "Continuation metadata is too large."}
+    set token [ns_sha1 [list [clock clicks] [ns_rand] [ns_info server] $value]]
+    dict set value expires [expr {[clock seconds]+900}]
+    ns_cache_eval -expires 900 $cache $token [list set state $value]
+    return $token
+}
+
+proc ::_ns_stats.log.pagesize {value} {
+    if {![regexp {^[1-9][0-9]{0,3}$} $value] || $value>1000} {
+        error "Entries per result must be a whole number between 1 and 1000."
+    }
+    return $value
+}
+
+proc ::_ns_stats.log.searchpage {filter system_log suffix cursor {pageSize 200}} {
+    set notices {}; set sections [dict create access {} system {}]
+    if {[catch {::_ns_stats.log.pagesize $pageSize} pageSize]} {return "<p>[ns_quotehtml $pageSize]</p>"}
+    if {$filter eq {} || [string length [encoding convertto utf-8 $filter]]>4096 || [regexp {[\x00\r\n]} $filter]} {
+        return "<p>Use a nonempty literal filter of at most 4096 UTF-8 bytes, without NUL characters or line breaks.</p>"
+    }
+    if {$cursor ne {}} {
+        if {[catch {
+            set state [::_ns_stats.log.cursor get $cursor]
+            if {[dict get $state server] ne [ns_info server] || [dict get $state filter] ne $filter
+                || [dict get $state selected] ne $system_log} {error "The search changed; start a new search."}
+        } message]} {return "<p>[ns_quotehtml $message]</p>"}
+    } else {
+        set files {}; set paths {}
+        foreach s [ns_info servers] {
+            set section ns/server/$s/module/nslog
+            set path [ns_config $section file]
+            if {$path eq {}} {
+                set defaults [ns_configsection -filter defaults $section]
+                if {$defaults eq {}} continue
+                set path [ns_set get $defaults file]
+            }
+            if {$path eq {}} continue
+            if {[file pathtype $path] eq "relative"} {set path [file normalize [file join [ns_config ns/parameters logdir] $path]]}
+            if {$suffix ne {} && [file exists $path$suffix]} {append path $suffix}
+            if {$path ni $paths} {lappend paths $path; lappend files [dict create path $path kind access offset 0]}
+        }
+        lappend files [dict create path $system_log kind system offset 0]
+        if {[llength $files]>64} {
+            # Always retain the selected system log, even with many servers.
+            set files [concat [lrange $files 0 62] [list [lindex $files end]]]
+            lappend notices {Only the first 63 distinct access logs and the selected system log are searched.}
+        }
+        set ready {}; set identities {}
+        foreach item $files {
+            if {[catch {::_ns_stats.log.snapshot [dict get $item path]} snapshot]} {
+                lappend notices "Cannot read [file tail [dict get $item path]]: $snapshot"
+            } else {
+                if {[dict get $snapshot ino]!=0} {
+                    set identity [list [dict get $item kind] [dict get $snapshot dev] [dict get $snapshot ino]]
+                } else {
+                    # Some platforms do not expose a usable inode through Tcl.
+                    set identity [list [dict get $item kind] [file normalize [dict get $item path]]]
+                }
+                if {$identity in $identities} continue
+                lappend identities $identity
+                dict set item snapshot $snapshot; lappend ready $item
+            }
+        }
+        set state [dict create files $ready index 0 shown 0 server [ns_info server] filter $filter selected $system_log]
+    }
+    set files [dict get $state files]; set index [dict get $state index]
+    # Validate every retained snapshot before showing any results on this page.
+    if {[catch {
+        foreach item $files {::_ns_stats.log.snapshot [dict get $item path] [dict get $item snapshot]}
+    } message]} {return "<p>[ns_quotehtml $message]</p>"}
+    set records 0; set bytes 0
+    while {$index<[llength $files] && $records<$pageSize && $bytes<2097152} {
+        set item [lindex $files $index]
+        set limits [dict create records [expr {$pageSize-$records}] bytes [expr {2097152-$bytes}] record 131072 recovery 131072]
+        if {[catch {::_ns_stats.log.searchfile [dict get $item path] [dict get $item kind] $filter \
+                        [dict get $item snapshot] [dict get $item offset] $limits} result]} {
+            lappend notices $result
+            # Never issue a continuation against a changed/unreadable source.
+            set index [llength $files]
+            break
+        }
+        foreach row [dict get $result rows] {
+            set text [encoding convertfrom utf-8 [dict get $row text]]
+            regsub -all {\x1b\[[0-9;]*m} $text {} text
+            set label {}
+            if {[dict get $row fragment]} {append label "\[Fragment: record start was not found within 128 KiB.\]\n"}
+            if {[dict get $row clipped]} {append label "\[Excerpt: record exceeds the displayed byte limit.\]\n"}
+            # Records normally include their line terminator. Add a separator
+            # only for clipped excerpts or final lines without a newline.
+            if {[string index $text end] ne "\n"} {append text \n}
+            dict append sections [dict get $item kind] $label$text
+            incr records
+        }
+        incr bytes [dict get $result bytes]
+        dict set item offset [dict get $result next]
+        lset files $index $item
+        if {[dict get $item offset]>=[dict get $item snapshot size]} {incr index} else break
+    }
+    # Older retained cursors have no cumulative count: keep their count-only
+    # display rather than inventing an ordinal for a search already in progress.
+    set shown [expr {[dict exists $state shown] ? [dict get $state shown] : -1}]
+    if {$shown>=0 && $records>0 && ($cursor ne {} || $index<[llength $files])} {
+        set first [expr {$shown+1}]; set last [expr {$shown+$records}]
+        if {$records==1} {
+            set html "<p>Matching log entry $first.</p>"
+        } else {
+            set html "<p>Matching log entries $first–$last.</p>"
+        }
+    } elseif {$records==0} {
+        set html [expr {$cursor eq {} ? "<p>No matching log entries.</p>" : "<p>No further matching log entries.</p>"}]
+    } else {
+        set countLabel [expr {$records==1 ? "matching log entry" : "matching log entries"}]
+        set html "<p>$records $countLabel.</p>"
+    }
+    foreach notice $notices {append html "<p>[ns_quotehtml $notice]</p>"}
+    if {$index<[llength $files]} {
+        dict set state files $files; dict set state index $index
+        if {$shown>=0} {dict set state shown [expr {$shown+$records}]}
+        if {[catch {::_ns_stats.log.cursor put $state} token]} {
+            append html "<p>More matches may be available, but continuation is unavailable. Start a new search.</p>"
+        } else {
+            append html "<form method='post' action='./nsstats.tcl'><input type='hidden' name='@page' value='log.logfile'>" \
+                "<input type='hidden' name='filter' value='[ns_quotehtml $filter]'>" \
+                "<input type='hidden' name='system_log' value='[ns_quotehtml [file tail $system_log]]'>" \
+                "<input type='hidden' name='log_limit' value='$pageSize'>" \
+                "<input type='hidden' name='log_cursor' value='$token'><button type='submit'>Show more</button> <span>More matches may be available.</span></form>"
+        }
+    }
+    foreach {kind title} {access {Access log} system {System log}} {
+        set text [dict get $sections $kind]
+        if {$text ne {}} {append html "<h4>$title:</h4><pre>[::_ns_stats.log.prepare_content $kind $text]</pre>"}
+    }
+    return $html
+}
+
 proc ::_ns_stats.log.logfile {} {
     set content ""
     set colorcodemap [list \
@@ -3669,81 +3976,20 @@ proc ::_ns_stats.log.logfile {} {
                           [binary decode hex 1b5b313b33396d] "" \
                          ]
     set filter [ns_queryget filter ""]
+    set filter_html [ns_quotehtml $filter]
+    set limitError {}
+    if {[catch {::_ns_stats.log.pagesize [ns_queryget log_limit 200]} pageSize]} {
+        set limitError $pageSize; set pageSize 200
+    }
     set system_log_tail [ns_queryget system_log [file tail [ns_info log]]]
+    if {[file tail $system_log_tail] ne $system_log_tail} {error "Invalid system log selection"}
     set system_log [file dirname [ns_info log]]/$system_log_tail
     set system_suffix [string range $system_log [string length [ns_info log]] end]
 
-    if {$filter ne ""} {
-        set access_content ""
-        foreach s [ns_info servers] {
-            try {
-                set section ns/server/$s/module/nslog
-                set path [ns_config $section file]
-                if {$path eq ""} {
-                    # check the default
-                    set defaultSet [ns_configsection -filter defaults $section]
-                    if {$defaultSet eq ""} {
-                        # module not configured
-                        continue
-                    }
-                    set path [ns_set get $defaultSet file]
-                }
-                if {[file pathtype $path] eq "relative"} {
-                    set path [file normalize [ns_config ns/parameters logdir]/$path]
-                }
-                set lines [exec fgrep -- $filter $path]
-                if {$system_suffix ne "" && [file exists $path$system_suffix]} {
-                    append path $system_suffix
-                }
-                set lines [exec fgrep -- $filter $path]
-                append access_content $lines \n
-            } on error {errorMsg} {
-                # just return no content lines when fgrep fails
-            }
-        }
-        try {
-            set system_content [string map $colorcodemap [exec fgrep -A100 -- $filter $system_log]]
-        } on error {errorMsg} {
-            set system_content ""
-        }
-        try {
-            set currentLine ""
-            set lines {}
-            #
-            # Join continuation lines
-            #
-            foreach l [split $system_content \n] {
-                if {[string range $l 0 0] eq ":"} {
-                    append currentLine \n$l
-                } else {
-                    lappend lines $currentLine
-                    set currentLine [expr {$l eq "--" ? "" : $l}]
-                }
-            }
-            lappend lines $currentLine
-            #
-            # Search in joined lines
-            #
-            set system_content [join [lmap l $lines {
-                if {![string match *$filter* $l]} continue
-                set l
-            }] \n]
-        } on error {errorMsg} {
-            set system_content "error log filter caught: '$errorMsg'"
-        }
-        set content ""
-        if {$access_content ne ""} {
-            append content [subst {
-                <h4>Access log:</h4>
-                <font size=2><pre>[::_ns_stats.log.prepare_content access $access_content]</pre></font>
-            }]
-        }
-        if {$system_content ne ""} {
-            append content [subst {
-                <h4>System log:</h4>
-                <font size=2><pre>[::_ns_stats.log.prepare_content system $system_content]</pre></font>
-            }]
-        }
+    if {$limitError ne {}} {
+        set content "<p>[ns_quotehtml $limitError]</p>"
+    } elseif {$filter ne ""} {
+        set content [::_ns_stats.log.searchpage $filter $system_log $system_suffix [ns_queryget log_cursor ""] $pageSize]
     } else {
         set log_to_stderr [expr {"-f" in [ns_info argv]}]
         if {!$log_to_stderr && ![file exists $system_log]} {
@@ -3804,8 +4050,10 @@ proc ::_ns_stats.log.logfile {} {
         [ns_trim -subst -delimiter | {
             |<form id='logform' method='post' action='./nsstats.tcl'>Filter:
             |  <input type='hidden' name='@page' value='log.logfile'>
-            |  <input name='filter' value='$filter' size='40'>
+            |  <input name='filter' value='$filter_html' size='40'>
             |  <select name='system_log'>$options</select>
+            |  <label>Entries per result: <input type='number' name='log_limit' value='$pageSize' min='1' max='1000' step='1' style='width: 6em'></label>
+            |  <button type='submit'>Search</button>
             |</form>
             |<script>
             |  const form = document.getElementById('logform');
@@ -4670,6 +4918,16 @@ proc ::_ns_stats.process.reloadAvailable {} {
         && [info commands ::ns_crypto::randombytes] ne ""}
 }
 
+# Reload only Tcl definitions belonging to a module registered in this server.
+# Mixed modules use the same loader as Tcl-only modules; their binary stays loaded.
+proc ::_ns_stats.process.reloadable {module} {
+    if {[catch {ns_ictl getmodules} modules] || $module ni $modules
+        || [catch {::_ns_module_files $module} files]} {
+        return 0
+    }
+    return [expr {[llength $files] > 0}]
+}
+
 proc ::_ns_stats.process.reloadKey {} {
     return module-reload:[::_ns_stats.identity]
 }
@@ -4682,24 +4940,24 @@ proc ::_ns_stats.process.reloadToken {} {
     return [nsv_get _ns_stats $key]
 }
 
-proc ::_ns_stats.process.reloadButton {module} {
+proc ::_ns_stats.process.reloadButton {module {page process}} {
     set name [ns_quotehtml $module]
     set token [::_ns_stats.process.reloadToken]
     return "<form class='ns-module-reload' method='post' action='[ns_quotehtml [ns_conn url]]'>\
-        <input type='hidden' name='@page' value='process'>\
+        <input type='hidden' name='@page' value='[ns_quotehtml $page]'>\
         <input type='hidden' name='moduleReloadAction' value='reload'>\
         <input type='hidden' name='moduleReloadName' value='$name'>\
         <input type='hidden' name='moduleReloadToken' value='[ns_quotehtml $token]'>\
-        <button type='submit' title='Reload Tcl definitions for $name' aria-label='Reload Tcl module $name'>\
+        <button type='submit' title='Reload Tcl code for $name (compiled code unchanged)' aria-label='Reload Tcl code for module $name (compiled code unchanged)'>\
         <svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' aria-hidden='true'>\
         <path d='M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M18 17a7 7 0 0 1-12 1l-2-6'/></svg></button></form>"
 }
 
 # Only called by process after the ordinary nsstats authorization check.
-proc ::_ns_stats.process.reload {} {
+proc ::_ns_stats.process.reload {{page process}} {
     ns_set iupdate [ns_conn outputheaders] Cache-Control no-store
     if {[ns_conn method] ne "POST"} {
-        ns_return 405 text/plain "Use POST to reload a Tcl module."
+        ns_return 405 text/plain "Use POST to reload module Tcl code."
         return ""
     }
     set key [::_ns_stats.process.reloadKey]
@@ -4709,7 +4967,7 @@ proc ::_ns_stats.process.reload {} {
         return ""
     }
     if {![::_ns_stats.process.reloadAvailable]} {
-        ns_return 501 text/plain "Tcl module reload is unavailable on this NaviServer."
+        ns_return 501 text/plain "Module Tcl code reload is unavailable on this NaviServer."
         return ""
     }
     set module [ns_queryget moduleReloadName {}]
@@ -4718,18 +4976,18 @@ proc ::_ns_stats.process.reload {} {
         return ""
     }
     if {[catch {ns_server -server [ns_info server] modules} modules]
-        || ![dict exists $modules $module type]
-        || [dict get $modules $module type] ne "tcl-module"} {
-        ns_return 400 text/plain "Select a loaded Tcl module in the current virtual server."
+        || ![dict exists $modules $module]
+        || ![::_ns_stats.process.reloadable $module]} {
+        ns_return 400 text/plain "Select a loaded module with Tcl definitions in the current virtual server."
         return ""
     }
     if {[catch {ns_module reload $module} files]} {
-        ns_return 409 text/plain "Tcl module reload failed: $files"
+        ns_return 409 text/plain "Module Tcl code reload failed: $files"
         return ""
     }
     nsv_set _ns_stats $key:result [list $module [llength $files]]
-    ns_set iupdate [ns_conn outputheaders] Location "[ns_conn url]?@page=process"
-    ns_return 303 text/plain "Tcl module reloaded."
+    ns_set iupdate [ns_conn outputheaders] Location "[ns_conn url]?@page=$page"
+    ns_return 303 text/plain "Module Tcl code reloaded."
     return ""
 }
 
@@ -4739,7 +4997,7 @@ proc ::_ns_stats.process.reloadNotice {} {
     if {![nsv_exists _ns_stats $key]} {return ""}
     lassign [nsv_get _ns_stats $key] module count
     nsv_unset _ns_stats $key
-    return "<p role='status'>Reloaded Tcl module [ns_quotehtml $module] ($count affected Tcl files). The updated blueprint is published; active interpreters adopt it through normal propagation.</p>"
+    return "<p role='status'>Reloaded Tcl code for module [ns_quotehtml $module] ($count affected Tcl files). Compiled code is unchanged. The updated blueprint is published; active interpreters adopt it through normal propagation.</p>"
 }
 
 proc ::_ns_stats.process.modules {server} {
@@ -4784,7 +5042,7 @@ proc ::_ns_stats.process.modules {server} {
             }
             set cell [ns_quotehtml $value]
             if {$key eq "" && $reloadAvailable && $server eq [ns_info server]
-                && [dict exists $info type] && [dict get $info type] eq "tcl-module"} {
+                && [::_ns_stats.process.reloadable $module]} {
                 append cell [::_ns_stats.process.reloadButton $module]
             }
             if {$key eq "tag" && [dict exists $info name]} {
@@ -5039,6 +5297,132 @@ proc ::_ns_stats.lsof {pid} {
     return $result
 }
 
+# Tcl packages are inspection-only. Only recorded file identities can be posted
+# to the core reload operation, after the usual page authorization and CSRF check.
+proc ::_ns_stats.libraries.inventory {module} {
+    if {[info commands ::_ns_module_inventory] eq ""} {return {}}
+    if {[catch {ns_module files $module} inventory]} {return {}}
+    return $inventory
+}
+
+proc ::_ns_stats.libraries.matches {filter values} {
+    expr {$filter eq "" || [string first [string tolower $filter] [string tolower $values]] >= 0}
+}
+
+proc ::_ns_stats.libraries.coreButton {name} {
+    set token [::_ns_stats.process.reloadToken]
+    return "<form class='ns-module-reload' method='post' action='[ns_quotehtml [ns_conn url]]'>\
+        <input type='hidden' name='@page' value='tcl.libraries'>\
+        <input type='hidden' name='libraryReloadAction' value='core'>\
+        <input type='hidden' name='libraryReloadFile' value='[ns_quotehtml $name]'>\
+        <input type='hidden' name='moduleReloadToken' value='[ns_quotehtml $token]'>\
+        <button type='submit' aria-label='Reload core Tcl file [ns_quotehtml $name]' title='Reload this Tcl file and its dependent files'>Reload</button></form>"
+}
+
+proc ::_ns_stats.libraries.reload {} {
+    ns_set iupdate [ns_conn outputheaders] Cache-Control no-store
+    if {[ns_conn method] ne "POST"} {
+        ns_return 405 text/plain "Use POST to reload a core Tcl file."
+        return ""
+    }
+    set key [::_ns_stats.process.reloadKey]
+    set token [ns_queryget moduleReloadToken {}]
+    if {$token eq "" || ![nsv_exists _ns_stats $key] || $token ne [nsv_get _ns_stats $key]} {
+        ns_return 403 text/plain "Invalid reload token; reload the Tcl Libraries page."
+        return ""
+    }
+    if {[ns_queryget libraryReloadAction {}] ne "core"} {
+        ns_return 400 text/plain "Only managed Tcl files can be reloaded. Package reloading is not supported."
+        return ""
+    }
+    set name [ns_queryget libraryReloadFile {}]
+    set inventory [::_ns_stats.libraries.inventory -core]
+    if {![::_ns_stats.process.reloadAvailable] || ![dict exists $inventory $name]
+        || ![dict get $inventory $name reloadable]} {
+        ns_return 400 text/plain "Select a recorded core Tcl file enabled for reload."
+        return ""
+    }
+    if {[catch {ns_module reload -core $name} files]} {
+        ns_return 409 text/plain "Core Tcl reload failed: $files"
+        return ""
+    }
+    nsv_set _ns_stats $key:coreResult [list $name [llength $files]]
+    ns_set iupdate [ns_conn outputheaders] Location "[ns_conn url]?@page=tcl.libraries"
+    ns_return 303 text/plain "Core Tcl file reloaded."
+    return ""
+}
+
+proc ::_ns_stats.tcl.libraries {} {
+    if {[ns_queryget moduleReloadAction {}] ne ""} {
+        return [::_ns_stats.process.reload tcl.libraries]
+    }
+    if {[ns_queryget libraryReloadAction {}] ne ""} {
+        return [::_ns_stats.libraries.reload]
+    }
+    ns_set iupdate [ns_conn outputheaders] Cache-Control no-store
+    set filter [ns_queryget tclFilter {}]
+    set html [::_ns_stats.header {Tcl Libraries}]
+    append html "<p>Files and packages in the current virtual server's interpreter. Reload updates Tcl definitions and dependent files; compiled code is unchanged.</p>"
+    append html [::_ns_stats.process.reloadNotice]
+    set key [::_ns_stats.process.reloadKey]:coreResult
+    if {[nsv_exists _ns_stats $key]} {
+        lassign [nsv_get _ns_stats $key] name count
+        nsv_unset _ns_stats $key
+        append html "<p role='status'>Reloaded core Tcl file [ns_quotehtml $name] ($count affected files). The updated blueprint is published; active interpreters adopt it through normal propagation.</p>"
+    }
+    append html "<form method='get' action='[ns_quotehtml [ns_conn url]]'><input type='hidden' name='@page' value='tcl.libraries'><label>Filter files and packages <input name='tclFilter' value='[ns_quotehtml $filter]'></label> <button type='submit'>Filter</button></form>"
+    set core [::_ns_stats.libraries.inventory -core]
+    append html "<h2>Core Tcl files</h2>"
+    if {[info commands ::_ns_module_inventory] eq ""} {
+        append html "<p>File inventory requires a NaviServer version supporting ns_module files.</p>"
+    }
+    set active {}; set startup {}
+    dict for {name record} $core {
+        set path [dict get $record path]
+        if {![::_ns_stats.libraries.matches $filter [list $name $path]]} {continue}
+        set action {Startup only}
+        if {[dict get $record reloadable]} {
+            if {[::_ns_stats.process.reloadAvailable]} {
+                set action [::_ns_stats.libraries.coreButton $name]
+            } else {set action {Reload unavailable}}
+        }
+        set row "<tr><td><code>[ns_quotehtml $name]</code></td><td><code>[ns_quotehtml $path]</code></td><td>$action</td></tr>"
+        if {[dict get $record reloadable]} {append active $row} else {append startup $row}
+    }
+    set head {<div class='w3-responsive'><table class='data-table w3-table'><thead><tr><th>File</th><th>Effective source</th><th>Reload</th></tr></thead><tbody>}
+    append html $head $active {</tbody></table></div>}
+    append html "<details><summary>Startup-only core files</summary><p>Reload is not enabled for these files because they initialize infrastructure, configuration or resources.</p>$head$startup</tbody></table></div></details>"
+    append html "<h2>Module Tcl files</h2>"
+    append html {<div class='w3-responsive'><table class='data-table w3-table'><thead><tr><th>Module</th><th>Files and effective sources</th><th>Reload</th></tr></thead><tbody>}
+    if {![catch {ns_server -server [ns_info server] modules} modules]} {
+        foreach module [lsort [dict keys $modules]] {
+            set entries {}
+            dict for {name record} [::_ns_stats.libraries.inventory $module] {
+                set path [dict get $record path]
+                if {![::_ns_stats.libraries.matches $filter [list $module $name $path]]} {continue}
+                append entries "<div><code>[ns_quotehtml $name]</code> — <code>[ns_quotehtml $path]</code>"
+                if {![dict get $record reloadable]} {append entries { (startup only)}}
+                append entries {</div>}
+            }
+            if {$entries eq ""} {continue}
+            set action {Startup only}
+            if {[::_ns_stats.process.reloadAvailable] && [::_ns_stats.process.reloadable $module]} {
+                set action [::_ns_stats.process.reloadButton $module tcl.libraries]
+            }
+            append html "<tr><td>[ns_quotehtml $module]</td><td>$entries</td><td>$action</td></tr>"
+        }
+    }
+    append html {</tbody></table></div>}
+    append html {<h2>Loaded Tcl packages — inspection only</h2><p><strong>Tcl packages are listed for information only. Package reloading is not supported.</strong> Only packages with a provided version in this interpreter are listed; merely available packages are omitted.</p><div class='w3-responsive'><table class='data-table w3-table'><thead><tr><th>Package</th><th>Provided version</th></tr></thead><tbody>}
+    foreach name [lsort -dictionary [package names]] {
+        set version [package provide $name]
+        if {$version eq "" || ![::_ns_stats.libraries.matches $filter [list $name $version]]} {continue}
+        append html "<tr><td>[ns_quotehtml $name]</td><td>[ns_quotehtml $version]</td></tr>"
+    }
+    append html {</tbody></table></div>}
+    return $html
+}
+
 proc ::_ns_stats.process {} {
     if {[ns_queryget moduleReloadAction {}] ne ""} {
         return [::_ns_stats.process.reload]
@@ -5218,6 +5602,7 @@ proc ::_ns_stats.process {} {
                    ]
 
     set html [::_ns_stats.header Process]
+    append html "<p><a href='[::_ns_stats.navigation.url tcl.libraries]'>Tcl libraries and loaded packages</a></p>"
     append html [::_ns_stats.process.reloadNotice]
     append html [::_ns_stats.utilization.sourcePanel [dict create coreSnapshot $runtimeSnapshot] process]
     append html [::_ns_stats.process.table $values]
