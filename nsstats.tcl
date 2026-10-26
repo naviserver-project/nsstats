@@ -5316,7 +5316,9 @@ proc ::_ns_stats.libraries.coreButton {name} {
         <input type='hidden' name='libraryReloadAction' value='core'>\
         <input type='hidden' name='libraryReloadFile' value='[ns_quotehtml $name]'>\
         <input type='hidden' name='moduleReloadToken' value='[ns_quotehtml $token]'>\
-        <button type='submit' aria-label='Reload core Tcl file [ns_quotehtml $name]' title='Reload this Tcl file and its dependent files'>Reload</button></form>"
+        <button type='submit' aria-label='Reload core Tcl file [ns_quotehtml $name]' title='Reload this Tcl file and its dependent files'>\
+        <svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' aria-hidden='true'>\
+        <path d='M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M18 17a7 7 0 0 1-12 1l-2-6'/></svg></button></form>"
 }
 
 proc ::_ns_stats.libraries.reload {} {
@@ -5393,14 +5395,17 @@ proc ::_ns_stats.tcl.libraries {} {
     append html $head $active {</tbody></table></div>}
     append html "<details><summary>Startup-only core files</summary><p>Reload is not enabled for these files because they initialize infrastructure, configuration or resources.</p>$head$startup</tbody></table></div></details>"
     append html "<h2>Module Tcl files</h2>"
-    append html {<div class='w3-responsive'><table class='data-table w3-table'><thead><tr><th>Module</th><th>Files and effective sources</th><th>Reload</th></tr></thead><tbody>}
+    append html {<div class='w3-responsive'><table class='data-table w3-table'><thead><tr><th>Module</th><th>Version</th><th>Files and effective sources</th><th>Reload</th></tr></thead><tbody>}
     if {![catch {ns_server -server [ns_info server] modules} modules]} {
         foreach module [lsort [dict keys $modules]] {
+            set info [dict get $modules $module]
+            set version [expr {[dict exists $info version] ? [dict get $info version] : {}}]
+            set versionLabel [expr {$version eq {} ? "Not reported" : $version}]
             set entries {}
             dict for {name record} [::_ns_stats.libraries.inventory $module] {
                 set path [dict get $record path]
-                if {![::_ns_stats.libraries.matches $filter [list $module $name $path]]} {continue}
-                append entries "<div><code>[ns_quotehtml $name]</code> — <code>[ns_quotehtml $path]</code>"
+                if {![::_ns_stats.libraries.matches $filter [list $module $version $name $path]]} {continue}
+                append entries "<div><code>[ns_quotehtml $path]</code>"
                 if {![dict get $record reloadable]} {append entries { (startup only)}}
                 append entries {</div>}
             }
@@ -5409,7 +5414,7 @@ proc ::_ns_stats.tcl.libraries {} {
             if {[::_ns_stats.process.reloadAvailable] && [::_ns_stats.process.reloadable $module]} {
                 set action [::_ns_stats.process.reloadButton $module tcl.libraries]
             }
-            append html "<tr><td>[ns_quotehtml $module]</td><td>$entries</td><td>$action</td></tr>"
+            append html "<tr><td>[ns_quotehtml $module]</td><td>[ns_quotehtml $versionLabel]</td><td>$entries</td><td>$action</td></tr>"
         }
     }
     append html {</tbody></table></div>}

@@ -244,7 +244,9 @@ Older NaviServer versions retain their existing display without this control.
 Administration → **Tcl Libraries** (`?@page=tcl.libraries`) lists the current
 virtual server's core Tcl files, module Tcl files (including mixed C/Tcl
 modules), and loaded Tcl packages. One filter searches filenames, source paths,
-module names and package names/versions. The Process page links to it.
+module names/versions and package names/versions. Module versions come from
+loaded NaviServer module metadata; unavailable versions show “Not reported”.
+The Process page links to it.
 
 Recorded effective paths show private overrides. Eligible core files have
 individual reload controls; startup-only core files are grouped in a collapsed
