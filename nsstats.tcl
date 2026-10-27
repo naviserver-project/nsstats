@@ -1135,7 +1135,7 @@ proc ::_ns_stats.utilization.historyPanel {} {
         set selected [expr {$minutes==$value ? " selected" : ""}]
         append options "<option value='$value'$selected>$label</option>"
     }
-    set html "<h2>Recent sampled history</h2><form method='get'><input type='hidden' name='@page' value='utilization'><input type='hidden' name='statsMode' value='[ns_quotehtml [ns_queryget statsMode auto]]'><input type='hidden' name='statsWindow' value='[ns_quotehtml [ns_queryget statsWindow ""]]'><label>Period <select name='historyMinutes'>$options</select></label> <button type='submit'>Show history</button></form>"
+    set html "<h2>Recent sampled history</h2><form method='get'><input type='hidden' name='@page' value='utilization'><input type='hidden' name='raw' value='[expr {[info exists ::raw] && $::raw ? 1 : 0}]'><input type='hidden' name='statsMode' value='[ns_quotehtml [ns_queryget statsMode auto]]'><input type='hidden' name='statsWindow' value='[ns_quotehtml [ns_queryget statsWindow ""]]'><label>Period <select name='historyMinutes'>$options</select></label> <button type='submit'>Show history</button></form>"
     if {[catch {::_ns_stats.utilization.readHistory $minutes} result]} {
         return "$html<p>History unavailable: [ns_quotehtml $result]</p>"
     }
@@ -1145,24 +1145,24 @@ proc ::_ns_stats.utilization.historyPanel {} {
     set source [dict get $result source]
     set status [dict get $result persistence]
     set label [expr {$source eq "sqlite" ? "Persistent SQLite history (including retained samples before restart)" : "Process memory: at most 180 samples / 15 minutes; lost on process restart"}]
-    append html "<p>[ns_quotehtml $label]. [llength $points] samples returned. No sampling or persistence settings are changed by this page.</p>"
+    append html "<p>[ns_quotehtml $label]. [::_ns_stats.hr [llength $points]] samples returned. No sampling or persistence settings are changed by this page.</p>"
     set rows [list [list Source $label] \
         [list "Paging complete" [expr {![dict get $result truncated]}]] \
         [list "Coverage reported complete" [::_ns_stats.dictGetDef $coverage complete false]] \
-        [list Gaps [llength [dict get $coverage gaps]]] \
-        [list "Restart boundaries" [llength [dict get $coverage restartBoundaries]]] \
-        [list "Baseline/reset samples" [dict get $coverage resetSamples]] \
+        [list Gaps [::_ns_stats.hr [llength [dict get $coverage gaps]]]] \
+        [list "Restart boundaries" [::_ns_stats.hr [llength [dict get $coverage restartBoundaries]]]] \
+        [list "Baseline/reset samples" [::_ns_stats.hr [dict get $coverage resetSamples]]] \
         [list "Eviction or failure overlap" [dict get $coverage evictionOrFailureOverlap]] \
         [list "Dropped through (epoch microseconds)" [::_ns_stats.dictGetDef $coverage droppedThrough {}]]]
     if {$source eq "sqlite"} {
         lappend rows [list "Persistence enabled" [dict get $status enabled]] \
-            [list "Write failures since persistence started" [dict get $status failures]]
+            [list "Write failures since persistence started" [::_ns_stats.hr [dict get $status failures]]]
     }
     foreach {key label} {sampleCount {Retained samples} retainedSeconds {Retained seconds}
                          allocatedBytes {SQLite allocated bytes} usedBytes {SQLite used bytes}
                          databaseLimitBytes {SQLite database cap (bytes)} bytesPerSample {Bytes per retained sample}} {
         if {[dict exists $result storage $key]} {
-            lappend rows [list $label [dict get $result storage $key]]
+            lappend rows [list $label [::_ns_stats.hr [dict get $result storage $key]]]
         }
     }
     foreach {key label} {retainedFrom {Oldest retained sample} retainedTo {Newest retained sample}} {
@@ -1178,15 +1178,17 @@ proc ::_ns_stats.utilization.historyPanel {} {
         [::_ns_stats.utilization.historyChart history-cpu {Measured CPU by thread group} {CPU % of one core} $points cpu] "</div>"
     set rows {}
     foreach point [lreverse [lrange $points end-19 end]] {
+        set elapsed [::_ns_stats.dictGetDef $point sampling elapsedSeconds {}]
+        set requests [dict get $point requests]
         set row [list [clock format [expr {[dict get $point timestamp]/1000000}] -format {%Y-%m-%d %H:%M:%S %Z}] \
-            [::_ns_stats.dictGetDef $point sampling elapsedSeconds {}] \
-            [::_ns_stats.utilization.displayRate [dict get $point requests]]]
+            [expr {$elapsed eq "" ? "" : [::_ns_stats.hr $elapsed]}] \
+            [expr {$requests >= 0 ? [::_ns_stats.hr $requests] : "\u2014"}]]
         foreach key {queuetime filtertime runtime tracetime} {
             set value [dict get $point timings $key]
-            lappend row [expr {$value>=0 ? [format %.3f $value] : "unknown"}]
+            lappend row [expr {$value>=0 ? [::_ns_stats.hr $value %.3f] : "unknown"}]
         }
         set cpu [dict get $point cpu]
-        lappend row [expr {$cpu>=0 ? [format %.1f $cpu] : "unknown"}]
+        lappend row [expr {$cpu>=0 ? [::_ns_stats.hr $cpu %.1f] : "unknown"}]
         lappend rows $row
     }
     append html "<h3>Latest 20 retained intervals</h3>" \
