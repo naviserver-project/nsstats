@@ -307,6 +307,13 @@ proc ::_ns_stats.navigation.style {} {
 .ns-module-reload {display:inline-block;margin:0 0 0 6px;vertical-align:middle;}
 .ns-module-reload button {display:inline-flex;align-items:center;justify-content:center;padding:4px;border:1px solid var(--color-border,#888);border-radius:3px;background:var(--color-body-bg,#fff);color:var(--color-anchor,#004080);cursor:pointer;}
 .ns-module-reload button:focus-visible {outline:2px solid currentColor;outline-offset:2px;}
+.data-table.ns-tcl-library {width:100%;table-layout:auto;}
+.data-table.ns-tcl-library th:first-child,.data-table.ns-tcl-library td:first-child {width:1%;white-space:nowrap;vertical-align:top;}
+.data-table.ns-tcl-library .ns-library-version {width:1%;white-space:nowrap;vertical-align:top;}
+.data-table.ns-tcl-library .ns-library-files {width:auto;}
+.data-table.ns-tcl-library .ns-library-files code {white-space:normal;overflow-wrap:anywhere;}
+.data-table.ns-tcl-library .ns-library-action {width:1%;white-space:nowrap;text-align:right;vertical-align:top;}
+.data-table.ns-tcl-library .ns-module-reload {margin:0;}
 .ns-scope {font-size:11px;white-space:nowrap;opacity:.75;}
 .ns-server-context {padding:8px 15px;font-size:13px;background:var(--color-secondary-bg,#f1f1f1);color:var(--color-body-text,#000);}
 .ns-directory li a {display:flex;justify-content:space-between;gap:12px;}
@@ -5388,14 +5395,14 @@ proc ::_ns_stats.tcl.libraries {} {
                 set action [::_ns_stats.libraries.coreButton $name]
             } else {set action {Reload unavailable}}
         }
-        set row "<tr><td><code>[ns_quotehtml $name]</code></td><td><code>[ns_quotehtml $path]</code></td><td>$action</td></tr>"
+        set row "<tr><td><code>[ns_quotehtml $name]</code></td><td class='ns-library-files'><code>[ns_quotehtml $path]</code></td><td class='ns-library-action'>$action</td></tr>"
         if {[dict get $record reloadable]} {append active $row} else {append startup $row}
     }
-    set head {<div class='w3-responsive'><table class='data-table w3-table'><thead><tr><th>File</th><th>Effective source</th><th>Reload</th></tr></thead><tbody>}
+    set head {<div class='w3-responsive'><table class='data-table ns-tcl-library w3-table'><thead><tr><th>File</th><th class='ns-library-files'>Effective source</th><th class='ns-library-action'>Reload</th></tr></thead><tbody>}
     append html $head $active {</tbody></table></div>}
     append html "<details><summary>Startup-only core files</summary><p>Reload is not enabled for these files because they initialize infrastructure, configuration or resources.</p>$head$startup</tbody></table></div></details>"
     append html "<h2>Module Tcl files</h2>"
-    append html {<div class='w3-responsive'><table class='data-table w3-table'><thead><tr><th>Module</th><th>Version</th><th>Files and effective sources</th><th>Reload</th></tr></thead><tbody>}
+    append html {<div class='w3-responsive'><table class='data-table ns-tcl-library w3-table'><thead><tr><th>Module</th><th class='ns-library-version'>Version</th><th class='ns-library-files'>Files</th><th class='ns-library-action'>Reload</th></tr></thead><tbody>}
     if {![catch {ns_server -server [ns_info server] modules} modules]} {
         foreach module [lsort [dict keys $modules]] {
             set info [dict get $modules $module]
@@ -5414,7 +5421,7 @@ proc ::_ns_stats.tcl.libraries {} {
             if {[::_ns_stats.process.reloadAvailable] && [::_ns_stats.process.reloadable $module]} {
                 set action [::_ns_stats.process.reloadButton $module tcl.libraries]
             }
-            append html "<tr><td>[ns_quotehtml $module]</td><td>[ns_quotehtml $versionLabel]</td><td>$entries</td><td>$action</td></tr>"
+            append html "<tr><td>[ns_quotehtml $module]</td><td class='ns-library-version'>[ns_quotehtml $versionLabel]</td><td class='ns-library-files'>$entries</td><td class='ns-library-action'>$action</td></tr>"
         }
     }
     append html {</tbody></table></div>}
