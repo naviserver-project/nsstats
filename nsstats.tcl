@@ -5432,6 +5432,7 @@ proc ::_ns_stats.tcl.libraries {} {
         append html "<tr><td>[ns_quotehtml $name]</td><td>[ns_quotehtml $version]</td></tr>"
     }
     append html {</tbody></table></div>}
+    append html [::_ns_stats.footer]
     return $html
 }
 
