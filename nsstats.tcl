@@ -1844,7 +1844,7 @@ proc ::_ns_stats.linuxDiskSnapshot {} {
 
 # Latency includes time queued and serviced; writes in flight are an
 # instantaneous gauge, including writes already being serviced.
-proc ::_ns_stats.utilization.diskRows {current previous elapsed} {
+proc ::_ns_stats.utilization.diskRows {current previous elapsed {levels {}}} {
     set rows {}
     dict for {name disk} $current {
         set latency {}
@@ -1862,11 +1862,98 @@ proc ::_ns_stats.utilization.diskRows {current previous elapsed} {
         }
         set queue [::_ns_stats.dictGetDef $disk writeQueue {—}]
         set text "[join $latency {, }]; write queue depth $queue"
-        lappend rows [list "Linux Disk [ns_quotehtml $name]" \
-            [::_ns_stats.utilization.tooltip $text \
-                 {Host block-device counters. Mean read/write completion latency over the observed interval (queue plus service time); unavailable without completed I/O and two valid samples. Write queue depth is the current number of writes in flight, including service. Stacked devices are listed separately; do not sum them.}]]
+        set level [::_ns_stats.dictGetDef $levels $name ok]
+        lappend rows [list [::_ns_stats.utilization.colorize $level "Linux Disk [ns_quotehtml $name]"] \
+            [::_ns_stats.utilization.colorize $level [::_ns_stats.utilization.tooltip $text \
+                 {Host block-device counters. Mean read/write completion latency over the observed interval (queue plus service time); unavailable without completed I/O and two valid samples. Write queue depth is the current number of writes in flight, including service. Stacked devices are listed separately; do not sum them.}]]]
     }
     return $rows
+}
+
+# Track consecutive observed intervals, separately for reads and writes.
+# Idle I/O, missing devices and counter resets break the streak.
+proc ::_ns_stats.utilization.diskHealth {current previous elapsed history warning critical} {
+    set result {}
+    dict for {name disk} $current {
+        foreach {label count ticks} {read reads readMs write writes writeMs} {
+            set level ok
+            set ms -1
+            if {$elapsed > 0 && [dict exists $previous $name]} {
+                set old [dict get $previous $name]
+                set n [::_ns_stats.intervalDelta [dict get $disk $count] [dict get $old $count]]
+                set t [::_ns_stats.intervalDelta [dict get $disk $ticks] [dict get $old $ticks]]
+                if {$n > 0 && $t >= 0} {
+                    set ms [expr {double($t)/$n}]
+                    if {$ms >= $critical} {set level critical} elseif {$ms >= $warning} {set level warning}
+                }
+            }
+            foreach threshold {warning critical} {
+                set streak 0
+                if {$level eq "critical" || ($level eq "warning" && $threshold eq "warning")} {
+                    set streak [expr {1 + [::_ns_stats.dictGetDef $history $name $label $threshold 0]}]
+                }
+                dict set result $name $label $threshold $streak
+            }
+            dict set result $name $label latency $ms
+        }
+    }
+    return $result
+}
+
+# Keep warning history tied to the supplemental sample timestamp so rendering
+# the same sample twice cannot count it as another high-latency interval.
+proc ::_ns_stats.utilization.diskWarnings {current previous elapsed severityVar reasonsVar} {
+    upvar 1 $severityVar severity $reasonsVar reasons
+    if {![string equal -nocase Linux $::tcl_platform(os)]} {return {}}
+    set disks [::_ns_stats.dictGetDef $current linuxNetwork disks {}]
+    if {[dict size $disks] == 0} {
+        nsv_set _ns_stats diskHealth {}
+        return [list [list {Linux Disk Metrics} {Unavailable: Linux block-device statistics could not be read.}]]
+    }
+    set warning [ns_config -int -min 1 ns/module/nsstats diskLatencyWarningMs 20]
+    set critical [ns_config -int -min $warning ns/module/nsstats diskLatencyCriticalMs 100]
+    set samples [ns_config -int -min 1 ns/module/nsstats diskLatencySamples 3]
+    set stored {}
+    if {[nsv_exists _ns_stats diskHealth]} {set stored [nsv_get _ns_stats diskHealth]}
+    set timestamp [dict get $current supplementalTimestamp]
+    if {[::_ns_stats.dictGetDef $stored timestamp {}] eq $timestamp} {
+        set health [dict get $stored health]
+    } else {
+        set history {}
+        if {[::_ns_stats.dictGetDef $stored timestamp {}] eq
+            [::_ns_stats.dictGetDef $previous supplementalTimestamp missing]} {
+            set history [dict get $stored health]
+        }
+        set health [::_ns_stats.utilization.diskHealth $disks \
+            [::_ns_stats.dictGetDef $previous linuxNetwork disks {}] $elapsed $history $warning $critical]
+        nsv_set _ns_stats diskHealth [dict create timestamp $timestamp health $health]
+    }
+    set levels {}
+    dict for {name disk} $health {
+        foreach label {read write} {
+            set entry [dict get $disk $label]
+            set level ok
+            if {[dict get $entry critical] >= $samples} {
+                set level critical
+            } elseif {[dict get $entry warning] >= $samples} {
+                set level warning
+            }
+            if {$level eq "ok"} {continue}
+            if {$level eq "critical" || [::_ns_stats.dictGetDef $levels $name ok] eq "ok"} {
+                dict set levels $name $level
+            }
+            if {$level eq "critical" || $severity eq "ok"} {set severity $level}
+            set reason "disk [ns_quotehtml $name] $label latency [format %.2f [dict get $entry latency]] ms (at least $samples consecutive intervals)"
+            set queue [::_ns_stats.dictGetDef $disks $name writeQueue 0]
+            set oldQueue [::_ns_stats.dictGetDef $previous linuxNetwork disks $name writeQueue 0]
+            if {$label eq "write" && $queue > 0 && $oldQueue > 0} {
+                append reason "; writes in flight at both interval endpoints, current depth $queue"
+            }
+            lappend reasons $reason
+        }
+    }
+    return [::_ns_stats.utilization.diskRows $disks \
+        [::_ns_stats.dictGetDef $previous linuxNetwork disks {}] $elapsed $levels]
 }
 
 proc ::_ns_stats.linuxNetworkSnapshot {} {
@@ -2216,9 +2303,6 @@ proc ::_ns_stats.utilization.linuxRows {current previous elapsed severityVar rea
             [list "<span title='$linuxTitle'>$udpLabel</span>" $udpDisplay] \
             [list "<span title='$interfaceTitle'>Linux Interfaces</span>" [::_ns_stats.utilization.colorize $interfaceSeverity [join $interfaceParts {; }]]]
     }
-    lappend linuxRows {*}[::_ns_stats.utilization.diskRows \
-        [::_ns_stats.dictGetDef $linuxNetwork disks {}] \
-        [::_ns_stats.dictGetDef [::_ns_stats.dictGetDef $previous linuxNetwork {}] disks {}] $elapsed]
     return $linuxRows
 }
 
@@ -2382,6 +2466,10 @@ proc ::_ns_stats.utilization.globalSummary {sample threadCpu} {
     set linuxRows [::_ns_stats.utilization.linuxRows \
                        $current [::_ns_stats.dictGetDef $sample supplementalPrevious $previous] \
                        [::_ns_stats.dictGetDef $sample supplementalElapsed $elapsed] severity reasons]
+
+    lappend linuxRows {*}[::_ns_stats.utilization.diskWarnings \
+        $current [::_ns_stats.dictGetDef $sample supplementalPrevious $previous] \
+        [::_ns_stats.dictGetDef $sample supplementalElapsed $elapsed] severity reasons]
 
     if {$droppedRate > 0.0} {
         set severity critical

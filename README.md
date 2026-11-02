@@ -527,3 +527,25 @@ Regression checks: `tclsh tests/log-search.test` runs helper/UI fixtures with a
 Tcl search substitute; run the same file in NaviServer command mode to exercise
 native `ns_fseekchars`, hashing and cursor caching. The other `tests/*.test` files
 remain standalone Tcl tests.
+
+### Disk latency summary warnings (Linux)
+
+The utilization summary reports sustained mean read or write completion latency
+(queue plus service time), using these settings in `ns/module/nsstats`:
+
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| `diskLatencyWarningMs` | 20 | Warning threshold in milliseconds (positive integer). |
+| `diskLatencyCriticalMs` | 100 | Critical threshold, at least the warning threshold. |
+| `diskLatencySamples` | 3 | Consecutive observed intervals required (positive integer). |
+
+Tune thresholds for the storage workload. Intervals are driven by utilization
+page sampling, not a background monitor. Idle intervals, counter resets, missing
+devices and interrupted sample history clear the streak. Re-rendering the same
+sample does not advance it. Critical requires consecutive intervals at the
+critical threshold; warning also counts intervals above the critical threshold.
+Write queue depth alone does not raise an alert. With sustained high write
+latency, the summary adds queue context if writes are in flight at both interval
+endpoints; this does not establish a continuously nonempty queue.
+Unavailable Linux disk counters produce an informational row without changing
+the overall status. Other platforms do not show this row.
