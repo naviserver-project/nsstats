@@ -1815,9 +1815,63 @@ proc ::_ns_stats.linuxReadSocketQueues {} {
     return [expr {$tablesRead > 0 ? $result : {}}]
 }
 
+# Whole block devices only: partitions would duplicate their parent counters.
+# stat fields and inflight are documented in Documentation/block/stat.rst
+# and Documentation/ABI/stable/sysfs-block in the Linux kernel.
+proc ::_ns_stats.linuxDiskSnapshot {} {
+    set disks {}
+    foreach path [lsort [glob -nocomplain -directory /sys/block *]] {
+        set name [file tail $path]
+        if {[string match loop* $name] || [string match ram* $name]} {continue}
+        set fields [regexp -all -inline {\S+} [::_ns_stats.linuxReadFile $path/stat]]
+        if {[llength $fields] < 11} {continue}
+        set valid 1
+        foreach value $fields {
+            if {![string is entier -strict $value] || $value < 0} {set valid 0; break}
+        }
+        if {!$valid} {continue}
+        set disk [dict create reads [lindex $fields 0] readMs [lindex $fields 3] \
+                      writes [lindex $fields 4] writeMs [lindex $fields 7]]
+        set inflight [regexp -all -inline {\S+} [::_ns_stats.linuxReadFile $path/inflight]]
+        if {[llength $inflight] == 2 && [string is entier -strict [lindex $inflight 1]]
+            && [lindex $inflight 1] >= 0} {
+            dict set disk writeQueue [lindex $inflight 1]
+        }
+        dict set disks $name $disk
+    }
+    return $disks
+}
+
+# Latency includes time queued and serviced; writes in flight are an
+# instantaneous gauge, including writes already being serviced.
+proc ::_ns_stats.utilization.diskRows {current previous elapsed} {
+    set rows {}
+    dict for {name disk} $current {
+        set latency {}
+        foreach {label count ticks} {read reads readMs write writes writeMs} {
+            set text {—}
+            if {$elapsed > 0 && [dict exists $previous $name]} {
+                set old [dict get $previous $name]
+                set n [::_ns_stats.intervalDelta [dict get $disk $count] \
+                           [dict get $old $count]]
+                set ms [::_ns_stats.intervalDelta [dict get $disk $ticks] \
+                            [dict get $old $ticks]]
+                if {$n > 0 && $ms >= 0} {set text "[format %.2f [expr {double($ms)/$n}]] ms"}
+            }
+            lappend latency "$label $text"
+        }
+        set queue [::_ns_stats.dictGetDef $disk writeQueue {—}]
+        set text "[join $latency {, }]; write queue depth $queue"
+        lappend rows [list "Linux Disk [ns_quotehtml $name]" \
+            [::_ns_stats.utilization.tooltip $text \
+                 {Host block-device counters. Mean read/write completion latency over the observed interval (queue plus service time); unavailable without completed I/O and two valid samples. Write queue depth is the current number of writes in flight, including service. Stacked devices are listed separately; do not sum them.}]]
+    }
+    return $rows
+}
+
 proc ::_ns_stats.linuxNetworkSnapshot {} {
 
-    if {![string match -nocase *linux*$::tcl_platform(platform)]} {
+    if {![string equal -nocase Linux $::tcl_platform(os)]} {
         return {}
     }
 
@@ -1826,6 +1880,7 @@ proc ::_ns_stats.linuxNetworkSnapshot {} {
     set snmp6   [::_ns_stats.linuxReadSnmp6]
     set devices [::_ns_stats.linuxReadDeviceCounters]
     set queues  [::_ns_stats.linuxReadSocketQueues]
+    set disks   [::_ns_stats.linuxDiskSnapshot]
 
     set counters {}
 
@@ -1885,7 +1940,7 @@ proc ::_ns_stats.linuxNetworkSnapshot {} {
     }
 
     if {[dict size $counters] == 0
-        && [dict size $queues] == 0} {
+        && [dict size $queues] == 0 && [dict size $disks] == 0} {
         return {}
     }
 
@@ -1896,7 +1951,8 @@ proc ::_ns_stats.linuxNetworkSnapshot {} {
 
     return [dict create \
                 counters $counters \
-                gauges   $queues]
+                gauges   $queues \
+                disks    $disks]
 }
 
 proc ::_ns_stats.utilization.tooltip {text tooltip} {
@@ -2160,6 +2216,9 @@ proc ::_ns_stats.utilization.linuxRows {current previous elapsed severityVar rea
             [list "<span title='$linuxTitle'>$udpLabel</span>" $udpDisplay] \
             [list "<span title='$interfaceTitle'>Linux Interfaces</span>" [::_ns_stats.utilization.colorize $interfaceSeverity [join $interfaceParts {; }]]]
     }
+    lappend linuxRows {*}[::_ns_stats.utilization.diskRows \
+        [::_ns_stats.dictGetDef $linuxNetwork disks {}] \
+        [::_ns_stats.dictGetDef [::_ns_stats.dictGetDef $previous linuxNetwork {}] disks {}] $elapsed]
     return $linuxRows
 }
 
