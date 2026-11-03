@@ -132,7 +132,7 @@ set ::pluginPages {}
 # identifiers remain unchanged; optional pages are omitted when unavailable.
 set ::navGroups {
     overview {Overview {
-        process {Process and servers} utilization Utilization threads Threads
+        process {Process and servers} utilization Utilization utilization.episodes {TCP loss history} threads Threads
         list-lsof {Open files}
     }}
     memory {{Memory & storage} {
@@ -155,7 +155,7 @@ set ::navGroups {
     }}
 }
 set ::navScopes {
-    process global utilization global threads global list-lsof global
+    process global utilization global utilization.episodes global threads global list-lsof global
     stats.history global mem.tcl global dbpools global mem.cache server mem.nsvsize server mem.adp server
     background.jobs global background.sched global proxy-workers global
     config.file global config.params global tcl.libraries server locks.mutex server locks.nsv server
@@ -193,7 +193,7 @@ proc ::_ns_stats.navigation.groups {} {
             if {[info procs ::_ns_stats.$page] eq "" && ![dict exists $::pluginPages $page]} {
                 continue
             }
-            if {$page eq "stats.history" && [info commands ns_stats] eq ""} {
+            if {$page in {stats.history utilization.episodes} && [info commands ns_stats] eq ""} {
                 continue
             }
             if {$page eq "utilization" && [info commands ns_json] eq ""} {
@@ -358,6 +358,7 @@ set ::titles {
     proxy-workers     "nsproxy Workers"
     requestprocs      "Request Handlers"
     threads           "Running Threads"
+    utilization.episodes "TCP loss history"
     utilization       "Utilization"
     url2file          "Url2File Mappings"
 }
@@ -1056,7 +1057,13 @@ proc ::_ns_stats.utilization.historyPoint {record} {
         dict for {group value} $groups {set cpu [expr {$cpu+$value}]}
     }
     return [dict create timestamp [dict get $record timestamp] instance [dict get $record instance] \
-        sampling [dict get $record sampling] requests $requests pools $poolRates timings $timings cpu $cpu groups $groups \
+        sampling [dict get $record sampling] requests $requests pools $poolRates timings $timings cpu $cpu groups $groups]
+}
+
+# Episode inspection does not need pool timing or CPU projections.
+proc ::_ns_stats.utilization.linuxEpisodePoint {record} {
+    return [dict create timestamp [dict get $record timestamp] instance [dict get $record instance] \
+        sampling [dict get $record sampling] \
         linuxCounters [::_ns_stats.dictGetDef $record linuxNetwork counters {}] \
         previousLinuxCounters [::_ns_stats.dictGetDef $record previousLinuxNetwork counters {}]]
 }
@@ -1311,10 +1318,23 @@ proc ::_ns_stats.utilization.linuxEpisodes {points} {
     return [dict create episodes $episodes examined $examined unknown $unknown]
 }
 
+# Keep the full-day query off normal utilization refreshes.
+proc ::_ns_stats.utilization.linuxEpisodesLink {} {
+    if {[info commands ::ns_stats] eq "" || ![string equal -nocase Linux $::tcl_platform(os)]} {return {}}
+    return {<p><a href='?@page=utilization.episodes'>View historical TCP loss episodes for the last 24 hours</a>. History is loaded when opened.</p>}
+}
+
+proc ::_ns_stats.utilization.episodes {} {
+    set html [::_ns_stats.header "TCP loss history"]
+    append html {<p><a href='?@page=utilization'>Back to utilization</a></p>}
+    append html [::_ns_stats.utilization.linuxEpisodesPanel] [::_ns_stats.footer]
+    return $html
+}
+
 proc ::_ns_stats.utilization.linuxEpisodesPanel {} {
     if {[info commands ::ns_stats] eq "" || ![string equal -nocase Linux $::tcl_platform(os)]} {return {}}
     set html "<h2>Historical TCP loss episodes — last 24 hours</h2>"
-    if {[catch {::_ns_stats.utilization.readHistory 1440} history]} {
+    if {[catch {::_ns_stats.utilization.readHistory 1440 ::_ns_stats.utilization.linuxEpisodePoint} history]} {
         return "$html<p>History unavailable: [ns_quotehtml $history]</p>"
     }
     if {![dict get $history available]} {return "$html<p>[ns_quotehtml [dict get $history reason]]</p>"}
@@ -2069,43 +2089,27 @@ proc ::_ns_stats.utilization.diskHealth {current previous elapsed history warnin
     return $result
 }
 
-# Keep warning history tied to the supplemental sample timestamp so rendering
-# the same sample twice cannot count it as another high-latency interval.
+# Every valid measurement window is assessed immediately. Sustained conditions
+# are evaluated separately from background samples, without page-local state.
 proc ::_ns_stats.utilization.diskWarnings {current previous elapsed severityVar reasonsVar} {
     upvar 1 $severityVar severity $reasonsVar reasons
     if {![string equal -nocase Linux $::tcl_platform(os)]} {return {}}
     set disks [::_ns_stats.dictGetDef $current linuxNetwork disks {}]
     if {[dict size $disks] == 0} {
-        nsv_set _ns_stats diskHealth {}
         return [list [list {Linux Disk Metrics} {Unavailable: Linux block-device statistics could not be read.}]]
     }
     set warning [ns_config -int -min 1 ns/module/nsstats diskLatencyWarningMs 20]
     set critical [ns_config -int -min $warning ns/module/nsstats diskLatencyCriticalMs 100]
-    set samples [ns_config -int -min 1 ns/module/nsstats diskLatencySamples 3]
-    set stored {}
-    if {[nsv_exists _ns_stats diskHealth]} {set stored [nsv_get _ns_stats diskHealth]}
-    set timestamp [dict get $current supplementalTimestamp]
-    if {[::_ns_stats.dictGetDef $stored timestamp {}] eq $timestamp
-        && [::_ns_stats.dictGetDef $stored elapsed {}] eq $elapsed} {
-        set health [dict get $stored health]
-    } else {
-        set history {}
-        if {[::_ns_stats.dictGetDef $stored timestamp {}] eq
-            [::_ns_stats.dictGetDef $previous supplementalTimestamp missing]} {
-            set history [dict get $stored health]
-        }
-        set health [::_ns_stats.utilization.diskHealth $disks \
-            [::_ns_stats.dictGetDef $previous linuxNetwork disks {}] $elapsed $history $warning $critical]
-        nsv_set _ns_stats diskHealth [dict create timestamp $timestamp elapsed $elapsed health $health]
-    }
+    set health [::_ns_stats.utilization.diskHealth $disks \
+        [::_ns_stats.dictGetDef $previous linuxNetwork disks {}] $elapsed {} $warning $critical]
     set levels {}
     dict for {name disk} $health {
         foreach label {read write} {
             set entry [dict get $disk $label]
             set level ok
-            if {[dict get $entry critical] >= $samples} {
+            if {[dict get $entry critical] > 0} {
                 set level critical
-            } elseif {[dict get $entry warning] >= $samples} {
+            } elseif {[dict get $entry warning] > 0} {
                 set level warning
             }
             if {$level eq "ok"} {continue}
@@ -2113,7 +2117,7 @@ proc ::_ns_stats.utilization.diskWarnings {current previous elapsed severityVar 
                 dict set levels $name $level
             }
             if {$level eq "critical" || $severity eq "ok"} {set severity $level}
-            set reason "disk [ns_quotehtml $name] $label latency [format %.2f [dict get $entry latency]] ms (at least $samples consecutive intervals)"
+            set reason "disk [ns_quotehtml $name] $label latency [format %.2f [dict get $entry latency]] ms (measurement interval; $level threshold [expr {$level eq "critical" ? $critical : $warning}] ms)"
             set queue [::_ns_stats.dictGetDef $disks $name writeQueue 0]
             set oldQueue [::_ns_stats.dictGetDef $previous linuxNetwork disks $name writeQueue 0]
             if {$label eq "write" && $queue > 0 && $oldQueue > 0} {
@@ -2124,6 +2128,123 @@ proc ::_ns_stats.utilization.diskWarnings {current previous elapsed severityVar 
     }
     return [::_ns_stats.utilization.diskRows $disks \
         [::_ns_stats.dictGetDef $previous linuxNetwork disks {}] $elapsed $levels]
+}
+
+# Assess only actual sampler intervals, never a display-window aggregate or
+# a page-to-page baseline. Missing/idle/reset data breaks per-device streaks.
+proc ::_ns_stats.utilization.diskSustained {records samples warning critical} {
+    set history {}
+    set count 0
+    set previous {}
+    set from {}
+    set to {}
+    foreach record [lrange $records [expr {[llength $records]-$samples}] end] {
+        set sampling [::_ns_stats.dictGetDef $record sampling {}]
+        set elapsed [::_ns_stats.dictGetDef $sampling elapsedSeconds 0]
+        set cadence [::_ns_stats.dictGetDef $sampling intervalSeconds 0]
+        set start [::_ns_stats.dictGetDef $sampling from {}]
+        set end [::_ns_stats.dictGetDef $sampling to {}]
+        set disks [::_ns_stats.dictGetDef $record linuxNetwork disks {}]
+        set baseline [::_ns_stats.dictGetDef $record previousLinuxNetwork disks {}]
+        if {![::_ns_stats.dictGetDef $sampling ready false] || $elapsed eq "" || $elapsed<=0
+            || $cadence<=0 || $elapsed>1.5*$cadence || $start eq "" || $end eq ""
+            || $disks eq "" || $baseline eq ""} {
+            set history {};set count 0;set previous {};set from {};set to {}
+            continue
+        }
+        if {$previous ne "" && ([dict get $record instance] ne [dict get $previous instance]
+                                || abs($start-$to)>0.000001)} {
+            set history {};set count 0;set from {}
+        }
+        if {$count==0} {set from $start}
+        incr count
+        set history [::_ns_stats.utilization.diskHealth $disks $baseline $elapsed $history $warning $critical]
+        set previous $record
+        set to $end
+    }
+    return [dict create ready [expr {$count>=$samples}] count $count health $history from $from to $to]
+}
+
+proc ::_ns_stats.utilization.diskBackgroundRead {samples {reader ::ns_stats}} {
+    if {$samples<1 || $samples>10000} {error "background disk assessment requires 1..10000 samples"}
+    # No -window: use the last background publication, independent of the form.
+    set latest [{*}$reader sample]
+    if {![dict exists $latest timestamp]} {error "No background publication is available yet."}
+    if {![::_ns_stats.dictGetDef $latest sampling running false]} {error "Background sampling is stopped."}
+    set cadence [dict get $latest sampling intervalSeconds]
+    if {[::_ns_stats.dictGetDef $latest sampling ageSeconds Inf]>2*$cadence} {
+        error "Background samples are stale; sustained disk latency is unknown."
+    }
+    if {[::_ns_stats.dictGetDef $latest linuxNetwork disks {}] eq ""} {
+        error "Background disk observations are unavailable."
+    }
+    set records {}
+    if {$samples>1} {
+        # Exclude the publication itself from the time query, then append it.
+        # This avoids dropping the latest fractional-second endpoint and races
+        # with a newer publication while the query is in progress.
+        set to [expr {int([dict get $latest timestamp]/1000000)}]
+        set from [expr {max(0,$to-min(86400,int(ceil(1.5*$samples*$cadence))))}]
+        set cursor 0
+        if {$from<$to} {
+            while {1} {
+                set page [{*}$reader sampling history -from $from -to $to -limit 180 -cursor $cursor]
+                foreach record [dict get $page records] {
+                    if {[dict get $record timestamp]<[dict get $latest timestamp]} {lappend records $record}
+                }
+                if {![dict get $page more]} {break}
+                set next [dict get $page nextCursor]
+                if {$next eq "" || $next<=$cursor || [llength $records]>=10000} {
+                    error "Recent background disk history is incomplete."
+                }
+                set cursor $next
+            }
+        }
+    }
+    lappend records $latest
+    return [lrange $records [expr {[llength $records]-$samples}] end]
+}
+
+proc ::_ns_stats.utilization.diskSustainedPanel {} {
+    if {![string equal -nocase Linux $::tcl_platform(os)]} {return {}}
+    set html {<h3>Sustained disk latency (background samples)</h3>}
+    if {[info commands ::ns_stats] eq ""} {
+        return "$html<p>Unavailable: background sampling requires ns_stats.</p>"
+    }
+    set warning [ns_config -int -min 1 ns/module/nsstats diskLatencyWarningMs 20]
+    set critical [ns_config -int -min $warning ns/module/nsstats diskLatencyCriticalMs 100]
+    set samples [ns_config -int -min 1 ns/module/nsstats diskLatencySamples 3]
+    if {[catch {::_ns_stats.utilization.diskBackgroundRead $samples} records]} {
+        return "$html<p>[ns_quotehtml $records]</p>"
+    }
+    set result [::_ns_stats.utilization.diskSustained $records $samples $warning $critical]
+    if {![dict get $result ready]} {
+        return "$html<p>Sustained condition unknown: need $samples consecutive valid background intervals; [dict get $result count] available.</p>"
+    }
+    set alerts {}
+    dict for {name disk} [dict get $result health] {
+        foreach label {read write} {
+            set entry [dict get $disk $label]
+            set level ok
+            if {[dict get $entry critical]>=$samples} {set level critical
+            } elseif {[dict get $entry warning]>=$samples} {set level warning}
+            if {$level ne "ok"} {
+                lappend alerts [::_ns_stats.utilization.colorize $level \
+                    "[string toupper $level]: disk [ns_quotehtml $name] $label latency exceeded the $level threshold for $samples consecutive background intervals" 1]
+            }
+        }
+    }
+    set bounds {}
+    foreach key {from to} {
+        lappend bounds [clock format [expr {int([dict get $result $key])}] -format {%Y-%m-%d %H:%M:%S %Z}]
+    }
+    append html "<p>Latest $samples background intervals: [join $bounds { to }]. This assessment is independent of the selected display window.</p>"
+    if {$alerts eq ""} {
+        append html "<p>No sustained disk latency threshold crossings detected. Idle, missing or reset device counters break that device's streak.</p>"
+    } else {
+        append html "<p>[join $alerts {; }].</p>"
+    }
+    return $html
 }
 
 proc ::_ns_stats.linuxNetworkSnapshot {} {
@@ -3699,13 +3820,14 @@ proc ::_ns_stats.utilization {} {
         [::_ns_stats.header "Utilization and Bottlenecks"] \
         [::_ns_stats.utilization.sourcePanel $sample] \
         [::_ns_stats.results global-summary 0 {Metric Value} "?@page=utilization" $globalSummary 0 {left left}] \
+        [::_ns_stats.utilization.diskSustainedPanel] \
         "\n<p></p>" \
         "\n<div class='utilization-charts'>$driverChart $poolChart</div>" \
         "<h2>Network Drivers</h2>" \
         [::_ns_stats.results drivers 0 $driverTitles "?@page=utilization" $driverRows 0 $driverAlign] \
         "<h2 id='nsstats-pools'>Servers and Connection Pools</h2>" \
         [::_ns_stats.results utilization-pools 0 $poolTitles "?@page=utilization" $poolRows 0 $poolAlign] \
-        [::_ns_stats.utilization.linuxEpisodesPanel] \
+        [::_ns_stats.utilization.linuxEpisodesLink] \
         [::_ns_stats.utilization.historyPanel] \
         [::_ns_stats.footer]
     return $html

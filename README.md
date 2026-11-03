@@ -215,8 +215,11 @@ use both endpoints. With an older core that does not collect Linux observations,
 shared-mode Linux metrics are explicitly unavailable rather than borrowing a
 page-to-page interval. In live/legacy mode, page-observation intervals remain in use.
 
-A separate **Historical TCP loss episodes — last 24 hours** table reads the existing
-retained history. Adjacent affected sampling intervals are grouped with their
+The **TCP loss history** view, linked from Utilization, reads the existing
+retained history for the last 24 hours only when opened. Ordinary utilization
+refreshes do not scan the full day of history. The episode query projects only
+Linux counters rather than calculating unrelated request/CPU history. Its
+**Historical TCP loss episodes — last 24 hours** table preserves the evidence. Adjacent affected sampling intervals are grouped with their
 start/end timestamps and listen-overflow, listen-drop, backlog-drop and
 receive-queue-drop counts. Historical episodes do not change the selected
 window's status. Network counters cover the network namespace, including other
@@ -587,22 +590,39 @@ remain standalone Tcl tests.
 
 ### Disk latency summary warnings (Linux)
 
-The utilization summary reports sustained mean read or write completion latency
-(queue plus service time), using these settings in `ns/module/nsstats`:
+The utilization summary checks mean read or write completion latency
+(queue plus service time) over the selected measurement window. A threshold
+crossing immediately colors the disk row and contributes warning/critical status;
+no consecutive-interval requirement applies to the selected window.
+These settings are in `ns/module/nsstats`:
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |
 | `diskLatencyWarningMs` | 20 | Warning threshold in milliseconds (positive integer). |
 | `diskLatencyCriticalMs` | 100 | Critical threshold, at least the warning threshold. |
-| `diskLatencySamples` | 3 | Consecutive observed intervals required (positive integer). |
+| `diskLatencySamples` | 3 | Consecutive background intervals required for the separate sustained assessment. |
 
-Tune thresholds for the storage workload. Intervals are driven by utilization
-page sampling, not a background monitor. Idle intervals, counter resets, missing
-devices and interrupted sample history clear the streak. Re-rendering the same
-sample does not advance it. Critical requires consecutive intervals at the
-critical threshold; warning also counts intervals above the critical threshold.
-Write queue depth alone does not raise an alert. With sustained high write
-latency, the summary adds queue context if writes are in flight at both interval
-endpoints; this does not establish a continuously nonempty queue.
-Unavailable Linux disk counters produce an informational row without changing
-the overall status. Other platforms do not show this row.
+**Sustained disk latency (background samples)** assesses the latest recorded
+sampler intervals independently of the display-window size and page refreshes.
+It reads a short recent slice of the existing in-memory history and includes the
+latest background publication explicitly; it does not query SQLite, scan the
+full day, start sampling or maintain a page-observation streak. Opening the page
+after several high-latency samples detects a sustained condition immediately.
+This assessment shows its own interval bounds and does not alter the selected
+window's status. The two assessments can therefore differ when the selected
+window is longer or shorter than the latest background intervals.
+
+Tune thresholds for the storage workload. Idle I/O, counter resets and missing
+devices break per-device streaks. Gaps, sampler restarts and unready intervals
+break continuity; insufficient history, stopped sampling, stale publications or
+unavailable disk probes are reported as unavailable/unknown. Warning counts
+intervals at either threshold; sustained critical requires every interval to
+meet the critical threshold. The reader is bounded to 10,000 records, and enough
+continuous retained history must exist for the configured sample count.
+
+Write queue depth alone does not raise an alert. When the selected window has
+high write latency, the summary adds queue context if writes are in flight at
+both endpoints; this does not establish a continuously nonempty queue. It also
+says nothing about read queue occupancy. Unavailable Linux disk counters produce
+an informational row without changing the overall status. Other platforms do not
+show these diagnostics.
