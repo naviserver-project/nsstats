@@ -5579,11 +5579,11 @@ proc ::_ns_stats.process.dbfilesize {pool} {
     if {[catch {file size $path} bytes] || ![file isfile $path]} {
         return "Database file size: unavailable"
     }
-    set result "Database file: [::_ns_stats.hr $bytes]B ($bytes bytes)"
+    set result "Database file: [::_ns_stats.hr $bytes]B"
     foreach {suffix label} {-wal WAL -shm {shared memory}} {
         set auxiliary $path$suffix
         if {[file isfile $auxiliary] && ![catch {file size $auxiliary} bytes]} {
-            append result ", $label: [::_ns_stats.hr $bytes]B ($bytes bytes)"
+            append result ", $label: [::_ns_stats.hr $bytes]B"
         }
     }
     return $result
