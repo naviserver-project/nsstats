@@ -850,6 +850,44 @@ proc ::_ns_stats.mem.cache {} {
 # Prefer a ready shared sample while sampling runs; allow an explicit snapshot.
 # Neither read changes sampling. An absent command selects the legacy collector.
 # Display-window controls read retained samples; they never reconfigure sampling.
+# Normalize the form and collector identically; do not alter sampler settings.
+proc ::_ns_stats.displayWindow {status} {
+    set requested [expr {[info commands ns_queryget] ne "" ? [ns_queryget statsWindow ""] : ""}]
+    set effective $requested
+    set notice {}
+    set maximum [::_ns_stats.dictGetDef $status maxWindowSeconds 900]
+    set available [::_ns_stats.dictGetDef $status availableWindowSeconds $maximum]
+    set maximum [expr {min($maximum,$available)}]
+    if {$requested ne "" && [info commands ns_baseunit] ne ""
+        && ![catch {ns_baseunit -time $requested} seconds] && $seconds>$maximum} {
+        # Zero selects the latest published interval while history is warming up.
+        set effective [expr {$maximum>0 ? "[format %.6gs $maximum]" : "0s"}]
+        set notice "Requested display window $requested exceeds the currently usable maximum of [format %.6gs $maximum]."
+        if {$maximum>0} {
+            append notice " Using $effective instead."
+        } else {
+            append notice " Using the latest published interval (0s) while continuous history builds up."
+        }
+    }
+    return [dict create requested $requested effective $effective notice $notice]
+}
+
+proc ::_ns_stats.displayWindowHelp {status} {
+    set retention [::_ns_stats.dictGetDef $status retentionSeconds 900]
+    set count [::_ns_stats.dictGetDef $status maxSamples 180]
+    set maximum [::_ns_stats.dictGetDef $status maxWindowSeconds 900]
+    set interval [dict get $status interval]
+    set available [::_ns_stats.dictGetDef $status availableWindowSeconds {}]
+    set help "The display window uses in-memory samples: retention [format %.6g $retention]s, up to $count samples; configured window limit [format %.6g $maximum]s."
+    if {$available ne ""} {append help " Continuous history currently available: [format %.6g $available]s."}
+    set hourlySamples [expr {int(ceil(3600.0/$interval))+1}]
+    append help " For a 1h window, set ns_param samplingRetention 1h and ns_param samplingMaxSamples $hourlySamples in ns_section ns/stats, then restart NaviServer and allow an hour of continuous sampling. Larger limits retain more data in memory. historyRetention controls SQLite history and does not extend this display window."
+    if {![dict exists $status maxWindowSeconds]} {
+        append help " The loaded core has a fixed 900s limit; install the updated NaviServer tcl/ns_stats.tcl to make memory retention configurable."
+    }
+    return $help
+}
+
 proc ::_ns_stats.measurementControls {} {
     if {$::page ni {utilization threads} || [info commands ns_stats] eq ""} {return ""}
     set mode [ns_queryget statsMode auto]
@@ -858,8 +896,8 @@ proc ::_ns_stats.measurementControls {} {
         set selected [expr {$mode eq $value ? " selected" : ""}]
         append options "<option value='$value'$selected>$label</option>"
     }
-    set period [ns_queryget statsWindow ""]
     set status [ns_stats sampling status]
+    set period [dict get [::_ns_stats.displayWindow $status] effective]
     if {$period eq ""} {set period "[dict get $status interval]s"}
     set html "<form class='ns-measurement-controls' method='get' style='display:inline-block;margin-right:12px'><input type='hidden' name='@page' value='$::page'><input type='hidden' name='raw' value='$::raw'><label>Measurements: <select name='statsMode' onchange='this.form.submit()'>$options</select></label>"
     if {[dict get $status running] && $mode ne "snapshot"} {
@@ -883,7 +921,8 @@ proc ::_ns_stats.runtimeSnapshot {} {
     set displayError ""
     set status [ns_stats sampling status]
     if {$mode eq "auto" && [dict get $status running]} {
-        set window [expr {[info commands ns_queryget] ne "" ? [ns_queryget statsWindow ""] : ""}]
+        set selection [::_ns_stats.displayWindow $status]
+        set window [dict get $selection effective]
         if {$window eq ""} {
             set sample [ns_stats sample]
         } elseif {[catch {ns_stats sample -window $window} sample]} {
@@ -897,12 +936,14 @@ proc ::_ns_stats.runtimeSnapshot {} {
         if {[dict get $sample sampling ready]} {
             dict set sample collectorMode sample
             dict set sample samplingStatus $status
+            dict set sample displayNotice [dict get $selection notice]
             return $sample
         }
     }
     set snapshot [ns_stats snapshot]
     dict set snapshot displayError $displayError
-    dict set snapshot requestedWindow [expr {[info commands ns_queryget] ne "" ? [ns_queryget statsWindow ""] : ""}]
+    dict set snapshot requestedWindow [expr {[info exists selection] ? [dict get $selection effective] : ""}]
+    dict set snapshot displayNotice [expr {[info exists selection] ? [dict get $selection notice] : ""}]
     dict set snapshot samplingPending [expr {$mode eq "auto" && [dict get $status running]}]
     dict set snapshot collectorMode snapshot
     dict set snapshot samplingStatus $status
@@ -953,31 +994,40 @@ proc ::_ns_stats.utilization.sourcePanel {sample {page utilization}} {
     set snapshot [::_ns_stats.dictGetDef $sample coreSnapshot {}]
     if {$snapshot eq ""} {return {}}
     set status [::_ns_stats.dictGetDef $snapshot samplingStatus {}]
-    set sampled [::_ns_stats.sampled $snapshot]
-    set label "Live snapshot"
-    set details "Gauges are observations at collection time."
-    if {$sampled} {
+    set notice [::_ns_stats.dictGetDef $snapshot displayNotice {}]
+    set html {}
+    if {$notice ne ""} {
+        append html "<p><strong>[ns_quotehtml $notice]</strong> [ns_quotehtml [::_ns_stats.displayWindowHelp $status]]</p>"
+    }
+    if {[::_ns_stats.sampled $snapshot]} {
         set age [dict get $snapshot sampling ageSeconds]
-        if {$age <= 2*[dict get $status interval]} {return ""}
-        return "<p><strong>Measurements are stale: collected [format %.2f $age]s ago.</strong></p>"
-    } elseif {[::_ns_stats.dictGetDef $snapshot samplingPending false]} {
-        set window [::_ns_stats.dictGetDef $snapshot requestedWindow ""]
-        if {$window eq ""} {
-            set label "Shared sampling: waiting for the first measurement period"
-        } else {
-            set label "Shared sampling: display window [ns_quotehtml $window] is not yet available"
+        if {$age>2*[dict get $status interval]} {
+            append html "<p><strong>Measurements are stale: collected [format %.2f $age]s ago.</strong></p>"
         }
-        set details "Sampling every [dict get $status interval]s. Current gauges are shown; rates and CPU require sufficient continuous history."
+        if {$notice ne ""} {
+            set period [dict get $snapshot sampling elapsedSeconds]
+            append html "<p>Rates and CPU averages cover the measured [format %.3f $period]s interval ending at [clock format [expr {[dict get $snapshot timestamp]/1000000}] -format {%Y-%m-%d %H:%M:%S %Z}]. Queue depths and other gauges show the interval endpoint.</p>"
+        }
+        return $html
+    }
+    if {[::_ns_stats.dictGetDef $snapshot samplingPending false]} {
+        set window [::_ns_stats.dictGetDef $snapshot requestedWindow ""]
+        set label [expr {$window eq "" ? "Shared sampling: waiting for the first measurement period" : "Shared sampling: display window $window is not yet available"}]
+        set details "Sampling every [dict get $status interval]s. No continuous interval matching this window is available yet. Rates and CPU averages are unknown."
         set error [::_ns_stats.dictGetDef $snapshot displayError ""]
         if {$error ne ""} {
             set label "Shared sampling: display window cannot be calculated"
-            set details "[ns_quotehtml $error] Current gauges are shown; interval measurements are unavailable."
+            set details "$error Rates and CPU averages are unknown."
         }
+        append html "<p><strong>[ns_quotehtml $label].</strong> [ns_quotehtml $details]"
+        if {$notice eq ""} {append html " [ns_quotehtml [::_ns_stats.displayWindowHelp $status]]"}
+        append html "</p>"
     } else {
-        append details " Sampling is stopped; rates use page observations."
+        set reason [expr {[::_ns_stats.dictGetDef $status running false] ? "Live snapshot selected" : "Sampling is stopped"}]
+        append html "<p><strong>Live snapshot.</strong> $reason; rates use page observations.</p>"
     }
-    if {$sampled} {return "<p><strong>$label.</strong> $details</p>"}
-    return "<p><strong>$label.</strong> $details Collection time: [clock format [expr {[dict get $snapshot timestamp]/1000000}] -format {%Y-%m-%d %H:%M:%S %Z}].</p>"
+    append html "<p>Queue depths and other gauges show the state observed at [clock format [expr {[dict get $snapshot timestamp]/1000000}] -format {%Y-%m-%d %H:%M:%S %Z}]; that timestamp is not a measurement duration.</p>"
+    return $html
 }
 
 # Reduce stored records to plot/table data while paging, rather than retaining
@@ -1006,7 +1056,9 @@ proc ::_ns_stats.utilization.historyPoint {record} {
         dict for {group value} $groups {set cpu [expr {$cpu+$value}]}
     }
     return [dict create timestamp [dict get $record timestamp] instance [dict get $record instance] \
-        sampling [dict get $record sampling] requests $requests pools $poolRates timings $timings cpu $cpu groups $groups]
+        sampling [dict get $record sampling] requests $requests pools $poolRates timings $timings cpu $cpu groups $groups \
+        linuxCounters [::_ns_stats.dictGetDef $record linuxNetwork counters {}] \
+        previousLinuxCounters [::_ns_stats.dictGetDef $record previousLinuxNetwork counters {}]]
 }
 
 proc ::_ns_stats.utilization.readHistory {minutes {projector ::_ns_stats.utilization.historyPoint} {reader ::ns_stats}} {
@@ -1144,7 +1196,7 @@ proc ::_ns_stats.utilization.historyPanel {} {
     set coverage [dict get $result coverage]
     set source [dict get $result source]
     set status [dict get $result persistence]
-    set label [expr {$source eq "sqlite" ? "Persistent SQLite history (including retained samples before restart)" : "Process memory: at most 180 samples / 15 minutes; lost on process restart"}]
+    set label [expr {$source eq "sqlite" ? "Persistent SQLite history (including retained samples before restart)" : "Process memory: configured age and sample limits apply; lost on process restart"}]
     append html "<p>[ns_quotehtml $label]. [::_ns_stats.hr [llength $points]] samples returned. No sampling or persistence settings are changed by this page.</p>"
     set rows [list [list Source $label] \
         [list "Paging complete" [expr {![dict get $result truncated]}]] \
@@ -1193,6 +1245,108 @@ proc ::_ns_stats.utilization.historyPanel {} {
     }
     append html "<h3>Latest 20 retained intervals</h3>" \
         [::_ns_stats.results history-intervals 0 {{Interval ending} {Seconds} {Requests/s} {Queue ms} {Filter ms} {Run ms} {Trace ms} {Measured CPU %}} {?@page=utilization} $rows 0 {left right right right right right right right}]
+    return $html
+}
+
+# Adjacent affected sampling intervals form an episode. Unknown/reset samples,
+# missing Linux probes, clean intervals and sampling gaps break an episode.
+proc ::_ns_stats.utilization.linuxEpisodes {points} {
+    set episodes {}
+    set episode {}
+    set examined 0
+    set unknown 0
+    set keys {tcpListenOverflows tcpListenDrops tcpBacklogDrops tcpReceiveDrops}
+    foreach point $points {
+        set sampling [dict get $point sampling]
+        set elapsed [::_ns_stats.dictGetDef $sampling elapsedSeconds 0]
+        set end [expr {[dict get $point timestamp]/1000000.0}]
+        set start [::_ns_stats.dictGetDef $sampling from {}]
+        set valid [expr {[dict get $sampling ready] && $elapsed ne "" && $elapsed>0
+                         && $elapsed<=1.5*[dict get $sampling intervalSeconds]
+                         && $start ne ""}]
+        set counts {}
+        set affected false
+        set complete true
+        set known 0
+        foreach key $keys {
+            set current [::_ns_stats.dictGetDef $point linuxCounters $key {}]
+            set previous [::_ns_stats.dictGetDef $point previousLinuxCounters $key {}]
+            if {$current eq "" || $previous eq "" || $current<$previous} {
+                set complete false
+                dict set counts $key {}
+            } else {
+                incr known
+                set delta [expr {$current-$previous}]
+                dict set counts $key $delta
+                if {$delta>0} {set affected true}
+            }
+        }
+        set valid [expr {$valid && $known>0}]
+        if {!$valid || !$complete} {incr unknown}
+        if {$valid} {incr examined}
+        # Partial intervals may retain positive evidence for known counters,
+        # but cannot connect episodes across unavailable/reset observations.
+        if {!$valid || !$affected || !$complete} {
+            if {$episode ne ""} {lappend episodes $episode; set episode {}}
+            if {!$valid || !$affected} {continue}
+        }
+        if {$episode ne "" && ([dict get $episode end]!=$start
+                                || [dict get $episode instance] ne [dict get $point instance])} {
+            lappend episodes $episode
+            set episode {}
+        }
+        if {$episode eq ""} {
+            set episode [dict create start $start end $end instance [dict get $point instance] \
+                counts $counts intervals 1]
+        } else {
+            dict set episode end $end
+            dict incr episode intervals
+            foreach key $keys {
+                dict set episode counts $key [expr {[dict get $episode counts $key]+[dict get $counts $key]}]
+            }
+        }
+        if {!$complete} {lappend episodes $episode; set episode {}}
+    }
+    if {$episode ne ""} {lappend episodes $episode}
+    return [dict create episodes $episodes examined $examined unknown $unknown]
+}
+
+proc ::_ns_stats.utilization.linuxEpisodesPanel {} {
+    if {[info commands ::ns_stats] eq "" || ![string equal -nocase Linux $::tcl_platform(os)]} {return {}}
+    set html "<h2>Historical TCP loss episodes — last 24 hours</h2>"
+    if {[catch {::_ns_stats.utilization.readHistory 1440} history]} {
+        return "$html<p>History unavailable: [ns_quotehtml $history]</p>"
+    }
+    if {![dict get $history available]} {return "$html<p>[ns_quotehtml [dict get $history reason]]</p>"}
+    set evidence [::_ns_stats.utilization.linuxEpisodes [dict get $history points]]
+    set episodes [dict get $evidence episodes]
+    append html "<p>[llength $episodes] recorded episodes; [dict get $evidence examined] measured intervals examined; [dict get $evidence unknown] intervals with unavailable observations. Counts describe their recorded intervals, independently of the selected display window and current status. Network counters cover the network namespace, including other services.</p>"
+    append html "<p>Only retained observations are evidence. Missing history, failed probes, counter resets and sampling gaps are unknown. A full day requires sufficient configured memory or persistent retention; older samples without Linux observations cannot be reconstructed.</p>"
+    if {![::_ns_stats.dictGetDef $history coverage complete false] || [dict get $history truncated]} {
+        append html "<p><strong>History coverage is incomplete; this is not a complete 24-hour total.</strong></p>"
+    }
+    if {[dict get $evidence examined]==0} {
+        return "$html<p>TCP episode evidence is unavailable: no usable Linux sampling intervals were retained.</p>"
+    }
+    if {$episodes eq ""} {
+        return "$html<p>No TCP loss episodes found in the available measured intervals.</p>"
+    }
+    set rows {}
+    foreach episode [lreverse [lrange $episodes end-49 end]] {
+        set row {}
+        foreach key {start end} {
+            lappend row [ns_quotehtml [clock format [expr {int([dict get $episode $key])}] -format {%Y-%m-%d %H:%M:%S %Z}]]
+        }
+        foreach key {tcpListenOverflows tcpListenDrops tcpBacklogDrops tcpReceiveDrops} {
+            set count [dict get $episode counts $key]
+            lappend row [expr {$count eq "" ? "\u2014" : $count}]
+        }
+        lappend rows $row
+    }
+    if {[llength $episodes]>50} {append html "<p>Showing the latest 50 episodes.</p>"}
+    append html [::_ns_stats.results linux-episodes 0 \
+        {{Interval start} {Interval end} {Listen overflows} {Listen drops} {Backlog drops} {Receive-queue drops}} \
+        {?@page=utilization} $rows 0 {left left right right right right}]
     return $html
 }
 
@@ -1378,7 +1532,14 @@ proc ::_ns_stats.utilizationSample {} {
         }
     }
 
-    set linuxNetwork [::_ns_stats.linuxNetworkSnapshot]
+    if {$snapshot ne "" && [dict exists $snapshot linuxNetwork]} {
+        set linuxNetwork [dict get $snapshot linuxNetwork]
+    } elseif {[::_ns_stats.sampled $snapshot]
+              || [::_ns_stats.dictGetDef $snapshot samplingPending false]} {
+        set linuxNetwork {}
+    } else {
+        set linuxNetwork [::_ns_stats.linuxNetworkSnapshot]
+    }
     set now          [expr {$snapshot eq "" ? [clock microseconds] : [dict get $snapshot timestamp]}]
 
     set sample [dict create \
@@ -1420,6 +1581,14 @@ proc ::_ns_stats.utilizationSample {} {
     }
 
     if {[::_ns_stats.dictGetDef $snapshot samplingPending false]} {set elapsed 0.0}
+
+    if {[::_ns_stats.sampled $snapshot]
+        || [::_ns_stats.dictGetDef $snapshot samplingPending false]} {
+        dict set supplementalPrevious linuxNetwork [::_ns_stats.dictGetDef $snapshot previousLinuxNetwork {}]
+        set supplementalElapsed $elapsed
+        dict set sample supplementalTimestamp $now
+        dict set supplementalPrevious supplementalTimestamp [expr {$now-int($elapsed*1000000)}]
+    }
 
     return [dict create \
                 current  $sample \
@@ -1916,7 +2085,8 @@ proc ::_ns_stats.utilization.diskWarnings {current previous elapsed severityVar 
     set stored {}
     if {[nsv_exists _ns_stats diskHealth]} {set stored [nsv_get _ns_stats diskHealth]}
     set timestamp [dict get $current supplementalTimestamp]
-    if {[::_ns_stats.dictGetDef $stored timestamp {}] eq $timestamp} {
+    if {[::_ns_stats.dictGetDef $stored timestamp {}] eq $timestamp
+        && [::_ns_stats.dictGetDef $stored elapsed {}] eq $elapsed} {
         set health [dict get $stored health]
     } else {
         set history {}
@@ -1926,7 +2096,7 @@ proc ::_ns_stats.utilization.diskWarnings {current previous elapsed severityVar 
         }
         set health [::_ns_stats.utilization.diskHealth $disks \
             [::_ns_stats.dictGetDef $previous linuxNetwork disks {}] $elapsed $history $warning $critical]
-        nsv_set _ns_stats diskHealth [dict create timestamp $timestamp health $health]
+        nsv_set _ns_stats diskHealth [dict create timestamp $timestamp elapsed $elapsed health $health]
     }
     set levels {}
     dict for {name disk} $health {
@@ -2107,7 +2277,7 @@ proc ::_ns_stats.utilization.linuxRows {current previous elapsed severityVar rea
                 set $deltaVariable $delta
 
                 if {$delta >= 0 && $elapsed > 0.0} {
-                    set $rateVariable [expr {$delta / $elapsed}]
+                    set $rateVariable [expr {$delta / double($elapsed)}]
                 }
             }
         }
@@ -2129,7 +2299,7 @@ proc ::_ns_stats.utilization.linuxRows {current previous elapsed severityVar rea
                  $tcpListenOverflowsDelta \
                  $tcpListenOverflowsRate \
                  "listen overflow" \
-                 "Connections discarded because a TCP accept queue was full. Check the NaviServer driver backlog and net.core.somaxconn." \
+                 "TCP accept-queue overflow events across the network namespace, including other services and retransmitted attempts. Identify the affected listener before checking its backlog and net.core.somaxconn." \
                  true \
                  \
                  $tcpBacklogDropsDelta \
@@ -2467,9 +2637,18 @@ proc ::_ns_stats.utilization.globalSummary {sample threadCpu} {
                        $current [::_ns_stats.dictGetDef $sample supplementalPrevious $previous] \
                        [::_ns_stats.dictGetDef $sample supplementalElapsed $elapsed] severity reasons]
 
-    lappend linuxRows {*}[::_ns_stats.utilization.diskWarnings \
-        $current [::_ns_stats.dictGetDef $sample supplementalPrevious $previous] \
-        [::_ns_stats.dictGetDef $sample supplementalElapsed $elapsed] severity reasons]
+    if {[::_ns_stats.sampled $snapshot]
+        || [::_ns_stats.dictGetDef $snapshot samplingPending false]} {
+        lappend linuxRows {*}[::_ns_stats.utilization.diskWarnings \
+            $current [::_ns_stats.dictGetDef $sample supplementalPrevious $previous] $elapsed severity reasons]
+        if {![dict exists $snapshot linuxNetwork]} {
+            lappend linuxRows [list {Linux diagnostics} {Unavailable for the selected window: the core does not sample Linux diagnostics.}]
+        }
+    } else {
+        lappend linuxRows {*}[::_ns_stats.utilization.diskWarnings \
+            $current [::_ns_stats.dictGetDef $sample supplementalPrevious $previous] \
+            [::_ns_stats.dictGetDef $sample supplementalElapsed $elapsed] severity reasons]
+    }
 
     if {$droppedRate > 0.0} {
         set severity critical
@@ -3526,6 +3705,7 @@ proc ::_ns_stats.utilization {} {
         [::_ns_stats.results drivers 0 $driverTitles "?@page=utilization" $driverRows 0 $driverAlign] \
         "<h2 id='nsstats-pools'>Servers and Connection Pools</h2>" \
         [::_ns_stats.results utilization-pools 0 $poolTitles "?@page=utilization" $poolRows 0 $poolAlign] \
+        [::_ns_stats.utilization.linuxEpisodesPanel] \
         [::_ns_stats.utilization.historyPanel] \
         [::_ns_stats.footer]
     return $html

@@ -139,6 +139,24 @@ module or, for OpenACS installations, via URL path permissions.
 
 ## Core diagnostics integration
 
+Linux interval diagnostics require the matching NaviServer core update. The core
+adds optional `linuxNetwork` observations to the existing snapshot/sampler and
+stores the matching `previousLinuxNetwork` endpoint in derived samples, including
+retained and compressed persistent records. No second scheduler or history
+database migration is needed.
+
+Install the updated NaviServer `tcl/ns_stats.tcl` and this nsstats version, then
+restart NaviServer so scheduled and request interpreters share the updated
+definitions. Page visits do not enable sampling, change cadence, or configure
+persistence.
+
+Run the nsstats regression files in `tests/` with a Tcl interpreter providing NX
+(for example `/usr/local/ns/bin/tclsh8.6`). The companion core regression check is
+`tests/developer/ns-stats-linux.tcl` in the NaviServer repository; it exercises
+snapshot collection, periodic publication, display-window baselines, retention,
+restart handling and the persistence codec without starting a server or writing
+a database.
+
 When `ns_stats` is available and sampling is running with a ready
 interval, nsstats reads the shared sample. Request/driver rates,
 timing averages and CPU percentages use the measured sampling interval
@@ -148,8 +166,27 @@ about stale samples. Beside Raw, select shared sampling or a live
 snapshot. The Display window field (for example `60s`) compares a
 fresh snapshot with the retained endpoint nearest that age; it does
 not change the sampling cadence. The actual measured period is shown
-in the table. The display window uses bounded memory history, up to 15
-minutes, without SQLite. Insufficient history or a gap/restart leaves
+in the table. The display window uses bounded in-memory history without SQLite.
+The default limits are 15 minutes and 180 samples. Oversized requests are clamped
+to the currently usable maximum and the form shows the effective value. The
+notice reports configured limits and available continuous history, and explains
+that timestamps label observations rather than measurement durations.
+
+To allow a one-hour display window with a 10-second sampling cadence, configure:
+
+```tcl
+ns_section ns/stats {
+    ns_param samplingRetention 1h
+    ns_param samplingMaxSamples 361
+}
+```
+
+Restart NaviServer and allow an hour of continuous sampling. The sample limit
+must be at least `ceil(windowSeconds / samplingIntervalSeconds) + 1`; increasing
+these limits uses more memory. `samplingRetention` accepts 1 second to 24 hours;
+`samplingMaxSamples` accepts 2 to 10,000. Both bounds apply, and gaps/restarts can
+leave less usable history. SQLite `historyRetention` is independent and does not
+extend the display-window buffer. Insufficient history or a gap/restart leaves
 interval measurements unknown while current gauges remain
 visible. Ordinary measurements have no extra status line; warnings
 remain visible. When sampling is stopped or live snapshot is selected,
@@ -157,8 +194,8 @@ rates use page-observation intervals.
 
 The utilization page also shows recent request-rate and measured CPU charts,
 the latest 20 intervals (including queue/filter/run/trace averages), and coverage.
-Without persistence it uses the core's bounded memory buffer (180 samples,
-at most 15 minutes at publication). With configured SQLite history it follows
+Without persistence it uses the core's bounded memory buffer (by default 180
+samples and at most 15 minutes at publication). With configured SQLite history it follows
 all pages up to 10,000 samples and includes retained records from earlier
 process instances. Choose 15 minutes, one hour, six hours or 24 hours.
 Chart lines break across gaps/restarts; absent/reset measurements remain unknown.
@@ -171,9 +208,29 @@ or write SQLite history. Configure those through `ns_stats`. Optional
 core capabilities and compatibility fallbacks are listed under
 [Requirements and compatibility](#requirements-and-compatibility).
 
+Linux network counters, socket queues and disk observations use the same core
+sample endpoints and measurement period as the selected display window. Queue
+occupancy is a gauge at the ending endpoint; counter changes and disk latencies
+use both endpoints. With an older core that does not collect Linux observations,
+shared-mode Linux metrics are explicitly unavailable rather than borrowing a
+page-to-page interval. In live/legacy mode, page-observation intervals remain in use.
+
+A separate **Historical TCP loss episodes — last 24 hours** table reads the existing
+retained history. Adjacent affected sampling intervals are grouped with their
+start/end timestamps and listen-overflow, listen-drop, backlog-drop and
+receive-queue-drop counts. Historical episodes do not change the selected
+window's status. Network counters cover the network namespace, including other
+services; socket queue gauges cover sockets owned by NaviServer. Missing probes,
+counter resets, older samples without Linux observations and sampling gaps are
+unknown and split episodes. Counts belong to the whole recorded intervals,
+including an interval crossing the query boundary. Up to the latest 50 episodes
+are shown; the episode count covers all examined records. The existing 10,000
+sample query limit and history coverage warnings still apply. Full-day evidence
+requires sufficient configured memory or persistent retention; the memory buffer
+covers at most 15 minutes by default. Older evidence cannot be dated retrospectively from lifetime totals.
+
 On installations without `ns_stats`, the existing collectors remain in use,
-including Linux `/proc` CPU fallback. Linux network diagnostics and queue details
-not exposed by the core remain supplemental, using their own observation interval.
+including Linux `/proc` CPU fallback.
 Changing collector backend resets the page baseline. An unavailable core CPU
 measurement stays unavailable; collector errors are not silently replaced by
 legacy results.
