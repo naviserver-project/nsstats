@@ -7175,17 +7175,25 @@ proc ::_ns_stats.threads {} {
     if {$osInfo} {
         set colNumSort {. 0 0 1 1 1 1 1 1 1 1 0}
         set colTitles {
-            Thread Parent ID Flags "Create Time"
-            TID State utime stime "CPU %" Args
+            Thread Parent "Native thread-library ID" Flags "Create Time"
+            "OS / Log TID" State utime stime "CPU %" Args
         }
         set align {
             left left right left left
             right right right right right left
         }
     } else {
-        set colNumSort {. 0 0 1 1 1 0}
-        set colTitles {Thread Parent ID Flags "Create Time" Args}
-        set align     {left left right left left left}
+        set colNumSort {. 0 0 1 1 1 1 0}
+        set colTitles {Thread Parent "Native thread-library ID" Flags "Create Time" "OS / Log TID" Args}
+        set align     {left left right left left right left}
+
+        # Keep native IDs visible even when per-thread CPU data is unavailable.
+        set displayThreads {}
+        foreach t $threadInfo {
+            lappend displayThreads [concat [lrange $t 0 4] \
+                                        [list [lindex $t 7] [lindex $t 6]]]
+        }
+        set threadInfo $displayThreads
     }
 
     #
@@ -7237,18 +7245,18 @@ proc ::_ns_stats.threads {} {
                               $tid $state $utime $stime \
                               $cpuDisplay $arg]
         } else {
-            set proc [lindex $t 5]
-            set arg  [lindex $t 6]
+            set tid [lindex $t 5]
+            set arg [lindex $t 6]
 
-            if {$proc eq "p:0x0"} {
-                set proc NULL
-            }
             if {$arg eq "a:0x0"} {
                 set arg NULL
             }
+            if {$tid eq "" || $tid == 0} {
+                set tid \u2014
+            }
 
             lappend rows \
-                [list $thread $parent $id $flags $create $arg]
+                [list $thread $parent $id $flags $create $tid $arg]
         }
     }
 
