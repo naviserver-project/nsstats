@@ -577,8 +577,8 @@ proc ::_ns_stats.stats.history {} {
         } {
             if {![dict exists $status $key]} {continue}
             set value [dict get $status $key]
-            if {$unit eq "bytes"} {set value [format "%.2f MiB" [expr {$value / 1048576.0}]]}
-            if {$unit eq "duration"} {set value [format "%.2f hours" [expr {$value / 3600.0}]]}
+            if {$unit eq "bytes"} {set value [::_ns_stats.hr $value]B}
+            if {$unit eq "duration"} {set value [::_ns_stats.fmtSeconds $value]}
             lappend rows [list $label $value]
         }
         append html [::_ns_stats.table "Persistence and cleanup settings" {Setting Value} $rows]
@@ -596,9 +596,9 @@ proc ::_ns_stats.stats.history {} {
                 if {$value eq ""} {set value Unknown} else {
                     switch $unit {
                         timestamp {set value [::_ns_stats.fmtTime $value]}
-                        duration {set value [format "%.2f hours" [expr {$value / 3600.0}]]}
-                        bytes {set value [format "%.2f KiB" [expr {$value / 1024.0}]]}
-                        rate {set value [format "%.2f KiB/s" [expr {$value / 1024.0}]]}
+                        duration {set value [::_ns_stats.fmtSeconds $value]}
+                        bytes {set value [::_ns_stats.hr $value]B}
+                        rate {set value [::_ns_stats.hr $value]B/s}
                     }
                 }
                 lappend rows [list $label $value]
@@ -655,6 +655,10 @@ proc ::_ns_stats.mem.adp {} {
     }
 
     set rows [::_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
+    set rows [lmap row $rows {
+        lset row 6 [::_ns_stats.hr [lindex $row 6]]B
+        set row
+    }]
 
     append html \
         [::_ns_stats.header ADP] \
@@ -749,7 +753,7 @@ proc ::_ns_stats.mem.cache {} {
             "<h4>$max most frequently used entries from cache '$statDetails'</h4>\n" \
             "<table class='data' width='70%'><tr><th>Key</th><th>Size</th><th>Hits</th><th>Expire</th></tr>\n"
         foreach row [lrange $sorted 0 $max] {
-            lassign $row key hits size expire
+            lassign $row key size hits expire
             if {$expire == 0} {
                 set expire -1
             } else {
@@ -757,8 +761,8 @@ proc ::_ns_stats.mem.cache {} {
                 set expire [::_ns_stats.fmtTime $secs]
             }
             append body "<tr><td>[ns_quotehtml $key]</td>" \
-                "<td align='right'>$hits</td>" \
-                "<td align='right'>$size</td>" \
+                "<td align='right'>[::_ns_stats.hr $size]B</td>" \
+                "<td align='right'>[::_ns_stats.hr $hits]</td>" \
                 "<td align='center'>$expire</td>"\
                 "</tr>\n"
         }
@@ -864,7 +868,7 @@ proc ::_ns_stats.displayWindow {status} {
         && ![catch {ns_baseunit -time $requested} seconds] && $seconds>$maximum} {
         # Zero selects the latest published interval while history is warming up.
         set effective [expr {$maximum>0 ? "[format %.6gs $maximum]" : "0s"}]
-        set notice "Requested display window $requested exceeds the currently usable maximum of [format %.6gs $maximum]."
+        set notice "Requested display window $requested exceeds the currently usable maximum of [::_ns_stats.fmtSeconds $maximum]."
         if {$maximum>0} {
             append notice " Using $effective instead."
         } else {
@@ -880,8 +884,8 @@ proc ::_ns_stats.displayWindowHelp {status} {
     set maximum [::_ns_stats.dictGetDef $status maxWindowSeconds 900]
     set interval [dict get $status interval]
     set available [::_ns_stats.dictGetDef $status availableWindowSeconds {}]
-    set help "The display window uses in-memory samples: retention [format %.6g $retention]s, up to $count samples; configured window limit [format %.6g $maximum]s."
-    if {$available ne ""} {append help " Continuous history currently available: [format %.6g $available]s."}
+    set help "The display window uses in-memory samples: retention [::_ns_stats.fmtSeconds $retention], up to $count samples; configured window limit [::_ns_stats.fmtSeconds $maximum]."
+    if {$available ne ""} {append help " Continuous history currently available: [::_ns_stats.fmtSeconds $available]."}
     set hourlySamples [expr {int(ceil(3600.0/$interval))+1}]
     append help " For a 1h window, set ns_param samplingRetention 1h and ns_param samplingMaxSamples $hourlySamples in ns_section ns/stats, then restart NaviServer and allow an hour of continuous sampling. Larger limits retain more data in memory. historyRetention controls SQLite history and does not extend this display window."
     if {![dict exists $status maxWindowSeconds]} {
@@ -1004,11 +1008,11 @@ proc ::_ns_stats.utilization.sourcePanel {sample {page utilization}} {
     if {[::_ns_stats.sampled $snapshot]} {
         set age [dict get $snapshot sampling ageSeconds]
         if {$age>2*[dict get $status interval]} {
-            append html "<p><strong>Measurements are stale: collected [format %.2f $age]s ago.</strong></p>"
+            append html "<p><strong>Measurements are stale: collected [::_ns_stats.fmtSeconds $age] ago.</strong></p>"
         }
         if {$notice ne ""} {
             set period [dict get $snapshot sampling elapsedSeconds]
-            append html "<p>Rates and CPU averages cover the measured [format %.3f $period]s interval ending at [clock format [expr {[dict get $snapshot timestamp]/1000000}] -format {%Y-%m-%d %H:%M:%S %Z}]. Queue depths and other gauges show the interval endpoint.</p>"
+            append html "<p>Rates and CPU averages cover the measured [::_ns_stats.hr $period]s interval ending at [clock format [expr {[dict get $snapshot timestamp]/1000000}] -format {%Y-%m-%d %H:%M:%S %Z}]. Queue depths and other gauges show the interval endpoint.</p>"
         }
         return $html
     }
@@ -1218,11 +1222,21 @@ proc ::_ns_stats.utilization.historyPanel {} {
         lappend rows [list "Persistence enabled" [dict get $status enabled]] \
             [list "Write failures since persistence started" [::_ns_stats.hr [dict get $status failures]]]
     }
-    foreach {key label} {sampleCount {Retained samples} retainedSeconds {Retained seconds}
-                         allocatedBytes {SQLite allocated bytes} usedBytes {SQLite used bytes}
-                         databaseLimitBytes {SQLite database cap (bytes)} bytesPerSample {Bytes per retained sample}} {
+    foreach {key label unit} {sampleCount {Retained samples} count retainedSeconds {Retained duration} duration
+                         allocatedBytes {SQLite allocated bytes} bytes usedBytes {SQLite used bytes} bytes
+                         databaseLimitBytes {SQLite database cap (bytes)} bytes bytesPerSample {Bytes per retained sample} bytes} {
         if {[dict exists $result storage $key]} {
-            lappend rows [list $label [::_ns_stats.hr [dict get $result storage $key]]]
+            set value [dict get $result storage $key]
+            if {$value eq ""} {
+                set value Unknown
+            } else {
+                switch $unit {
+                    count {set value [::_ns_stats.hr $value]}
+                    duration {set value [::_ns_stats.fmtSeconds $value]}
+                    bytes {set value [::_ns_stats.hr $value]B}
+                }
+            }
+            lappend rows [list $label $value]
         }
     }
     foreach {key label} {retainedFrom {Oldest retained sample} retainedTo {Newest retained sample}} {
@@ -1241,18 +1255,18 @@ proc ::_ns_stats.utilization.historyPanel {} {
         set elapsed [::_ns_stats.dictGetDef $point sampling elapsedSeconds {}]
         set requests [dict get $point requests]
         set row [list [clock format [expr {[dict get $point timestamp]/1000000}] -format {%Y-%m-%d %H:%M:%S %Z}] \
-            [expr {$elapsed eq "" ? "" : [::_ns_stats.hr $elapsed]}] \
+            [expr {$elapsed eq "" ? "" : "[::_ns_stats.hr $elapsed]s"}] \
             [expr {$requests >= 0 ? [::_ns_stats.hr $requests] : "\u2014"}]]
         foreach key {queuetime filtertime runtime tracetime} {
             set value [dict get $point timings $key]
-            lappend row [expr {$value>=0 ? [::_ns_stats.hr $value %.3f] : "unknown"}]
+            lappend row [expr {$value>=0 ? "[::_ns_stats.hr [expr {$value/1000.0}]]s" : "unknown"}]
         }
         set cpu [dict get $point cpu]
         lappend row [expr {$cpu>=0 ? [::_ns_stats.hr $cpu %.1f] : "unknown"}]
         lappend rows $row
     }
     append html "<h3>Latest 20 retained intervals</h3>" \
-        [::_ns_stats.results history-intervals 0 {{Interval ending} {Seconds} {Requests/s} {Queue ms} {Filter ms} {Run ms} {Trace ms} {Measured CPU %}} {?@page=utilization} $rows 0 {left right right right right right right right}]
+        [::_ns_stats.results history-intervals 0 {{Interval ending} {Duration} {Requests/s} {Queue time} {Filter time} {Run time} {Trace time} {Measured CPU %}} {?@page=utilization} $rows 0 {left right right right right right right right}]
     return $html
 }
 
@@ -2046,7 +2060,7 @@ proc ::_ns_stats.utilization.diskRows {current previous elapsed {levels {}}} {
                            [dict get $old $count]]
                 set ms [::_ns_stats.intervalDelta [dict get $disk $ticks] \
                             [dict get $old $ticks]]
-                if {$n > 0 && $ms >= 0} {set text "[format %.2f [expr {double($ms)/$n}]] ms"}
+                if {$n > 0 && $ms >= 0} {set text [::_ns_stats.hr [expr {double($ms)/$n/1000.0}]]s}
             }
             lappend latency "$label $text"
         }
@@ -2118,7 +2132,7 @@ proc ::_ns_stats.utilization.diskWarnings {current previous elapsed severityVar 
                 dict set levels $name $level
             }
             if {$level eq "critical" || $severity eq "ok"} {set severity $level}
-            set reason "disk [ns_quotehtml $name] $label latency [format %.2f [dict get $entry latency]] ms (measurement interval; $level threshold [expr {$level eq "critical" ? $critical : $warning}] ms)"
+            set reason "disk [ns_quotehtml $name] $label latency [::_ns_stats.hr [expr {[dict get $entry latency]/1000.0}]]s (measurement interval; $level threshold [::_ns_stats.hr [expr {($level eq "critical" ? $critical : $warning)/1000.0}]]s)"
             set queue [::_ns_stats.dictGetDef $disks $name writeQueue 0]
             set oldQueue [::_ns_stats.dictGetDef $previous linuxNetwork disks $name writeQueue 0]
             if {$label eq "write" && $queue > 0 && $oldQueue > 0} {
@@ -2838,7 +2852,7 @@ proc ::_ns_stats.utilization.globalSummary {sample threadCpu} {
     # Return the key/value list expected by ::_ns_stats.process.table.
     #
     set rows [list \
-                  [list "Measurement period"   [expr {$elapsed > 0.0 ? [format "%.3fs" $elapsed] : "\u2014; refresh to obtain interval values"}]] \
+                  [list "Measurement period"   [expr {$elapsed > 0.0 ? "[::_ns_stats.hr $elapsed]s" : "\u2014; refresh to obtain interval values"}]] \
                   [list "Request Rate"         [::_ns_stats.utilization.displayRate $requestRate]] \
                   [list "Active Requests"      $activeRequests] \
                   [list "Pool Waiting"         $poolWaitingDisplay] \
@@ -3895,8 +3909,6 @@ proc ::_ns_stats.locks.mutex {} {
         lassign $result name id nlock nbusy contention totalLock avgLock totalWait maxWait \
             locksPerReq maxLocksPerSec maxReqsPerSec read write writePercent
         set contention     [format %.4f $contention]
-        set totalLock      [format %.4f $totalLock]
-        set avgLock        [format %.8f $avgLock]
         set relWait        [expr {$sumWait > 0 ? $totalWait/$sumWait : 0}]
         set locksPerReq    [format %.2f $locksPerReq]
         set maxLocksPerSec [::_ns_stats.hr $maxLocksPerSec]
@@ -4854,7 +4866,7 @@ proc ::_ns_stats.mem.historyCached {cache {message {}}} {
     set html [::_ns_stats.dictGetDef $cache html {}]
     if {$html ne ""} {
         set age [expr {max(0,[clock seconds]-[dict get $cache updated])}]
-        append html "<p>Chart refreshed ${age}s ago; sampling is unchanged.</p>"
+        append html "<p>Chart refreshed [::_ns_stats.fmtSeconds $age] ago; sampling is unchanged.</p>"
     }
     if {$message ne ""} {append html "<p role='status'>[ns_quotehtml $message]</p>"}
     return $html
@@ -5227,7 +5239,11 @@ proc ::_ns_stats.mem.tcl {} {
 
             append html "<tr>"
 
-            foreach e [linsert [lreplace $b 4 4] 4 $nr $na $op] {
+            set values [linsert [lreplace $b 4 4] 4 $nr $na $op]
+            foreach index {0 4 5} {
+                lset values $index [::_ns_stats.hr [lindex $values $index]]B
+            }
+            foreach e $values {
                 append html "<td bgcolor=#ffffff>$e</td>"
             }
 
@@ -5262,10 +5278,10 @@ proc ::_ns_stats.mem.tcl {} {
         <td valign=middle>
         <b>Totals:</b><br><br>
         <table>
-            <tr><td>Bytes Requested:</td><td>$trequest</td></tr>
-            <tr><td>Bytes Free:</td><td>$tfree</td></tr>
-            <tr><td>Bytes Allocated:</td><td>$talloc</td></tr>
-            <tr><td>Bytes Wasted:</td><td>$ov</td></tr>
+            <tr><td>Bytes Requested:</td><td>[::_ns_stats.hr $trequest]B</td></tr>
+            <tr><td>Bytes Free:</td><td>[::_ns_stats.hr $tfree]B</td></tr>
+            <tr><td>Bytes Allocated:</td><td>[::_ns_stats.hr $talloc]B</td></tr>
+            <tr><td>Bytes Wasted:</td><td>[::_ns_stats.hr $ov]B</td></tr>
             <tr><td>Byte Overhead:</td><td>${op}%</td></tr>
             <tr><td>Locks:</td><td>$tlocks</td></tr>
             <tr><td>Lock Waits:</td><td>$twaits</td></tr>
@@ -5926,8 +5942,8 @@ proc ::_ns_stats.process {} {
                     if {![info exists processed($certfile)]} {
                         set notAfter [exec openssl x509 -enddate -noout -in $certfile]
                         regexp {notAfter=(.*)$} $notAfter . date
-                        set days [expr {([clock scan $date] - [clock seconds])/(60*60*24.0)}]
-                        lappend certInfo "Certificate $certfile will expire in [format %.1f $days] days"
+                        set remaining [expr {[clock scan $date] - [clock seconds]}]
+                        lappend certInfo "Certificate $certfile will expire in [::_ns_stats.fmtSeconds $remaining]"
                         set processed($certfile) 1
                     }
                     set certificateLabel "Configured Certificates"
@@ -6039,7 +6055,7 @@ proc ::_ns_stats.process {} {
     set processInfo [::_ns_stats.memsizes [ns_info pid] 1]
     if {$::tcl_platform(platform) ne "windows"} {
         set t [clock milliseconds]; set F [open {|cat > /dev/null} w]; puts $F "timing-pipe-open+puts"; close $F
-        dict set processInfo fork-time [expr {[clock milliseconds] - $t}]ms
+        dict set processInfo fork-time [::_ns_stats.hr [expr {([clock milliseconds] - $t)/1000.0}]]s
     }
 
     set values [list \
@@ -7290,11 +7306,15 @@ proc ::_ns_stats.background.jobs {} {
             array set ja $jl
             set ja(starttime) [::_ns_stats.fmtTime $ja(starttime)]
             set ja(endtime) [::_ns_stats.fmtTime $ja(endtime)]
-            set ja(time) "[expr [lindex [split $ja(time) .] 0]/1000] sec"
+            set ja(time) [expr {$ja(time)/1000.0}]
             lappend results [list $ja(id) $ja(state) $ja(script) $ja(code) $ja(type) $ja(starttime) $ja(endtime) $ja(time)]
         }
 
         set rows [::_ns_stats.sortResults $results [expr {$col - 1}] $numericSort $reverseSort]
+        set rows [lmap row $rows {
+            lset row 7 [::_ns_stats.hr [lindex $row 7]]s
+            set row
+        }]
     }
 
     append html \
@@ -7443,6 +7463,12 @@ proc ::_ns_stats.getSchedFlagTypes {flags} {
 }
 
 proc ::_ns_stats.fmtSeconds {seconds} {
+    if {[info exists ::raw] && $::raw} {
+        return ${seconds}s
+    }
+    if {$seconds < 0} {
+        return -[::_ns_stats.fmtSeconds [expr {-$seconds}]]
+    }
     if {$seconds == 0} {
         return 0s
     }
