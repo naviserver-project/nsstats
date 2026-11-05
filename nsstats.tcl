@@ -336,6 +336,7 @@ proc ::_ns_stats.navigation.style {} {
 }
 
 set ::titles {
+    stats.history     "Statistics history"
     index             "Main menu"
     dbpools           "Database pools"
     background.jobs   "Jobs"
@@ -7156,7 +7157,7 @@ proc ::_ns_stats.threads {} {
     set threadInfo [dict get $cpuData rows]
 
     if {$osInfo} {
-        set colNumSort {. 0 0 1 1 1 0 1 1 1 1 0}
+        set colNumSort {. 0 0 1 1 1 1 1 1 1 1 0}
         set colTitles {
             Thread Parent ID Flags "Create Time"
             TID State utime stime "CPU %" Args
