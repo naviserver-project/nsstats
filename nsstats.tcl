@@ -4136,7 +4136,7 @@ proc ::_ns_stats.log.prepare_content {type content} {
 # excerpts and result pages bounded independently of the size of the log file.
 proc ::_ns_stats.log.isheader {line} {
     regsub -all {\x1b\[[0-9;]*m} $line {} line
-    return [regexp {^\[[0-9]{2}/[A-Za-z]{3}/[0-9]{4}:[0-9:.]+\]\[[^\]\r\n]*\]\[.*\] [A-Za-z][A-Za-z0-9_-]*:} $line]
+    return [regexp {^\[[0-9]{2}/[A-Za-z]{3}/[0-9]{4}:[0-9:.]+\]\[[^\]\r\n]*\]\[.*\] [A-Za-z][A-Za-z0-9_()-]*:} $line]
 }
 
 proc ::_ns_stats.log.find {channel literal snapshot} {
