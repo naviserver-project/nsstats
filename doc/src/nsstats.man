@@ -1,0 +1,93 @@
+[manpage_begin nsstats n 1.15]
+[moddesc {NaviServer External Modules}]
+[titledesc {Monitoring and statistics web interface}]
+[description]
+The nsstats module provides an administrative web interface for NaviServer.
+It displays process information, virtual-server configuration, connection pools,
+network drivers, background jobs, memory, caches, shared variables and logs.
+Features are detected at runtime so older supported NaviServer releases remain usable.
+
+[section INSTALLATION]
+Place [file nsstats.tcl] and [file nsstats.adp] in an administrative page directory.
+Configure access control before exposing these pages. OpenACS installations can
+use their protected administration directory. The module Makefile installs the
+pages and its parameter dictionary; no documentation rendering is required by
+an ordinary installation.
+
+[section DIAGNOSTICS]
+When the core [cmd ns_stats] command is available, ready shared samples provide
+interval rates and timing averages. The utilization page shows sampling age and
+interval and permits selecting a live snapshot. History uses SQLite persistence
+when configured, or the bounded in-memory sample buffer. Charts break across gaps
+and restarts; missing values remain unknown. Sampling and persistence are configured
+in the process-wide [const ns/stats] section, independently of this web interface.
+Older installations retain the original collectors.
+
+[para]
+The parameter reference loads the core dictionary and available installed module
+dictionaries. The MCP administration page appears when nsmcp is active; inspection
+calls require an explicit administrator action and use the normal protocol checks.
+
+[para]
+The allocator memory page plots retained ns_stats allocator gauges as an inline
+SVG in MiB. Persistent history covers up to the last 24 hours; the in-memory
+buffer covers up to 15 minutes. Reads are bounded to 10,000 samples. Missing
+values, sampling gaps and process restarts break lines. The chart reports its
+actual sample range and incomplete coverage; it does not enable collection.
+When available, ns_stats history allocator reads a compact allocator projection
+in one bounded sample query, avoiding full snapshot/topology decoding. Older
+cores retain the paged history reader. Old database rows still require legacy
+snapshot decoding until they expire; the diagnostic count makes this visible.
+The compact projection does not certify full-window coverage. Chart generation
+timings are available below the chart and logged on refresh: reading (including
+checkout and decoding), SVG generation, sample count and query details.
+The chart is shared for 60 seconds. Later refreshes reuse compact allocator
+samples and query only the recent overlapping tail. Transient pool checkout
+failures use bounded retries; the last successful chart remains visible with its
+age and a delayed-refresh notice. Concurrent page views do not start duplicate
+scans. Incremental refresh does not re-certify full-window coverage.
+Allocator growth alone does not establish a memory leak.
+
+[section CONFIGURATION]
+[include include/parameters.man]
+
+[section DOCUMENTATION]
+The repository-local [file doc/tcl/config-parameters.tcl] is authoritative for the
+parameters below. Generate the committed include with [const {make regen-config-parameters-includes}].
+[const {make check-doc}] checks freshness and validates the complete manual.
+[const {make build-doc}] creates standalone HTML and nroff documentation.
+For the complete web-interface guide, see
+[uri https://github.com/naviserver-project/nsstats/blob/main/README.md {the repository README}].
+[keywords monitoring statistics configuration ns_stats]
+[section {LEGACY RUNTIME COMPATIBILITY}]
+Base nsstats continues to support the documented NaviServer 4.99 series without
+nsmcp, NSF/NX, ns_stats or ns_json. Optional facilities are probed and omitted
+when unavailable; existing collection fallbacks remain. Extension discovery uses
+legacy server-scoped nsv_array get and ADP parsing APIs. A missing registry adds
+no pages and does not prevent built-in dispatch. Client module requirements do
+not change the host's minimum runtime version.
+
+[section {MODULE ADMIN PAGES}]
+Modules publish reusable ADPs through the server-scoped nsstats:plugins NSV
+array. Each provider key holds a dictionary mapping page IDs to descriptors.
+Required fields are label, title, group, scope and an absolute readable adp path.
+The optional requires field names a command that must exist. Groups are overview,
+memory, background, logs and administration; scopes are global, server, mixed
+and source. Page IDs start with a lowercase letter and contain lowercase letters,
+digits, dots, underscores or hyphens. Built-in pages cannot be replaced.
+[example_begin]
+nsv_set nsstats:plugins example [lb]dict create example.status [lb]dict create \
+    label Example title {Example status} group administration scope server \
+    requires ::example::Service adp /module/lib/status.adp[rb][rb]
+[example_end]
+Registration can precede the first nsstats request. Discovery uses the current
+server registry and omits unavailable or invalid pages. Remove a provider with
+nsv_unset nsstats:plugins example. Treat registration as trusted module code,
+never as browser input. Pages appear in navigation and retain normal nsstats
+access checks before their ADP is evaluated. Header/footer helpers and ordinary
+table styles are available. Direct JSON/download responses must leave ADP output
+empty, including whitespace. The plugin retains responsibility for POST, CSRF
+and application authorization. The nsmcp module owns its MCP ADP and companion
+Tcl file in lib; future UI changes deploy with nsmcp alone after this host upgrade.
+
+[manpage_end]

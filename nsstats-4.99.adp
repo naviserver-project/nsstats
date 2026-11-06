@@ -191,13 +191,13 @@ div.methodfilter label {
 
 </style>
 <%= $::extraHeadEntries %>
-<%= [_ns_stats.navigation.style] %>
+<%= [::_ns_stats.navigation.style] %>
 </head>
 
 <body>
 <div class="w3-container">
-<%= [_ns_stats.navigation] %>
-<div class="w3-container breadcrumbs"><%= [_ns_stats.navigation.breadcrumb] %><span style="float:right">Raw: <a href="<%= [ns_quotehtml $::rawUrl] %>"><%= $::rawLabel %></a></span></div>
+<%= [::_ns_stats.navigation] %>
+<div class="w3-container breadcrumbs"><%= [::_ns_stats.navigation.breadcrumb] %><span style="float:right">Raw: <a href="<%= [ns_quotehtml $::rawUrl] %>"><%= $::rawLabel %></a></span></div>
 
 <!-- Main Content -->
 <div class="main-container">  
