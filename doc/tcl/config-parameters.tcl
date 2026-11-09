@@ -53,4 +53,12 @@ dict set ::ns_configdoc::data modules nsstats {
                 default {}
                 desc {List of lock names treated as non-per-request background locks in nsstats lock reporting}
             }
+            diskLatencyMinOperations {
+                type integer default 20
+                desc {Below this count or diskLatencyMinOpsPerSecond, high disk latency is a low-volume warning unless average device queue depth is at least one.}
+            }
+            diskLatencyMinOpsPerSecond {
+                type integer default 1
+                desc {Operation-rate qualifier for low-volume latency, used with diskLatencyMinOperations. Does not suppress storage-stall records.}
+            }
         }

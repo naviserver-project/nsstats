@@ -592,7 +592,7 @@ remain standalone Tcl tests.
 
 The utilization summary checks mean read or write completion latency
 (queue plus service time) over the selected measurement window. A threshold
-crossing immediately colors the disk row and contributes warning/critical status;
+crossing immediately colors the disk row and contributes qualified status;
 no consecutive-interval requirement applies to the selected window.
 These settings are in `ns/module/nsstats`:
 
@@ -626,3 +626,33 @@ both endpoints; this does not establish a continuously nonempty queue. It also
 says nothing about read queue occupancy. Unavailable Linux disk counters produce
 an informational row without changing the overall status. Other platforms do not
 show these diagnostics.
+
+
+### Storage-stall evidence and low-volume latency
+
+The utilization page distinguishes low-volume latency from high latency under load
+and sustained contention evidence. With the defaults, a crossing with fewer than
+20 completed operations or less than 1 operation/second is low-volume unless the
+interval average device queue is at least 1. It remains an amber warning even if
+its mean exceeds the critical latency threshold. Counts and rates accompany every
+crossing. `diskLatencyMinOperations` (20) and `diskLatencyMinOpsPerSecond` (1) in
+`ns/module/nsstats` control these volume qualifiers. Other critical conditions are
+never downgraded. This is a diagnostic classification, not proof of user impact.
+
+The separate background assessment requires queue evidence in every consecutive
+high-latency interval before describing sustained contention. Repeated sparse slow
+I/O is described separately. Queue depth includes requests in service; it does not
+identify a process, distinguish controller from media time, or prove resource
+competition. Missing/idle/reset/gapped data breaks continuity. Existing latency
+thresholds continue to apply.
+
+The Recent storage stalls table reads at most 20 entries from `ns_stats storage
+stalls`, without probes or SQL. The core sampler records sparse interval observations
+by default at 20 ms; `ns/stats` storageStallThresholdMs, storageStallRetention (1h),
+and storageStallMaxRecords (128) bound this independently of the page and SQLite
+history. It records completed operation counts/rates, mean latency, device queue,
+utilization and endpoint server/pool request queues where available. It retains
+low-volume stalls rather than hiding them. No slow-SQL events or statements are
+collected; correlate the recorded interval with existing SQL logs separately.
+A bounded buffer is not a complete incident log. It survives Tcl reload, not restart.
+Deploy both core tcl/ns_stats.tcl and nsstats.tcl; binaries need not be rebuilt.
