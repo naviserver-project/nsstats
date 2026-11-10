@@ -2264,12 +2264,12 @@ proc ::_ns_stats.utilization.diskBackgroundRead {samples {reader ::ns_stats}} {
 }
 
 proc ::_ns_stats.utilization.storageStallsPanel {} {
-    set html {<h3>Recent storage stalls (background samples)</h3>}
+    set html {<details class="ns-storage-stalls"><summary>Recent storage stalls (background samples)</summary>}
     if {[catch {ns_stats storage stalls -server [ns_info server] -limit 20} result]} {
-        return "$html<p>Retained storage-stall records unavailable.</p>"
+        return "$html<p>Retained storage-stall records unavailable.</p></details>"
     }
     append html {<p>Interval means, not individual syscall timings. Request queues are endpoint gauges; correlation does not establish cause. Slow SQL is not collected here.</p>}
-    append html {<table><thead><tr><th>Interval end</th><th>Device / operation</th><th>Operations</th><th>Mean latency</th><th>Average device queue</th><th>Request queues</th><th>Assessment</th></tr></thead><tbody>}
+    set rows {}
     foreach record [dict get $result records] {
         set queue [::_ns_stats.dictGetDef $record averageQueueDepth {}]
         set assessment [::_ns_stats.utilization.diskClass [dict get $record operations] [dict get $record elapsedSeconds] $queue]
@@ -2279,14 +2279,15 @@ proc ::_ns_stats.utilization.storageStallsPanel {} {
             "[format %.2f [dict get $record latencyMs]] ms" \
             [expr {$queue eq "" ? "unknown" : [format %.2f $queue]}] \
             [dict get $record requestQueues] $assessment]
-        append html <tr>
-        foreach value $values {append html "<td>[ns_quotehtml $value]</td>"}
-        append html </tr>
+        lappend rows [lmap value $values {ns_quotehtml $value}]
     }
-    append html </tbody></table>
+    append html [::_ns_stats.results storage-stalls 0 \
+        {{Interval end} {Device / operation} Operations {Mean latency} {Average device queue} {Request queues} Assessment} \
+        {?@page=utilization} $rows 0 {left left right right right left left}]
     if {[dict get $result records] eq ""} {append html {<p>No retained storage stalls.</p>}}
     if {[dict get $result omittedRecords]>0} {append html "<p>[dict get $result omittedRecords] older retained records are not displayed.</p>"}
     append html "<p>Bounded to [dict get $result maxRecords] records and [dict get $result retentionSeconds] seconds; survives Tcl reloads, not process restarts.</p>"
+    append html </details>
     return $html
 }
 

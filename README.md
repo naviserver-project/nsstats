@@ -646,7 +646,8 @@ identify a process, distinguish controller from media time, or prove resource
 competition. Missing/idle/reset/gapped data breaks continuity. Existing latency
 thresholds continue to apply.
 
-The Recent storage stalls table reads at most 20 entries from `ns_stats storage
+The Recent storage stalls panel is collapsed by default and uses the standard
+nsstats table layout. Its table reads at most 20 entries from `ns_stats storage
 stalls`, without probes or SQL. The core sampler records sparse interval observations
 by default at 20 ms; `ns/stats` storageStallThresholdMs, storageStallRetention (1h),
 and storageStallMaxRecords (128) bound this independently of the page and SQLite
