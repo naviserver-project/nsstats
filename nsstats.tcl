@@ -4396,8 +4396,37 @@ proc ::_ns_stats.log.pagesize {value} {
     return $value
 }
 
+proc ::_ns_stats.log.accesspaths {server} {
+    set paths {}
+    if {![catch {ns_server -server $server traces} traces]} {
+        foreach trace $traces {
+            if {[lrange $trace 0 1] eq {trace nslog:conntrace}
+                && [llength $trace]==3 && [file pathtype [lindex $trace 2]] eq "absolute"} {
+                lappend paths [lindex $trace 2]
+            }
+        }
+    }
+    if {[llength $paths]} {
+        return $paths
+    }
+    # Older cores may lack native trace paths.
+    set section ns/server/$server/module/nslog
+    set path [ns_config $section file]
+    if {$path eq {}} {
+        set defaults [ns_configsection -filter defaults $section]
+        if {$defaults ne {}} {
+            set path [ns_set get $defaults file]
+        }
+    }
+    if {$path eq {}} {return {}}
+    if {[file pathtype $path] eq "relative"} {
+        set path [file normalize [file join [ns_config ns/parameters logdir] $path]]
+    }
+    return [list $path]
+}
+
 proc ::_ns_stats.log.searchpage {filter system_log suffix cursor {pageSize 200}} {
-    set notices {}; set sections [dict create access {} system {}]
+    set notices {}; set sections {}
     if {[catch {::_ns_stats.log.pagesize $pageSize} pageSize]} {return "<p>[ns_quotehtml $pageSize]</p>"}
     if {$filter eq {} || [string length [encoding convertto utf-8 $filter]]>4096 || [regexp {[\x00\r\n]} $filter]} {
         return "<p>Use a nonempty literal filter of at most 4096 UTF-8 bytes, without NUL characters or line breaks.</p>"
@@ -4411,17 +4440,13 @@ proc ::_ns_stats.log.searchpage {filter system_log suffix cursor {pageSize 200}}
     } else {
         set files {}; set paths {}
         foreach s [ns_info servers] {
-            set section ns/server/$s/module/nslog
-            set path [ns_config $section file]
-            if {$path eq {}} {
-                set defaults [ns_configsection -filter defaults $section]
-                if {$defaults eq {}} continue
-                set path [ns_set get $defaults file]
+            foreach path [::_ns_stats.log.accesspaths $s] {
+                if {$suffix ne {} && [file exists $path$suffix]} {append path $suffix}
+                if {$path ni $paths} {
+                    lappend paths $path
+                    lappend files [dict create path $path kind access offset 0]
+                }
             }
-            if {$path eq {}} continue
-            if {[file pathtype $path] eq "relative"} {set path [file normalize [file join [ns_config ns/parameters logdir] $path]]}
-            if {$suffix ne {} && [file exists $path$suffix]} {append path $suffix}
-            if {$path ni $paths} {lappend paths $path; lappend files [dict create path $path kind access offset 0]}
         }
         lappend files [dict create path $system_log kind system offset 0]
         if {[llength $files]>64} {
@@ -4472,7 +4497,7 @@ proc ::_ns_stats.log.searchpage {filter system_log suffix cursor {pageSize 200}}
             # Records normally include their line terminator. Add a separator
             # only for clipped excerpts or final lines without a newline.
             if {[string index $text end] ne "\n"} {append text \n}
-            dict append sections [dict get $item kind] $label$text
+            dict append sections $index $label$text
             incr records
         }
         incr bytes [dict get $result bytes]
@@ -4510,9 +4535,12 @@ proc ::_ns_stats.log.searchpage {filter system_log suffix cursor {pageSize 200}}
                 "<input type='hidden' name='log_cursor' value='$token'><button type='submit'>Show more</button> <span>More matches may be available.</span></form>"
         }
     }
-    foreach {kind title} {access {Access log} system {System log}} {
-        set text [dict get $sections $kind]
-        if {$text ne {}} {append html "<h4>$title:</h4><pre>[::_ns_stats.log.prepare_content $kind $text]</pre>"}
+    dict for {fileIndex text} $sections {
+        set item [lindex $files $fileIndex]
+        set kind [dict get $item kind]
+        set title [expr {$kind eq "access" ? "Access log" : "System log"}]
+        set filename [ns_quotehtml [file tail [dict get $item path]]]
+        append html "<h4>$title: $filename</h4><pre>[::_ns_stats.log.prepare_content $kind $text]</pre>"
     }
     return $html
 }
