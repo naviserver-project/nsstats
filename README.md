@@ -325,6 +325,25 @@ packages with a provided version in the current interpreter; it does not load
 merely available packages. This is an interpreter inventory, not a process-wide
 union of packages loaded by other threads or virtual servers.
 
+When NaviServer package provenance is enabled, the package table also shows
+**Provided by**, **Required by**, and **Requires**. Required by groups observed requirements from other Tcl packages by package
+name and shows source locations for direct callers. Package names reflect
+the observed loading context. Tcl runtime requirements are omitted from the
+table. Provider and first-load details remain searchable alongside the
+displayed requirements. File locations show filenames with full paths in
+hover tooltips. Requires lists distinct successful require sites for
+each package and marks the first-load site.
+
+Records are shared per virtual server in `ns_package_provenance` NSVs and are
+not copied into every interpreter blueprint. They include later worker loads,
+but the displayed package inventory remains local to the viewing interpreter.
+Registrations replayed from a blueprint do not become new loading events.
+Packages present before tracing attaches are explicitly marked, rather than
+assigned a guessed caller. Older servers without records show **Not recorded**.
+Installing the new core startup code and restarting is required to observe
+startup history. Viewing this page never loads packages or package scripts.
+
+
 Recognized Git build tags for core modules and nsdbpg, nsdbsqlite, nsdns, and
 nssmtpd link to commits in their GitHub repositories. Unknown modules or tags
 without a commit hash remain plain text.

@@ -5937,6 +5937,113 @@ proc ::_ns_stats.libraries.reload {} {
     return ""
 }
 
+proc ::_ns_stats.libraries.packageOrigin {origin} {
+    set kind [dict get $origin kind]
+    if {$kind eq "preexisting"} {return "Present before tracking started"}
+    set file [dict get $origin file]
+    if {$kind eq "native"} {
+        set init [dict get $origin init]
+        set label [expr {$init eq "" ? "native extension" : "native extension $init"}]
+        return [expr {$file eq "" ? "Native extension $init (existing image)" : "$file ($label)"}]
+    }
+    set location $file
+    if {$file ne ""} {
+        append location : [dict get $origin line]
+    } else {set location "Dynamic Tcl caller"}
+    if {[dict get $origin proc] ne ""} {append location " (" [dict get $origin proc] ")"}
+    if {[dict get $origin packages] ne ""} {
+        set location "[join [dict get $origin packages] {, }]: $location"
+    }
+    if {[dict exists $origin requested] && [dict get $origin requested] ne ""} {
+        append location " (require "
+        if {[dict get $origin exact]} {append location "-exact "}
+        append location [join [dict get $origin requested] { }] ")"
+    }
+    return $location
+}
+
+proc ::_ns_stats.libraries.packageLabel {label {provider {}}} {
+    # Source labels end the path with a line number. Native provider labels
+    # use the extension annotation instead.
+    if {[regexp -indices {(^|: | — )(/[^\n]+?)(?=:[0-9]+(?: |$)| \(native extension)} $label match prefix path]} {
+        lassign $path start end
+        set filename [file tail [string range $label $start $end]]
+        set short [string replace $label $start $end $filename]
+        if {$provider ne {} && [string first "${provider}: " $label] == 0} {
+            set short $provider
+        }
+        return "<div title='[ns_quotehtml $label]'>[ns_quotehtml $short]</div>"
+    }
+    return "<div>[ns_quotehtml $label]</div>"
+}
+
+proc ::_ns_stats.libraries.packageProvenance {name version} {
+    set key [list package $name $version]
+    set record {}
+    if {[nsv_exists ns_package_provenance $key]} {set record [nsv_get ns_package_provenance $key]}
+    set result {}
+    foreach field {providedBy requiredBy} {
+        set labels {}
+        if {$record eq {}} {
+            set labels [list "Not recorded"]
+        } else {
+            set origins [dict get $record $field]
+            if {$field eq "requiredBy" && $name eq "Tcl" && $origins ne {}} {
+                set labels [list "Tcl runtime requirements omitted"]
+            } else {
+                set grouped {}
+                foreach origin $origins {
+                    set first [expr {$field eq "requiredBy"
+                                    && [dict remove $origin requested exact] eq [dict get $record firstLoadedBy]}]
+                    if {$field eq "requiredBy" && [dict get $origin packages] ne {}} {
+                        set callers [lsearch -all -inline -not -exact [dict get $origin packages] $name]
+                    } else {
+                        set callers [list [::_ns_stats.libraries.packageOrigin $origin]]
+                    }
+                    foreach caller $callers {
+                        if {$first || ![dict exists $grouped $caller]} {
+                            dict set grouped $caller $first
+                        }
+                    }
+                }
+                dict for {caller first} $grouped {
+                    if {$first} {append caller " (first load)"}
+                    lappend labels $caller
+                }
+            }
+            if {$labels eq {}} {set labels [list "None observed"]}
+        }
+        dict set result $field [lsort -unique $labels]
+    }
+    return $result
+}
+
+# Invert observed require sites so a package row shows its dependencies.
+proc ::_ns_stats.libraries.packageRequirements {} {
+    set requirements {}
+    foreach name [lsort -dictionary [package names]] {
+        set version [package provide $name]
+        if {$version eq "" || $name eq "Tcl"} {continue}
+        set key [list package $name $version]
+        if {![nsv_exists ns_package_provenance $key]} {continue}
+        set record [nsv_get ns_package_provenance $key]
+        set first [dict get $record firstLoadedBy]
+        foreach origin [dict get $record requiredBy] {
+            set callers [dict get $origin packages]
+            if {$callers eq {}} {continue}
+            set location [::_ns_stats.libraries.packageOrigin [dict replace $origin packages {}]]
+            set label "$name — $location"
+            if {[dict remove $origin requested exact] eq $first} {
+                append label " (first load)"
+            }
+            foreach caller $callers {
+                if {$caller ne $name} {dict lappend requirements $caller $label}
+            }
+        }
+    }
+    return $requirements
+}
+
 proc ::_ns_stats.tcl.libraries {} {
     if {[ns_queryget moduleReloadAction {}] ne ""} {
         return [::_ns_stats.process.reload tcl.libraries]
@@ -6005,11 +6112,24 @@ proc ::_ns_stats.tcl.libraries {} {
         }
     }
     append html {</tbody></table></div>}
-    append html {<h2>Loaded Tcl packages — inspection only</h2><p><strong>Tcl packages are listed for information only. Package reloading is not supported.</strong> Only packages with a provided version in this interpreter are listed; merely available packages are omitted.</p><div class='w3-responsive'><table class='data-table w3-table'><thead><tr><th>Package</th><th>Provided version</th></tr></thead><tbody>}
+    append html {<h2>Loaded Tcl packages — inspection only</h2><p><strong>Tcl packages are listed for information only. Package reloading is not supported.</strong> Only packages with a provided version in this interpreter are listed; merely available packages are omitted. Provenance is observed in this virtual server since tracing started. Required by groups successful requirements from other packages by package name and shows source locations for other observed callers. The first successful loading requirement is marked in both dependency columns. Requires lists distinct successful require sites for each package and marks sites that first loaded a dependency. Tcl runtime requirements are omitted.</p><div class='w3-responsive'><table class='data-table w3-table'><thead><tr><th>Package</th><th>Provided version</th><th>Provided by</th><th>Required by</th><th>Requires</th></tr></thead><tbody>}
+    set requirements [::_ns_stats.libraries.packageRequirements]
     foreach name [lsort -dictionary [package names]] {
         set version [package provide $name]
-        if {$version eq "" || ![::_ns_stats.libraries.matches $filter [list $name $version]]} {continue}
-        append html "<tr><td>[ns_quotehtml $name]</td><td>[ns_quotehtml $version]</td></tr>"
+        if {$version eq ""} {continue}
+        set provenance [::_ns_stats.libraries.packageProvenance $name $version]
+        dict set provenance requires [expr {[dict exists $requirements $name] ? [dict get $requirements $name] : {}}]
+        set search [list $name $version]
+        dict for {field labels} $provenance {lappend search {*}$labels}
+        if {![::_ns_stats.libraries.matches $filter $search]} {continue}
+        append html "<tr><td>[ns_quotehtml $name]</td><td>[ns_quotehtml $version]</td>"
+        dict for {field labels} $provenance {
+            append html <td>
+            set provider [expr {$field eq "providedBy" ? $name : {}}]
+            foreach label $labels {append html [::_ns_stats.libraries.packageLabel $label $provider]}
+            append html </td>
+        }
+        append html </tr>
     }
     append html {</tbody></table></div>}
     append html [::_ns_stats.footer]
