@@ -5962,19 +5962,29 @@ proc ::_ns_stats.libraries.packageOrigin {origin} {
     return $location
 }
 
-proc ::_ns_stats.libraries.packageLabel {label {provider {}}} {
-    # Source labels end the path with a line number. Native provider labels
-    # use the extension annotation instead.
-    if {[regexp -indices {(^|: | — )(/[^\n]+?)(?=:[0-9]+(?: |$)| \(native extension)} $label match prefix path]} {
-        lassign $path start end
-        set filename [file tail [string range $label $start $end]]
-        set short [string replace $label $start $end $filename]
-        if {$provider ne {} && [string first "${provider}: " $label] == 0} {
-            set short $provider
+proc ::_ns_stats.libraries.packageLabels {labels {provider {}}} {
+    set grouped {}
+    foreach label $labels {
+        set short $label
+        # Source paths end in a line number. Native libraries have an annotation.
+        if {[regexp -indices {(^|: | — )(/[^\n]+?)(?=:[0-9]+(?: |$)| \(native extension)} $label match prefix path]} {
+            lassign $path start end
+            set short [string replace $label $start $end [file tail [string range $label $start $end]]]
+            if {$provider ne {} && [string first "${provider}: " $label] == 0} {
+                set short $provider
+            }
         }
-        return "<div title='[ns_quotehtml $label]'>[ns_quotehtml $short]</div>"
+        dict lappend grouped $short $label
     }
-    return "<div>[ns_quotehtml $label]</div>"
+    set html ""
+    dict for {short locations} $grouped {
+        set tooltip ""
+        if {$locations ne [list $short]} {
+            set tooltip " title='[ns_quotehtml [join $locations \n]]'"
+        }
+        append html "<div$tooltip>[ns_quotehtml $short]</div>"
+    }
+    return $html
 }
 
 proc ::_ns_stats.libraries.packageProvenance {name version} {
@@ -6126,7 +6136,7 @@ proc ::_ns_stats.tcl.libraries {} {
         dict for {field labels} $provenance {
             append html <td>
             set provider [expr {$field eq "providedBy" ? $name : {}}]
-            foreach label $labels {append html [::_ns_stats.libraries.packageLabel $label $provider]}
+            append html [::_ns_stats.libraries.packageLabels $labels $provider]
             append html </td>
         }
         append html </tr>
