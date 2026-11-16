@@ -5284,8 +5284,6 @@ proc ::_ns_stats.mem.tcl {} {
     set twaits 0
     set tfree 0
     set tops 0
-    set ov 0
-    set op 0
     set av 0
 
     if {[info commands ::dict] ne ""} {
@@ -5366,9 +5364,12 @@ proc ::_ns_stats.mem.tcl {} {
         <br>"
     }
 
-    if { $trequest > 0 } {
-        set ov [expr {$talloc - $trequest}]
-        set op [format %4.2f [expr {double($ov) * 100 / $trequest}]]
+    set totalWasted N/A
+    set overheadPercent N/A
+    if {$trequest > 0} {
+        set overhead [expr {$talloc - $trequest}]
+        set totalWasted [::_ns_stats.hr $overhead]B
+        set overheadPercent [format %4.2f%% [expr {double($overhead) * 100 / $trequest}]]
     }
     if { $tops > 0 } {
         set av [format %4.2f [expr {double(100) - (double($tlocks) * 100) / $tops}]]
@@ -5389,8 +5390,8 @@ proc ::_ns_stats.mem.tcl {} {
             <tr><td>Bytes Requested:</td><td>[::_ns_stats.hr $trequest]B</td></tr>
             <tr><td>Bytes Free:</td><td>[::_ns_stats.hr $tfree]B</td></tr>
             <tr><td>Bytes Allocated:</td><td>[::_ns_stats.hr $talloc]B</td></tr>
-            <tr><td>Bytes Wasted:</td><td>[::_ns_stats.hr $ov]B</td></tr>
-            <tr><td>Byte Overhead:</td><td>${op}%</td></tr>
+            <tr><td>Bytes Wasted:</td><td>$totalWasted</td></tr>
+            <tr><td>Byte Overhead:</td><td>$overheadPercent</td></tr>
             <tr><td>Locks:</td><td>$tlocks</td></tr>
             <tr><td>Lock Waits:</td><td>$twaits</td></tr>
             <tr><td>Lock Wait Ratio:</td><td>${wr}%</td></tr>
@@ -6730,9 +6731,8 @@ proc ::_ns_stats.list-lsof {} {
             | (<a href='?@page=list-lsof&all=1'>all</a>)
             |<p>
         }]]
-        try {
-            ns_http keepalives
-        } on ok {keepalives} {
+        # Older cores do not expose HTTP client keep-alive slots.
+        if {![catch {ns_http keepalives} keepalives]} {
             append body \
                 "<strong>ns_http keep-alive slots:</strong>\n" \
                 "<blockquote><pre>[join $keepalives \n]</pre></blockquote>\n"
@@ -6763,7 +6763,9 @@ proc ::_ns_stats.proxy-workers {} {
     set pool         [ns_queryget pool]
     set cmd          [ns_queryget cmd ""]
     set queryContext @page=[ns_queryget @page]&pool=$pool
-    set workers      [ns_proxy workers $pool]
+    if {[catch {ns_proxy workers $pool} workers]} {
+        return "[::_ns_stats.header [list Process "?@page=process"] "nsproxy Workers"]<p>Worker details are unavailable.</p>[::_ns_stats.footer]"
+    }
     set numericSort  1
     set colTitles    [list ID pid created runs state]
     if {$col == 0 || $col == 3} {
